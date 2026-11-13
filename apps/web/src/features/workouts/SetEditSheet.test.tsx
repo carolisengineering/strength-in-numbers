@@ -118,6 +118,14 @@ describe("17.5 AC18 — the first tap asks (live sheet)", () => {
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
   });
 
+  it("final review #1 — the question is brought into view in the messages box when the confirm opens", async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    await asked();
+    const question = within(dialog()).getByText("Delete set 1? 60 kg × 8 will be removed.");
+    expect(scroll.mock.contexts).toContain(question);
+  });
+
   it("minor 491 — the question reads as the question: its own class, ink, body size, label weight, centered", async () => {
     await asked();
     const question = within(dialog()).getByText("Delete set 1? 60 kg × 8 will be removed.");

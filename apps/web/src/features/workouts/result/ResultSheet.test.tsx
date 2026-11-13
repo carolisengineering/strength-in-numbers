@@ -135,6 +135,16 @@ describe("10.7 AC31 / AC33 — Save and Clear result (component)", () => {
     expect(dialog.getByLabelText("Rounds")).not.toHaveAttribute("aria-invalid", "true");
   });
 
+  it("final review #3 — Clear result is an edit: it hides the cleared fields' messages", async () => {
+    const { dialog, user } = renderSheet(section({ format: "time_cap", capSeconds: 900 }, [], { rounds: null, reps: null, finishSeconds: 600, capped: false }));
+    await user.clear(dialog.getByLabelText("Finish time"));
+    await user.type(dialog.getByLabelText("Finish time"), "1600");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getByLabelText("Finish time")).toHaveAttribute("aria-invalid", "true");
+    await user.click(dialog.getByRole("button", { name: "Clear result" }));
+    expect(dialog.getByLabelText("Finish time")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
   it("a valid Save hands the draft over", async () => {
     const { dialog, user, onSave } = renderSheet(section(SET5));
     await user.type(dialog.getByLabelText("Round 1"), "341");

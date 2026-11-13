@@ -1520,9 +1520,9 @@ try {
             await shoot(page, device, "63d-sheet-320-keyboard", "Spec 17.10 Review Focus 5: the set sheet at 320 px with a 232 px frame: the header and row leave room for a field");
             // Minor 492: a two-line failure and the Delete question on the same frame. The messages stop at what the frame
             // leaves them and scroll with their first line showing; the buttons and part of the body stay. Minor 491: the
-            // question is the real confirm's (body size now), so tap Delete set; the failure is written in by hand (a failed
-            // save then a delete can't be staged here).
-            await page.locator("dialog[open] [data-sheet-actions]").getByRole("button", { name: "Delete set" }).click();
+            // question is the real confirm's (body size now). The failure is written in by hand first (a failed save can't be
+            // staged here), as it would already show when the lifter taps Delete set; then the confirm brings its question
+            // into view (final review #1), and its first line must show inside the messages box.
             await page.evaluate(() => {
               const d = document.querySelector("dialog[open]");
               const alert = document.createElement("p");
@@ -1530,6 +1530,23 @@ try {
               alert.textContent = "Couldn't save the set — check your connection and try again.";
               d.querySelector("[data-sheet-messages] > :first-child").append(alert);
             });
+            await page.locator("dialog[open] [data-sheet-actions]").getByRole("button", { name: "Delete set" }).click();
+            await page.waitForTimeout(150);
+            const question = await page.evaluate(() => {
+              const box = document.querySelector("dialog[open] [data-sheet-messages]").getBoundingClientRect();
+              const span = document.querySelector("dialog[open] [data-sheet-status] span");
+              if (!span) return null;
+              // The first character's box is the first line (the span is a block, so its own rect is every line).
+              const range = document.createRange();
+              range.setStart(span.firstChild, 0);
+              range.setEnd(span.firstChild, 1);
+              const first = range.getBoundingClientRect();
+              return { top: first.top, bottom: first.bottom, boxTop: box.top, boxBottom: box.bottom };
+            });
+            if (!question) violations.push("final review #1: no Delete set question in the row");
+            // "Shows" means the line's middle is inside the box: a descender or the half-leading may touch its edge.
+            else if (question.top < question.boxTop - 0.5 || (question.top + question.bottom) / 2 > question.boxBottom)
+              violations.push(`final review #1: the question's first line (${question.top.toFixed(1)}–${question.bottom.toFixed(1)}) is outside the messages box (${question.boxTop.toFixed(1)}–${question.boxBottom.toFixed(1)})`);
             const crowded = (await measureSheetRows(page))[0];
             const crowdedBody = crowded?.bodyHeight ?? 0;
             if (crowdedBody < 64) violations.push(`minor 492: with a notice and a status at 232 px the body is ${crowdedBody.toFixed(1)} px (want >= 64)`);

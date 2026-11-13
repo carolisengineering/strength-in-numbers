@@ -222,7 +222,11 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
         ) : null}
 
         {section.result !== null && timer.format !== "set_timer" ? (
-          <Button variant="secondary" className={styles.clear} onClick={() => setDraft(clearResultFields)}>
+          <Button variant="secondary" className={styles.clear} onClick={() => {
+              // Final review #3: clearing is an edit of every result field, so their messages go with it.
+              shown.edit("rounds", "reps", "finish");
+              setDraft(clearResultFields);
+            }}>
             {RESULT_COPY.clearResult}
           </Button>
         ) : null}

@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkoutSection } from "@sin/core";
+import { chooseSegmentValue } from "../../../test/controls";
 import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { SECTION_COPY } from "./sectionCopy";
 import { SectionSheet, type SectionSheetProps } from "./SectionSheet";
@@ -29,6 +30,20 @@ describe("10.6 AC5 / minor 326 — a field's error clears when that field change
     expect(d().queryByText("Enter a name.")).toBeNull();
     expect(d().getByText("Keep the note shorter.")).toBeInTheDocument();
     rerender(<SectionSheet {...base} errors={{ ...failed }} />);
+    expect(d().getByText("Enter a name.")).toBeInTheDocument();
+  });
+
+  it("final review #2 — a Save stopped by the timer check still checks Name and Note again", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<SectionSheet {...base} onSubmit={onSubmit} errors={{ name: "Enter a name.", notes: null, form: null }} />);
+    const d = () => dialog("New section");
+    await user.type(d().getByLabelText("Name"), "x");
+    await user.clear(d().getByLabelText("Name"));
+    expect(d().queryByText("Enter a name.")).toBeNull();
+    await chooseSegmentValue(user, "Timer", "set_timer", d());
+    await user.click(d().getByRole("button", { name: "Add section" }));
+    expect(onSubmit).not.toHaveBeenCalled();
     expect(d().getByText("Enter a name.")).toBeInTheDocument();
   });
 

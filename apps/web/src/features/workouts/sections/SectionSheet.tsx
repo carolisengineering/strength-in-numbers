@@ -9,7 +9,7 @@ import { useClearOnEdit } from "../../../ui/useClearOnEdit";
 import { TimerFields } from "../../sectionTimer/TimerFieldGroup";
 import { fieldsFromTimer, timerFromFields, type TimerFieldErrors } from "../../sectionTimer/timerFields";
 import { SECTION_COPY } from "./sectionCopy";
-import type { SectionValues } from "./sectionFields";
+import { checkSectionFields, type SectionValues } from "./sectionFields";
 import styles from "./SectionSheet.module.css";
 
 // One object for "no timer errors", so the clear-on-edit state isn't reset by a fresh `{}` every render (minor 326).
@@ -55,9 +55,12 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
   const [timer, setTimer] = useState(() => fieldsFromTimer(section?.timer ?? null));
   // The sheet's own timer errors (a parse on submit, or `{}` after a format change) win over the server's.
   const [ownTimerErrors, setOwnTimerErrors] = useState<TimerFieldErrors | null>(null);
+  // Final review #2: a Save the timer check stops never reaches `useSectionActions`, so the sheet checks Name and Note
+  // itself; its result wins until a Save goes through.
+  const [ownFieldErrors, setOwnFieldErrors] = useState<{ name: string | null; notes: string | null } | null>(null);
   // Minor 326: a message shows from the Save (or the server's 422) that found it until the lifter edits that field.
   // Each failure is a new `errors` object from `useSectionActions`' state, which shows every message again.
-  const fieldErrors = useMemo(() => ({ name: errors.name, notes: errors.notes }), [errors]);
+  const fieldErrors = useMemo(() => ownFieldErrors ?? { name: errors.name, notes: errors.notes }, [ownFieldErrors, errors]);
   const shown = useClearOnEdit(fieldErrors);
   const timerShown = useClearOnEdit(ownTimerErrors ?? errors.timer ?? NO_TIMER_ERRORS);
   const editing = mode === "edit";
@@ -69,9 +72,11 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
     const parsed = timerFromFields(timer);
     if (!parsed.ok) {
       setOwnTimerErrors(parsed.errors);
+      setOwnFieldErrors(checkSectionFields(name, notes));
       return;
     }
     setOwnTimerErrors(null);
+    setOwnFieldErrors(null);
     onSubmit({ name, notes, timer: parsed.timer });
   }
 

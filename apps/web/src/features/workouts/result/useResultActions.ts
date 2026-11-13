@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TimerFormat, WorkoutDetail, WorkoutSection } from "@sin/core";
+import type { SectionTimer, WorkoutDetail, WorkoutSection } from "@sin/core";
 import { RESULT_COPY } from "./resultCopy";
 import { diffDraft, type ResultDraft, type ResultWrite, type TimedSection } from "./resultDraft";
+
+/**
+ * What decides the sheet's fields: the format, and for Time Cap whether there is a cap (Finished / Hit the cap only show
+ * with one). A changed cap value or round count keeps the shape: `validateDraft` and `diffDraft` read the new section.
+ */
+const timerShape = (timer: SectionTimer): string => (timer.format === "time_cap" ? `time_cap:${timer.capSeconds === null ? "none" : "cap"}` : timer.format);
 
 /** How a screen sends a Save's writes (live: the queued client; edit: REST, one by one). */
 export interface ResultWriter {
@@ -39,8 +45,8 @@ export interface ResultActions {
  * through the screen's writer, and focus back to the section's Log result button after every close.
  */
 export function useResultActions({ workout, writer, announce, failureText }: ResultActionDeps): ResultActions {
-  // `format`: the timer format the sheet opened with; its fields belong to that format (minor 333).
-  const [view, setView] = useState<{ sectionId: string; openCount: number; format: TimerFormat | null } | null>(null);
+  // `shape`: the timer's shape when the sheet opened; its fields belong to that shape (minor 333, final review #4).
+  const [view, setView] = useState<{ sectionId: string; openCount: number; shape: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const counter = useRef(0);
@@ -67,7 +73,7 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
     } else if (section.timer === null) {
       close();
       announce(RESULT_COPY.timerGone);
-    } else if (view.format !== null && section.timer.format !== view.format) {
+    } else if (view.shape !== null && timerShape(section.timer) !== view.shape) {
       // Minor 333: the draft's fields are the old format's, so nothing of it may be sent. A changed cap or round count
       // keeps the sheet: validateDraft and diffDraft read the refetched section.
       close();
@@ -89,8 +95,8 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
     (sectionId: string) => {
       counter.current += 1;
       setFormError(null);
-      const format = workout.sections.find((s) => s.id === sectionId)?.timer?.format ?? null;
-      setView({ sectionId, openCount: counter.current, format });
+      const timer = workout.sections.find((s) => s.id === sectionId)?.timer ?? null;
+      setView({ sectionId, openCount: counter.current, shape: timer === null ? null : timerShape(timer) });
     },
     [workout.sections],
   );

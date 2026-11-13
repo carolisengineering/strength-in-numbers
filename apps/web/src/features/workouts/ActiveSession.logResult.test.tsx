@@ -123,6 +123,15 @@ describe("10.7 AC27 — the Log result sheet (live)", () => {
     expect(sheet().getByLabelText("Round 5")).toHaveValue("3:30");
   });
 
+  it("final review #4 — a For Time section's cap removed on another device closes the sheet with its line", async () => {
+    const { user, fake, queryClient } = await setup([{ name: "Main", timer: { format: "time_cap", capSeconds: 900 } }]);
+    await openLog(user);
+    fake.state.active = { ...fake.state.active!, sections: fake.state.active!.sections.map((s) => ({ ...s, timer: { format: "time_cap", capSeconds: null } })) };
+    await queryClient.invalidateQueries({ queryKey: ["workouts", "active"] });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Log result" })).toBeNull());
+    expect(announcement()).toHaveTextContent("This section's timer changed.");
+  });
+
   it("the timer removed on another device closes the sheet with its line", async () => {
     const { user, fake, queryClient } = await setup();
     await openLog(user);

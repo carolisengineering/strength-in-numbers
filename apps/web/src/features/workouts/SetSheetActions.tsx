@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 
 import { Button } from "../../ui/Button";
 import { SheetActions } from "../../ui/SheetActions";
@@ -28,17 +28,24 @@ export interface SetSheetActionsProps {
  */
 export function SetSheetActions({ formId, confirm, question, primaryLabel, saving, deleting, canSave, onDelete, formError }: SetSheetActionsProps) {
   const questionId = useId();
+  const asking = confirm.confirming && question !== null;
+  const questionRef = useRef<HTMLSpanElement | null>(null);
+  // Final review #1: a save failure sits above the question in the row's messages box, which scrolls on a short
+  // frame; bring the question into view so the two buttons never show without it.
+  useEffect(() => {
+    if (asking) questionRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [asking]);
   const notice = formError ? (
     <p className={styles.formError} role="alert">
       {formError}
     </p>
   ) : null;
-  if (confirm.confirming && question !== null) {
+  if (asking) {
     return (
       <SheetActions
         notice={notice}
         status={
-          <span id={questionId} className={styles.question}>
+          <span id={questionId} ref={questionRef} className={styles.question}>
             {question}
           </span>
         }
