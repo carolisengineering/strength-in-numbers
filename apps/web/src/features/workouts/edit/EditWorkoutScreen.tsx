@@ -454,7 +454,13 @@ function EditBody({
             isLast={k === segment.rows.length - 1}
             structureBusy={structureBusy}
             onMove={(direction) => void runRegroup({ type: "move", id: exercise.id, direction })}
-            moveReasons={moveReasonsFor(segment.sectionId !== null, k === 0, k === segment.rows.length - 1)}
+            moveReasons={moveReasonsFor({
+              headed: segment.heading !== null,
+              segmentFirst: k === 0,
+              segmentLast: k === segment.rows.length - 1,
+              workoutFirst: segment.start + k === 0,
+              workoutLast: segment.start + k === workout.exercises.length - 1,
+            })}
             onRemove={() => (exercise.sets.length === 0 ? void removeExercise(exercise) : setRemoving(exercise))}
             flaggedIds={NO_FLAGS}
             unitPreference={unitPreference}

@@ -81,10 +81,19 @@ describe("17.13 AC14 — Move says why, in every workout (live)", () => {
     expect(moveIn("solo", "Move down")).toHaveAccessibleDescription("Last exercise");
   });
 
-  it("review focus 5: a loose tail's top row, below a headed section, reads First exercise", async () => {
+  it("final review I-1: the loose tail is a headed segment (Other exercises), so it keeps the section wording", async () => {
     const { user } = await setup({ sections: [{ name: "A" }], exercises: [ex("a1", 0), ex("t1"), ex("t2")] });
     await options(user, "t1");
-    expect(moveIn("t1", "Move up")).toHaveAccessibleDescription("First exercise");
+    expect(moveIn("t1", "Move up")).toHaveAccessibleDescription("First exercise in this section");
+  });
+
+  it("final review I-1: a loose run above the first section never says Last exercise; its real first row says First exercise", async () => {
+    const { user } = await setup({ sections: [{ name: "A" }], exercises: [ex("p1"), ex("p2"), ex("a1", 0)] });
+    await options(user, "p2");
+    expect(moveIn("p2", "Move down")).toBeDisabled();
+    expect(moveIn("p2", "Move down")).not.toHaveAccessibleDescription();
+    await options(user, "p1");
+    expect(moveIn("p1", "Move up")).toHaveAccessibleDescription("First exercise");
   });
 });
 
