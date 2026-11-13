@@ -532,15 +532,12 @@ describe("17.8 AC5 — the panel label", () => {
     expect(setLine()).toHaveTextContent(/^Set 1 of 3 · Warm-up · target 8 @ 40 kg$/);
   });
 
-  it("minor 454 — the target never breaks inside: its span doesn't wrap, so the unit can't sit alone at 320 px", async () => {
+  it("minor 454 — the weight and its unit can't part at a line break; the target as a whole still can wrap", async () => {
     await setup([bench({ plannedSets: RANGE_PLAN })]);
     const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "EntryRow.module.css"), "utf8");
-    const at = css.indexOf(".target {");
-    expect(at).toBeGreaterThanOrEqual(0);
-    expect(css.slice(at, css.indexOf("}", at))).toMatch(/white-space:\s*nowrap/);
-    const span = setLine().lastElementChild!;
-    expect(span).toHaveTextContent(/^· target 8 @ 40 kg$/);
-    expect(span.className).toMatch(/target/);
+    // No whole-span nowrap (it couldn't wrap at 200% text, WCAG 1.4.4): the no-break spaces do the job.
+    expect(css).not.toMatch(/\.target\s*\{/);
+    expect(setLine().textContent).toContain("· target 8 @\u00a040\u00a0kg");
   });
 
   it("the name is bold signal teal and both lines are at least --font-size-md, the target line in --color-text", () => {

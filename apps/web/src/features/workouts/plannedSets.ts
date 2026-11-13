@@ -37,7 +37,9 @@ export function setLabel(plannedSets: readonly PlannedSet[], loggedCount: number
 export function setTarget(row: PlannedSet, modality: Modality): string | null {
   const measures = visibleMeasures(modality);
   const reps = measures.includes("reps") && row.repsLow !== null && row.repsHigh !== null ? (row.repsLow === row.repsHigh ? `${row.repsLow}` : `${row.repsLow}–${row.repsHigh}`) : null;
-  const weight = measures.includes("weight") && row.weight !== null && row.weightUnit !== null ? `${formatWeight(row.weight)} ${row.weightUnit}` : null;
-  if (reps !== null && weight !== null) return `${reps} @ ${weight}`;
+  // Minor 454: no-break spaces join "@", the weight and its unit, so at 320 px the unit can't wrap alone ("… @ 47.5" /
+  // "kg"); the target can still break after its reps, so a large text size wraps rather than overflows.
+  const weight = measures.includes("weight") && row.weight !== null && row.weightUnit !== null ? `${formatWeight(row.weight)}\u00a0${row.weightUnit}` : null;
+  if (reps !== null && weight !== null) return `${reps} @\u00a0${weight}`;
   return reps ?? weight;
 }
