@@ -147,6 +147,9 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
     // Segmented stops their Enter from submitting.
     if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement) || event.target.type !== "text") return;
     event.preventDefault();
+    // A held Enter logs once (minor 429, code review): its repeats would pass the 600 ms double-tap window and log the
+    // re-seeded draft again.
+    if (event.repeat) return;
     if (parsed.ok) {
       void log();
       return;

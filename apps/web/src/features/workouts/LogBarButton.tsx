@@ -14,6 +14,16 @@ export type BarAction =
   | { readonly kind: "finish"; readonly disabled: boolean; readonly onClick: () => void }
   | { readonly kind: "add"; readonly disabled: boolean; readonly onClick: () => void };
 
+/**
+ * A held key's repeats never press the bar's button, in any mode (minor 429): a keyboard Undo moves focus here
+ * mid-press, and the log of a last planned set turns this same element into Finish workout, so Enter's auto-repeat
+ * would re-log a set it just undid or open the Finish dialog. Cancelling the repeated keydown stops the click it would
+ * make. (Space presses a button on keyup, so its repeats never do.)
+ */
+function ignoreHeldEnter(event: KeyboardEvent<HTMLButtonElement>) {
+  if (event.repeat && event.key === "Enter") event.preventDefault();
+}
+
 /** One `Button` in every mode, so the element (and its focus) survives the switch to Finish after the last planned set. */
 export function LogBarButton({ action: mode }: { action: BarAction }) {
   const action = useLogAction(useContext(LogActionContext));
@@ -34,7 +44,7 @@ export function LogBarButton({ action: mode }: { action: BarAction }) {
 
   if (mode.kind !== "log") {
     return (
-      <Button block aria-disabled={mode.disabled || undefined} onClick={mode.disabled ? undefined : mode.onClick}>
+      <Button block aria-disabled={mode.disabled || undefined} onClick={mode.disabled ? undefined : mode.onClick} onKeyDown={ignoreHeldEnter}>
         {mode.kind === "finish" ? "Finish workout" : "Add exercise"}
       </Button>
     );
@@ -50,13 +60,6 @@ export function LogBarButton({ action: mode }: { action: BarAction }) {
     action.run();
   }
 
-  // A held key's repeats never press Log (minor 429): a keyboard Undo moves focus here mid-press, so Enter's
-  // auto-repeat would re-log the set it just undid. Cancelling the repeated keydown stops the click it would make.
-  // (Space presses a button on keyup, so its repeats never do.)
-  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.repeat && event.key === "Enter") event.preventDefault();
-  }
-
   return (
     <Button
       block
@@ -65,7 +68,7 @@ export function LogBarButton({ action: mode }: { action: BarAction }) {
       aria-label={action?.ariaLabel}
       aria-busy={action?.busy || undefined}
       onClick={onClick}
-      onKeyDown={onKeyDown}
+      onKeyDown={ignoreHeldEnter}
     >
       {action?.label ?? "Log set"}
     </Button>
