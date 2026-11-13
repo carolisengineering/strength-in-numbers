@@ -5,7 +5,6 @@ import { InlineNotice } from "../../../ui/InlineNotice";
 import { Segmented } from "../../../ui/Segmented";
 import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
-import { VisuallyHidden } from "../../../ui/VisuallyHidden";
 import { ClockField } from "../../sectionTimer/ClockField";
 import { useClearOnEdit } from "../../../ui/useClearOnEdit";
 import { TimerLine } from "../../sectionTimer/TimerLine";
@@ -200,7 +199,8 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
             {timer.capSeconds !== null ? (
               <Segmented
                 name="result-mode"
-                legend={<VisuallyHidden>{RESULT_COPY.outcome}</VisuallyHidden>}
+                legend={RESULT_COPY.outcome}
+                hideLegend
                 options={MODE_OPTIONS}
                 value={draft.mode}
                 onChange={(mode) => {

@@ -52,7 +52,8 @@
   display: none;
 }
 
-/* Spec 17.13 AC15: "Show the list" is alone on its line, so it is a full tap target; padding keeps the native marker. */
-.showList {
+/* Spec 17.13 AC15: "Show the list" and "What's in the file?" are alone on their lines, so each is a full tap target;
+   padding keeps the native marker. */
+.disclosure {
   padding-block: var(--space-3);
 }

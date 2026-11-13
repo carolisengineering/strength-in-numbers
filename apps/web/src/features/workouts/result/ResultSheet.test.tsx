@@ -111,6 +111,8 @@ describe("17.13 AC16 — Finished / Hit the cap is a Segmented strip", () => {
     expect(hitCap).toBeChecked();
     expect(dialog.queryByLabelText("Finish time")).toBeNull();
     expect(hitCap.closest("fieldset")!.className).toMatch(/fieldset/);
+    // The sheet's title already says what this is: the legend is for screen readers only and draws no box.
+    expect(hitCap.closest("fieldset")!.querySelector("legend")!.className).not.toMatch(/legend/);
   });
 });
 

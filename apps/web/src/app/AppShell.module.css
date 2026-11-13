@@ -43,8 +43,8 @@
   border-bottom: 1px solid var(--color-line);
 }
 
-/* Spec 17.13 AC18: typing has the screen; the header steps aside, as the nav does, so a sheet or the workout
-   screen keeps its rows above the keypad. The real status-bar check is on the phone (AC24). */
+/* Spec 17.13 AC18: typing has the screen; the header steps aside, as the nav does, so the frame above the keypad is
+   all <main> (a sheet is a top-layer dialog sized on its own). The real status-bar check is on the phone (AC24). */
 :global(:root[data-keyboard="open"]) .header {
   display: none;
 }

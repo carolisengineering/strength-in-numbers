@@ -86,6 +86,22 @@ describe("17.7 AC1 — Segmented is one labeled group of native radios", () => {
   });
 });
 
+describe("17.13 AC16 — a strip whose sheet already says what it is hides its legend", () => {
+  it("hideLegend keeps the group's name but draws no legend box, so no margin band sits above the strip", () => {
+    render(<Segmented name="unit" legend="Weight unit" hideLegend options={UNITS} value="kg" onChange={vi.fn()} />);
+    const group = screen.getByRole("group", { name: "Weight unit" });
+    const legend = group.querySelector("legend")!;
+    expect(legend.className).not.toMatch(/legend/);
+    expect(legend.firstElementChild?.className).toMatch(/hidden/);
+    expect(legend).toHaveTextContent("Weight unit");
+  });
+
+  it("without hideLegend the legend is drawn as before", () => {
+    render(<Segmented name="unit" legend="Weight unit" options={UNITS} value="kg" onChange={vi.fn()} />);
+    expect(screen.getByRole("group", { name: "Weight unit" }).querySelector("legend")!.className).toMatch(/legend/);
+  });
+});
+
 describe("17.7 AC2 — narrow widths wrap rather than clip", () => {
   it("gives a four-option strip the four rule, built on the two tokens", () => {
     render(<Segmented name="kind" legend="Set type" options={KINDS} value="working" onChange={vi.fn()} />);
