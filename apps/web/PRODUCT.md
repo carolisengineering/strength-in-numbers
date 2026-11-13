@@ -46,6 +46,7 @@ A fast, reliable way to record what you did in the gym and see whether you're pr
   - Controls name their action.
   - Errors say what happened and what to do.
   - American spelling.
+  - Dates and times follow the device's settings, falling back to en-US (Spec 17.13 D1).
   - Copy says "erase", never "purge", and never uses the word "dummy".
 
 ## Evidence on Hand

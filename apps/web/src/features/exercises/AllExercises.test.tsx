@@ -74,8 +74,8 @@ describe("18.2 AC11 — row accessibility", () => {
     const ul = await list();
     expect(names(ul)).toEqual(["Echo Bike", "Barbell bench press", "Back squat", "Plank"]);
     const links = within(ul).getAllByRole("link");
-    expect(links[0]).toHaveTextContent("Last logged Sat 24 Oct · Calories");
-    expect(links[1]).toHaveTextContent("Last logged Mon 16 Jun 2025 · Weight × reps");
+    expect(links[0]).toHaveTextContent("Last logged Sat, Oct 24 · Calories");
+    expect(links[1]).toHaveTextContent("Last logged Mon, Jun 16, 2025 · Weight × reps");
     expect(links[2]).toHaveTextContent("Yours · Weight × reps");
     expect(links[3]).toHaveTextContent("Built in · Duration");
   });
@@ -195,7 +195,7 @@ describe("18.2 AC14 — usage states", () => {
     fake.failNext({ method: "GET", path: USAGE }, () => problemResponse(500, "internal"));
     await queryClient.invalidateQueries({ queryKey: EXERCISE_KEYS.usage });
     expect(await screen.findByRole("alert")).toHaveTextContent(EXERCISES_COPY.usageFailed);
-    expect(within(await list()).getAllByRole("link")[0]).toHaveTextContent("Last logged Sat 24 Oct · Calories");
+    expect(within(await list()).getAllByRole("link")[0]).toHaveTextContent("Last logged Sat, Oct 24 · Calories");
   });
 });
 

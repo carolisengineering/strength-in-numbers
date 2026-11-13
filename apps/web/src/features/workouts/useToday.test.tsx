@@ -13,9 +13,9 @@ afterEach(() => vi.useRealTimers());
 describe("deferred minor 11 — the live header's 'Started' label turns dated after midnight", () => {
   it("re-renders at the next local midnight, so a 23:50 start gains its day", () => {
     const { result } = renderHook(() => formatStartedAt(START, { today: useToday() }));
-    expect(result.current).toMatch(/^\d{2}:\d{2}$/);
+    expect(result.current).toBe("11:50 PM");
     act(() => vi.advanceTimersByTime(5 * 60_000 + 1000));
-    expect(result.current).toMatch(/^Fri 2 Oct, /);
+    expect(result.current).toBe("Fri, Oct 2, 11:50 PM");
   });
 
   it("re-checks the day when the page becomes visible (a sleeping phone's timer may not fire on time)", () => {

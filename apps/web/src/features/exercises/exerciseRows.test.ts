@@ -105,13 +105,13 @@ describe("18.2 AC10 — row text", () => {
 
   it("reads Last logged with the day in the current year", () => {
     expect(metaLine(item({ lastLoggedOn: "2026-10-24", modality: "calories" }), TODAY, true)).toBe(
-      "Last logged Sat 24 Oct · Calories",
+      "Last logged Sat, Oct 24 · Calories",
     );
   });
 
   it("adds the year for another year", () => {
     expect(metaLine(item({ lastLoggedOn: "2025-06-16", modality: "bodyweight_reps" }), TODAY, true)).toBe(
-      "Last logged Mon 16 Jun 2025 · Bodyweight × reps",
+      "Last logged Mon, Jun 16, 2025 · Bodyweight × reps",
     );
   });
 

@@ -4,7 +4,12 @@ import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
 import { resetUserDataWritesForTests } from "../storage/storage";
+import { applyLocale } from "./locale";
 import { server } from "./msw/server";
+
+// Spec 17.13 AC6: every file formats dates in en-US whatever the machine's locale. At module scope,
+// not in a beforeAll, because test tables can format while the file is collected.
+applyLocale("en-US");
 
 // `vitest` runs with `globals: false`, so React Testing Library's automatic
 // per-test unmount is not registered — do it here for every render test.

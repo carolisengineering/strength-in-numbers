@@ -217,7 +217,12 @@ function makeHandler(state) {
       const series = D.progressFor(rootIn(state, decodeURIComponent(seg[1])));
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
-      series.points = series.points.filter((pt) => (!from || pt.localDate >= from) && (!to || pt.localDate <= to));
+      if (state.seriesDates) {
+        // Spec 17.13 review focus 5: a series whose span crosses a year, served whatever the range asks.
+        series.points = series.points.slice(0, state.seriesDates.length).map((pt, i) => ({ ...pt, localDate: state.seriesDates[i] }));
+      } else {
+        series.points = series.points.filter((pt) => (!from || pt.localDate >= from) && (!to || pt.localDate <= to));
+      }
       res = json(series);
     } else if (m === "PATCH" && (seg = /^\/v1\/sets\/([^/]+)$/.exec(p))) {
       // Spec 18.0: an edit-screen save answers the stored set merged with the change.
@@ -871,6 +876,8 @@ const measureLedger = (page) =>
 
 // Spec 17.7 Phase B (AC16, AC22, Review Focus 4): the decluttered card and its More block, read in a real browser.
 const cardDeclutter = [];
+// Spec 17.13 AC4b: the other-locale shots, in `_report.json` under `localeChecks`; a violation or an empty list fails the run.
+const localeChecks = [];
 // AC22: `form.top − article.top` of the current card in 01-workout-active at 390 × 844, measured on main at 970b06b3
 // (Phase A merged, none of Phase B) on 2026-11-09. Phase B must take at least 60 px off it.
 const CARD_HEADER_BASE_390 = 204;
@@ -2703,6 +2710,126 @@ try {
     }
   }
 
+  // Spec 17.13 AC4b: dates follow the device's locale, so other locales must lay out. The live header, the summary and
+  // History at 390 px under en-GB and de-DE. A shot fails the run on an overlap, on a "Started" line that meets Change
+  // Time, when the page's Intl didn't take the context's locale, or when a pinned layer covers anything on the first
+  // screen (scroll top) that it doesn't cover on the same screen under en-US. Hits further down are the list scrolling
+  // under the sticky bar, and a longer date that makes the page taller only moves which rows they are.
+  // Review focus 4 and 5: the longest en-US moment on the live header at 320 × 568, and a chart whose span crosses a
+  // year (full years, no overlap).
+  if (DEVICE_FILTER.includes("mobile")) {
+    const coveredAtTop = (shot) => {
+      const dump = JSON.parse(fs.readFileSync(path.join(OUT, shot.file.replace(/\.png$/, ".layout.json")), "utf8"));
+      return new Set((dump.pinnedCoverage.find((s) => s.scrollY === 0)?.hits ?? []).map((h) => h.covers));
+    };
+    const checkLocaleShot = async (page, locale, where, { baseline, extra = [] }) => {
+      const shot = report.at(-1);
+      const violations = [...extra];
+      const actual = await page.evaluate(() => new Intl.DateTimeFormat().resolvedOptions().locale);
+      if (actual !== locale) violations.push(`Intl reports ${actual}, not ${locale}`);
+      if (shot.overlaps) violations.push(`${shot.overlaps} overlapping controls`);
+      if (!baseline) violations.push("no en-US shot of this screen to compare with");
+      else {
+        const before = coveredAtTop(baseline);
+        for (const c of coveredAtTop(shot)) {
+          if (!before.has(c)) violations.push(`the first screen has ${c} under a pinned layer; ${baseline.file} doesn't`);
+        }
+      }
+      localeChecks.push({ shot: shot.file, locale, where, baseline: baseline?.file ?? null, pinnedHits: shot.pinnedHits, baselinePinnedHits: baseline?.pinnedHits ?? null, violations });
+      for (const v of violations) console.error(`  LOCALE ${shot.file}: ${v}`);
+    };
+    const mainShot = (name) => report.find((r) => r.file?.endsWith(`/mobile/${name}.png`) && !r.file.startsWith("locale-"));
+    // The live screen scrolls to the current exercise; bring the header back and check its Started line against Change Time.
+    const showHeader = async (page, text) => {
+      const started = page.getByText(text ?? /^Started /, { exact: Boolean(text) }).first();
+      await started.waitFor();
+      await started.scrollIntoViewIfNeeded();
+      const change = page.getByRole("button", { name: "Change Time" });
+      const [a, b] = [await started.boundingBox(), await change.boundingBox()];
+      const meet = a && b && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+      return meet ? [`"${await started.textContent()}" meets Change Time`] : [];
+    };
+    for (const locale of ["en-GB", "de-DE"]) {
+      await tryStep(`locale ${locale}`, async () => {
+        THEME = `locale-${locale}`;
+        const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
+        await ctx.route(isSinApi, makeHandler({ active: true }));
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(8000);
+        for (const [where, p, name] of [
+          ["the live header", "/app/workouts", "01-workout-active"],
+          ["the summary", `/app/history/${D.ids.latestFinished}`, "13-history-detail"],
+          ["History", "/app/history", "12-history"],
+        ]) {
+          await page.goto(BASE + p);
+          await settle(page);
+          const extra = name === "01-workout-active" ? await showHeader(page) : [];
+          await shoot(page, "mobile", name, `Spec 17.13 AC4b: ${where} under ${locale}`);
+          await checkLocaleShot(page, locale, where, { baseline: mainShot(name), extra });
+        }
+        await ctx.close();
+      });
+    }
+    await tryStep("locale en-US 320 header", async () => {
+      THEME = "locale-en-US";
+      // A start today (the time alone) is the baseline; then a start on Wed, Sep 30 at 12:05 PM Chicago time, the
+      // longest en-US moment beside Change Time.
+      const state = { active: true };
+      const ctx = await browser.newContext({ ...DEVICES.mobile, viewport: { width: 320, height: 568 }, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+      await ctx.route(isSinApi, makeHandler(state));
+      const page = await ctx.newPage();
+      page.setDefaultTimeout(8000);
+      await page.goto(BASE + "/app/workouts");
+      await settle(page);
+      const todayExtra = await showHeader(page);
+      await shoot(page, "mobile-320", "01m-header-today", "Spec 17.13 review focus 4: the baseline, a start today, at 320 × 568");
+      const today = report.at(-1);
+      state.almostDone = { ...D.active, startedAt: "2026-09-30T17:05:00.000Z" };
+      await page.goto(BASE + "/app/workouts");
+      await settle(page);
+      const extra = await showHeader(page, "Started Wed, Sep 30, 12:05 PM");
+      await shoot(page, "mobile-320", "01n-header-long-moment", "Spec 17.13 review focus 4: the longest en-US moment beside Change Time at 320 × 568");
+      await checkLocaleShot(page, "en-US", "the live header at 320", { baseline: today, extra: [...todayExtra, ...extra] });
+      await ctx.close();
+    });
+    // Two charts across a year: three month starts (month labels), and Dec 20 to Jan 10 (no two month starts, so the
+    // ends get day labels with the year, the longest labels the chart draws; final review I1).
+    for (const [name, seriesDates] of [
+      ["15y-chart-across-a-year", ["2025-11-20", "2025-12-18", "2026-01-15", "2026-02-10"]],
+      ["15z-chart-across-a-year-ends", ["2025-12-20", "2026-01-10"]],
+    ]) {
+      await tryStep(`locale en-US chart ${name}`, async () => {
+        THEME = "locale-en-US";
+        const state = { active: false, seriesDates };
+        const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+        await ctx.route(isSinApi, makeHandler(state));
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(8000);
+        await page.goto(BASE + `/app/exercises/${D.ids.bench}`);
+        await page.locator("svg text").first().waitFor();
+        // The x-axis labels: the svg texts that read as a date, with their boxes.
+        const { ticks, width } = await page.evaluate(() => ({
+          width: document.documentElement.clientWidth,
+          ticks: [...document.querySelectorAll("svg text")]
+            .map((t) => ({ text: t.textContent ?? "", box: t.getBoundingClientRect() }))
+            .filter((t) => /[A-Z][a-z]{2}/.test(t.text))
+            .map((t) => ({ text: t.text, left: t.box.left, right: t.box.right, top: t.box.top, bottom: t.box.bottom })),
+        }));
+        const extra = [];
+        if (ticks.length === 0) extra.push("no date ticks");
+        if (ticks.some((t) => !/\b20\d\d\b/.test(t.text))) extra.push(`a tick without its full year: ${ticks.map((t) => t.text).join(", ")}`);
+        for (const t of ticks) if (t.left < 0 || t.right > width) extra.push(`"${t.text}" runs off the screen (${Math.round(t.left)}–${Math.round(t.right)} of ${width})`);
+        for (let i = 0; i < ticks.length; i++) for (let j = i + 1; j < ticks.length; j++) {
+          const [a, b] = [ticks[i], ticks[j]];
+          if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) extra.push(`ticks overlap: "${a.text}" and "${b.text}"`);
+        }
+        await shoot(page, "mobile", name, `Spec 17.13 review focus 5: ticks ${ticks.map((t) => t.text).join(", ")}`);
+        await checkLocaleShot(page, "en-US", "a chart across a year", { baseline: mainShot("15-progress-bench"), extra });
+        await ctx.close();
+      });
+    }
+  }
+
   // The Light / Dark / System override (Spec 17.0 AC18): Profile on a light OS with Dark stored.
   {
     THEME = "override-dark";
@@ -2801,7 +2928,13 @@ if (loggingLoop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED l
   console.error("  LOGGING LOOP: the step did not run on every device");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, unmatched: [...unmatched], consoleErrors }, null, 1));
+// Spec 17.13 AC4b: the locale checks fail the run on a violation, or when a mobile run never reported them.
+if (localeChecks.some((l) => l.violations.length)) process.exitCode = 1;
+if (DEVICE_FILTER.includes("mobile") && (localeChecks.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED locale")))) {
+  console.error("  LOCALE: a locale step did not run");
+  process.exitCode = 1;
+}
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

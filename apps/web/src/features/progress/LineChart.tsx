@@ -29,7 +29,7 @@ export function LineChart({ points, integer = false, selectedId, onSelect, summa
         </g>
       ))}
       {xLabels(layout).map((l) => (
-        <text key={`${l.x}:${l.text}`} className={styles.xLabel} x={l.x} y={VIEW.height - 8} textAnchor="middle">
+        <text key={`${l.x}:${l.text}`} className={styles.xLabel} x={l.x} y={VIEW.height - 8} textAnchor={l.anchor}>
           {l.text}
         </text>
       ))}

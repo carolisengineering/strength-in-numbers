@@ -1,11 +1,10 @@
+import { monthDayText, monthText } from "../../ui/dateText";
 import type { ChartPoint } from "./metrics";
 
 /** The chart's fixed coordinate system (Spec 08.1 §6.3); the browser scales it to the container's width. */
 export const VIEW = { width: 360, height: 220, left: 48, right: 16, top: 12, bottom: 28 } as const;
 const PLOT_W = VIEW.width - VIEW.left - VIEW.right; // 296
 const PLOT_H = VIEW.height - VIEW.top - VIEW.bottom; // 180
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 const decimalsOf = (step: number) => Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
 
@@ -123,16 +122,31 @@ export function hitAreas(layout: ChartLayout): HitArea[] {
   return layout.points.map((p) => byId.get(p.id)!);
 }
 
-/** 3–4 month-start labels inside the span, else first/last day-month; a two-digit year only across a year boundary (D9). */
-export function xLabels(layout: ChartLayout): { x: number; text: string }[] {
+export type LabelAnchor = "start" | "middle" | "end";
+
+// A generous width per character at the labels' 14-unit font, so a label estimated to fit really does.
+const LABEL_CHAR_WIDTH = 8;
+
+/** A month label stays centered on its tick unless that would cross the viewBox's edge (Spec 17.13: years make it longer). */
+function monthAnchor(x: number, text: string): LabelAnchor {
+  const half = (text.length * LABEL_CHAR_WIDTH) / 2;
+  if (x + half > VIEW.width) return "end";
+  if (x - half < 0) return "start";
+  return "middle";
+}
+
+/**
+ * 3–4 month-start labels inside the span, else first/last day-month; a year only across a year boundary (D9), and
+ * the full year (Spec 17.13): under en-US a two-digit one reads as a day ("Dec 25").
+ */
+export function xLabels(layout: ChartLayout): { x: number; text: string; anchor: LabelAnchor }[] {
   const pts = layout.points;
   const first = pts[0];
   const last = pts.at(-1);
   if (!first || !last) return [];
   const [fy, fm] = first.localDate.split("-").map(Number) as [number, number];
   const [ly, lm] = last.localDate.split("-").map(Number) as [number, number];
-  const crossesYear = fy !== ly;
-  const suffix = (y: number) => (crossesYear ? ` ${String(y % 100).padStart(2, "0")}` : "");
+  const withYear = fy !== ly;
   const span = dayNumber(last.localDate) - dayNumber(first.localDate);
   const xOf = (localDate: string) =>
     span === 0 ? first.x : VIEW.left + (PLOT_W * (dayNumber(localDate) - dayNumber(first.localDate))) / span;
@@ -154,16 +168,19 @@ export function xLabels(layout: ChartLayout): { x: number; text: string }[] {
     const every = Math.ceil(starts.length / 4);
     return starts
       .filter((_, i) => i % every === 0)
-      .map((s) => ({ x: xOf(s.localDate), text: `${MONTHS[s.m - 1]}${suffix(s.y)}` }));
+      .map((s) => {
+        const x = xOf(s.localDate);
+        const text = monthText(s.y, s.m, { withYear });
+        return { x, text, anchor: monthAnchor(x, text) };
+      });
   }
-  const dayMonth = (p: PlottedPoint) => {
-    const [py, pm, pd] = p.localDate.split("-").map(Number) as [number, number, number];
-    return `${pd} ${MONTHS[pm - 1]}${suffix(py)}`;
-  };
+  const dayMonth = (p: PlottedPoint) => monthDayText(p.localDate, { withYear });
+  // The two ends sit on the plot's edges, so their labels anchor inward: "Jan 10, 2026" centered on the right edge
+  // would run off a phone's screen.
   return span === 0
-    ? [{ x: first.x, text: dayMonth(first) }]
+    ? [{ x: first.x, text: dayMonth(first), anchor: "middle" }]
     : [
-        { x: first.x, text: dayMonth(first) },
-        { x: last.x, text: dayMonth(last) },
+        { x: first.x, text: dayMonth(first), anchor: "start" },
+        { x: last.x, text: dayMonth(last), anchor: "end" },
       ];
 }

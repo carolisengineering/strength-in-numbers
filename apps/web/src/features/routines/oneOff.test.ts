@@ -18,11 +18,11 @@ function routineWith(n: number, groups: number[]) {
 
 describe("10.5 AC3 — the expiry day is the instant in the device time zone", () => {
   it.each([
-    ["2026-10-30T12:00:00.000Z", "Europe/London", "Fri 30 Oct"],
-    ["2026-10-30T23:30:00.000Z", "Europe/London", "Fri 30 Oct"], // GMT after the clocks change
-    ["2026-10-30T23:30:00.000Z", "Pacific/Auckland", "Sat 31 Oct"],
-    ["2026-10-30T03:00:00.000Z", "America/Los_Angeles", "Thu 29 Oct"],
-    ["2026-10-31T00:30:00+01:00", "Europe/London", "Fri 30 Oct"], // an offset form, the same instant as 23:30Z
+    ["2026-10-30T12:00:00.000Z", "Europe/London", "Fri, Oct 30"],
+    ["2026-10-30T23:30:00.000Z", "Europe/London", "Fri, Oct 30"], // GMT after the clocks change
+    ["2026-10-30T23:30:00.000Z", "Pacific/Auckland", "Sat, Oct 31"],
+    ["2026-10-30T03:00:00.000Z", "America/Los_Angeles", "Thu, Oct 29"],
+    ["2026-10-31T00:30:00+01:00", "Europe/London", "Fri, Oct 30"], // an offset form, the same instant as 23:30Z
   ])("%s in %s → %s", (iso, timeZone, day) => expect(oneOffDay(iso, { timeZone })).toBe(day));
 
   it("without a zone it uses the device's", () =>

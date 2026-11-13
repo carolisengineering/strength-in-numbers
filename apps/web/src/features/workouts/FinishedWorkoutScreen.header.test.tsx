@@ -47,8 +47,8 @@ describe("17.2 AC8 / AC9 — the summary header shows duration, exercises, sets 
   it("sits under the unchanged h1; the date line drops the minutes; no extra heading", async () => {
     setup([bench([...working(3), makeSet({ setNumber: 4, setType: "warmup", weight: 60, weightKg: 60, reps: 5 })]), { modality: "weight_reps", name: "Row", sets: working(1) }]);
     expect(await screen.findByRole("heading", { name: "Workout summary" })).toBeInTheDocument();
-    expect(screen.getByText("Fri 2 Oct")).toBeInTheDocument();
-    expect(screen.queryByText(/Fri 2 Oct · /)).toBeNull();
+    expect(screen.getByText("Fri, Oct 2")).toBeInTheDocument();
+    expect(screen.queryByText(/Fri, Oct 2 · /)).toBeNull();
     expect(stat("duration")).toHaveTextContent("52 min");
     expect(stat("exercises")).toHaveTextContent("2");
     expect(stat("sets")).toHaveTextContent("4"); // 4 working sets; the warm-up is not counted

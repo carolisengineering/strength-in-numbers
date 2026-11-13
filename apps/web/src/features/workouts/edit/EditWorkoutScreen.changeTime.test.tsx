@@ -83,8 +83,8 @@ describe("18.0 AC40 — Change Time on a finished workout", () => {
     await save(user);
     await waitFor(() => expect(sheetOpen()).toBe(false));
     expect(patches(fake)).toEqual([{ startedAt: "2026-10-16T17:05:00.000Z", tzOffsetMinutes: 60 }]);
-    expect(screen.getByText("Editing Fri 16 Oct workout")).toBeInTheDocument();
-    expect(screen.getByText("Started Fri 16 Oct, 18:05 · Took 52 min")).toBeInTheDocument();
+    expect(screen.getByText("Editing Fri, Oct 16 workout")).toBeInTheDocument();
+    expect(screen.getByText("Started Fri, Oct 16, 6:05 PM · Took 52 min")).toBeInTheDocument();
     expect(screen.getByTestId("edit-announcement")).toHaveTextContent("Time changed");
     expect(queryClient.getQueryState(HISTORY_KEYS.list)?.data).toBeUndefined();
 
@@ -170,7 +170,7 @@ describe("18.0 AC31 — a traveler workout: changing only Took keeps the day and
     await save(user);
     await waitFor(() => expect(sheetOpen()).toBe(false));
     expect(patches(fake)).toEqual([{ durationSeconds: 1800 }]);
-    expect(screen.getByText("Editing Wed 14 Oct workout")).toBeInTheDocument();
+    expect(screen.getByText("Editing Wed, Oct 14 workout")).toBeInTheDocument();
     expect(fake.state.finished.get(workout.id)!.tzOffsetMinutes).toBe(-240);
   });
 });

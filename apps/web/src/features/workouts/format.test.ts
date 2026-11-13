@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Modality } from "@sin/core";
 import { makeSet } from "../../test/workoutFixtures";
-import { formatLocalDate, formatSet, formatSetParts, formatStartedAt } from "./format";
+import { withLocale } from "../../test/locale";
+import { formatLocalDate, formatSet, formatSetParts, formatStartedAt, formatStartedTime } from "./format";
 
 describe("AC8 — formatSet and its durations", () => {
   const none = { reps: null, weight: null, weightUnit: null, durationS: null, distance: null, distanceUnit: null };
@@ -41,9 +42,9 @@ describe("AC8 — formatSet and its durations", () => {
 });
 
 describe("08.0 AC11 — formatLocalDate (shared with the summary)", () => {
-  it("formats a local date in en-GB, UTC-pinned, so the stored day never shifts", () => {
-    expect(formatLocalDate("2026-10-06")).toBe("Tue 6 Oct");
-    expect(formatLocalDate("2026-01-01")).toBe("Thu 1 Jan");
+  it("formats a local date in the app's locale, UTC-pinned, so the stored day never shifts", () => {
+    expect(formatLocalDate("2026-10-06")).toBe("Tue, Oct 6");
+    expect(formatLocalDate("2026-01-01")).toBe("Thu, Jan 1");
   });
 });
 
@@ -57,20 +58,26 @@ describe("17.1 AC39 — formatSetParts splits the type suffix", () => {
 });
 
 describe("18.0 AC3 — formatStartedAt", () => {
-  it("is the en-GB short date and the 24-hour time in the given zone", () => {
-    expect(formatStartedAt("2026-10-14T17:05:00Z", { timeZone: "Europe/London" })).toBe("Wed 14 Oct, 18:05");
-    expect(formatStartedAt("2026-10-14T23:30:00Z", { timeZone: "Europe/London" })).toBe("Thu 15 Oct, 00:30");
+  it("is the locale's short date and time in the given zone (Spec 17.13)", () => {
+    expect(formatStartedAt("2026-10-14T17:05:00Z", { timeZone: "Europe/London" })).toBe("Wed, Oct 14, 6:05 PM");
+    expect(formatStartedAt("2026-10-14T23:30:00Z", { timeZone: "Europe/London" })).toBe("Thu, Oct 15, 12:30 AM");
   });
 });
 
 describe("18.0 AC34 — the today form of formatStartedAt", () => {
   const london = { timeZone: "Europe/London" };
   it("today in the zone is the time alone; another day is the full form", () => {
-    expect(formatStartedAt("2026-10-16T17:00:00Z", { ...london, today: new Date("2026-10-16T20:00:00Z") })).toBe("18:00");
-    expect(formatStartedAt("2026-10-16T17:00:00Z", { ...london, today: new Date("2026-10-18T09:00:00Z") })).toBe("Fri 16 Oct, 18:00");
+    expect(formatStartedAt("2026-10-16T17:00:00Z", { ...london, today: new Date("2026-10-16T20:00:00Z") })).toBe("6:00 PM");
+    expect(formatStartedAt("2026-10-16T17:00:00Z", { ...london, today: new Date("2026-10-18T09:00:00Z") })).toBe("Fri, Oct 16, 6:00 PM");
   });
   it("compares local days, not UTC days", () => {
-    expect(formatStartedAt("2026-10-16T23:30:00Z", { ...london, today: new Date("2026-10-17T08:00:00Z") })).toBe("00:30");
+    expect(formatStartedAt("2026-10-16T23:30:00Z", { ...london, today: new Date("2026-10-17T08:00:00Z") })).toBe("12:30 AM");
+  });
+  it("17.13 review focus 1 — a locale with its own digits still compares days by key, not by shown text", () => {
+    const iso = "2026-10-16T17:00:00Z";
+    withLocale("ar-EG", () => {
+      expect(formatStartedAt(iso, { ...london, today: new Date("2026-10-16T20:00:00Z") })).toBe(formatStartedTime(iso, london));
+    });
   });
 });
 

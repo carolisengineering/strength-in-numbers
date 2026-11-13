@@ -176,12 +176,12 @@ describe("08.1 AC17 / 18.2 AC23 — selection and the readout", () => {
   it("defaults to the newest point; tapping a dot moves the readout and the Open workout link", async () => {
     const { user } = setup();
     await screen.findByRole("img", { name: /3 months/ });
-    expect(readout()).toHaveTextContent("Tue 6 Oct 2026 · 122.5 kg");
+    expect(readout()).toHaveTextContent("Tue, Oct 6, 2026 · 122.5 kg");
     const open = screen.getByRole("link", { name: "Open workout" });
     expect(open).toHaveAttribute("href", `/app/history/${recent[2]!.workoutId}`);
     expect(readout().contains(open)).toBe(false);
     await user.click(screen.getAllByTestId("chart-hit")[0]!);
-    expect(readout()).toHaveTextContent("Sat 1 Aug 2026 · 105 kg");
+    expect(readout()).toHaveTextContent("Sat, Aug 1, 2026 · 105 kg");
     expect(screen.getByRole("link", { name: "Open workout" })).toHaveAttribute("href", `/app/history/${recent[0]!.workoutId}`);
   });
 
@@ -190,7 +190,7 @@ describe("08.1 AC17 / 18.2 AC23 — selection and the readout", () => {
     await screen.findByRole("img", { name: /3 months/ });
     await user.click(screen.getAllByTestId("chart-hit")[0]!);
     await user.click(within(metricGroup()).getByRole("button", { name: "Top set" }));
-    expect(readout()).toHaveTextContent("Sat 1 Aug 2026 · 90 kg");
+    expect(readout()).toHaveTextContent("Sat, Aug 1, 2026 · 90 kg");
   });
 });
 
@@ -199,15 +199,15 @@ describe("08.1 AC18 / 18.2 AC23 — the sessions list", () => {
     const { user } = setup();
     await screen.findByRole("img", { name: /3 months/ });
     expect(sessions().map((b) => b.textContent)).toEqual([
-      "Tue 6 Oct 2026 · 122.5 kg",
-      "Tue 1 Sept 2026 · 115 kg",
-      "Sat 1 Aug 2026 · 105 kg",
+      "Tue, Oct 6, 2026 · 122.5 kg",
+      "Tue, Sep 1, 2026 · 115 kg",
+      "Sat, Aug 1, 2026 · 105 kg",
     ]);
     expect(sessions()[0]).toHaveAttribute("aria-pressed", "true");
     sessions()[1]!.focus();
     await user.keyboard("{Enter}");
     expect(sessions()[1]).toHaveAttribute("aria-pressed", "true");
-    expect(readout()).toHaveTextContent("Tue 1 Sept 2026 · 115 kg");
+    expect(readout()).toHaveTextContent("Tue, Sep 1, 2026 · 115 kg");
     expect(screen.getAllByTestId("chart-dot")[1]).toHaveAttribute("data-selected", "true");
   });
 
@@ -354,7 +354,7 @@ describe("08.1 AC24 / 18.2 AC23 — units follow the profile", () => {
   it("lb: summary, readout and sessions in lb", async () => {
     setup({ unitPreference: "lb" });
     await screen.findByRole("img", { name: "Est. 1-rep max, 3 months: 231 lb to 270 lb, best 270 lb" });
-    expect(readout()).toHaveTextContent("Tue 6 Oct 2026 · 270 lb");
+    expect(readout()).toHaveTextContent("Tue, Oct 6, 2026 · 270 lb");
     expect(sessions()[0]).toHaveTextContent("270 lb");
     const block = await screen.findByRole("region", { name: "Personal records" });
     expect(within(block).getByRole("listitem")).toHaveTextContent(/^Est\. 1-rep max: 270 lb, was/);

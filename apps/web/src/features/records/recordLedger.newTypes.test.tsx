@@ -41,8 +41,8 @@ describe("18.1 AC29 — the ledger for the new types", () => {
 });
 
 describe("18.1 AC30 — Progress list headline", () => {
-  it("an exercise with only a calories record reads Most calories 120 cal · Tue 6 Oct", () => {
+  it("an exercise with only a calories record reads Most calories 120 cal · Tue, Oct 6", () => {
     const r = makePersonalRecord({ exerciseName: "Echo Bike", recordType: "max_calories", unit: "cal", value: 120, previousValue: null, achievedAt: "2026-10-06T10:00:00.000Z", localDate: "2026-10-06" });
-    expect(headlineText(groupByExercise([r])[0]!, "kg")).toBe("Most calories 120 cal · Tue 6 Oct");
+    expect(headlineText(groupByExercise([r])[0]!, "kg")).toBe("Most calories 120 cal · Tue, Oct 6");
   });
 });

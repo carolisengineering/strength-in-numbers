@@ -69,7 +69,7 @@ describe("18.0 AC3 — banner, header, Done", () => {
   it("h1, the banner from localDate, the device-zone header, and Done as the only primary", async () => {
     const { workout } = open();
     await ready();
-    const banner = screen.getByText("Editing Fri 2 Oct workout");
+    const banner = screen.getByText("Editing Fri, Oct 2 workout");
     expect(banner).not.toHaveAttribute("role");
     expect(banner).not.toHaveAttribute("aria-live");
     expect(screen.getByText(`Started ${formatStartedAt(workout.startedAt)} · Took 52 min`)).toBeInTheDocument();

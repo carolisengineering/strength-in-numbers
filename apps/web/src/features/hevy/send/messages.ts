@@ -72,7 +72,7 @@ export function needsMatching(n: number): string {
   return n === 1 ? "1 exercise needs matching before this can go to Hevy." : `${fmt(n)} exercises need matching before this can go to Hevy.`;
 }
 
-/** AC2: "Sent to Hevy · Sat 24 Oct" (and "From Hevy · …", "Matched with a Hevy workout · …"). */
+/** AC2: "Sent to Hevy · Sat, Oct 24" (and "From Hevy · …", "Matched with a Hevy workout · …"). */
 export const withDay = (label: string, day: string | null) => (day === null ? label : `${label} · ${day}`);
 
 /** AC8's own sentences for the definite failures; the rest are 20.0's (`network` is AC16's). */

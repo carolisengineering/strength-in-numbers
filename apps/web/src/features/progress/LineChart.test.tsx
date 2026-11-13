@@ -27,6 +27,18 @@ describe("08.1 AC16 — the chart", () => {
     expect(screen.getAllByTestId("chart-hit")).toHaveLength(3);
   });
 
+  it("17.13 final review I1 — date labels take the anchor xLabels gives them", () => {
+    const { container } = renderChart([
+      { id: "a", localDate: "2025-12-20", canonical: 1, y: 1 },
+      { id: "b", localDate: "2026-01-10", canonical: 2, y: 2 },
+    ]);
+    const labels = [...container.querySelectorAll("text")].filter((t) => /20\d\d/.test(t.textContent ?? ""));
+    expect(labels.map((t) => [t.textContent, t.getAttribute("text-anchor")])).toEqual([
+      ["Dec 20, 2025", "start"],
+      ["Jan 10, 2026", "end"],
+    ]);
+  });
+
   it("tick labels come from niceTicks, values only", () => {
     const { container } = renderChart();
     const texts = [...container.querySelectorAll("text")].map((t) => t.textContent);

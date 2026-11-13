@@ -68,18 +68,18 @@ async function finishAndCheck({ user, fake, router }: App, logged: () => Promise
   const stored = [...fake.state.finished.values()].find((w) => w.localDate === "2026-10-16")!;
   expect(stored.plannedDurationSeconds).toBeNull();
   expect(screen.getByText("1 h")).toBeInTheDocument();
-  expect(screen.getByText("Fri 16 Oct")).toBeInTheDocument();
+  expect(screen.getByText("Fri, Oct 16")).toBeInTheDocument();
 
   await act(() => router.navigate("/app/history"));
   await waitFor(() => expect(historyDays()).toHaveLength(3), { timeout: 5_000 });
-  expect(historyDays()).toEqual(["Sat 17 Oct", "Fri 16 Oct", "Thu 15 Oct"]);
+  expect(historyDays()).toEqual(["Sat, Oct 17", "Fri, Oct 16", "Thu, Oct 15"]);
 }
 
 const historyDays = () =>
   screen
     .queryAllByRole("link")
     .filter((l) => /^\/app\/history\/[^/]+$/.test(l.getAttribute("href") ?? ""))
-    .map((l) => /^\w{3} \d+ \w{3}/.exec(l.textContent ?? "")?.[0]);
+    .map((l) => /^\w{3}, \w{3} \d{1,2}/.exec(l.textContent ?? "")?.[0]);
 
 describe("18.0 AC39 — the forgotten-workout flow, end to end", () => {
   it("empty: Start → Change Time → log two sets → Finish ends at start + took and lands on the 16th", async () => {
