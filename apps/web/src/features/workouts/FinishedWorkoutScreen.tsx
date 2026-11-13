@@ -107,6 +107,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   return (
     <Screen
       title="Workout summary"
+      titleSmall={workout.title !== null && workout.title.trim() !== ""}
       leadFill
       lead={
         <SummaryTop home={home}>

@@ -1,4 +1,4 @@
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -20,6 +20,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { WORKOUT_KEYS } from "./queries";
 
 afterEach(() => {
   observability.track.mockReset();
@@ -42,6 +43,33 @@ function setup(exercises: ExerciseSpec[], opts: { minutes?: number } = {}) {
   return { fake, workout, ...app };
 }
 const stat = (label: string) => screen.getByText(label, { selector: "span" }).previousElementSibling as HTMLElement;
+
+describe("17.13 AC11 — the summary's two titles", () => {
+  function withTitle(title: string | null) {
+    const workout = makeWorkoutDetail({ title, startedAt: "2026-10-02T18:00:00.000Z", endedAt: "2026-10-02T18:52:00.000Z", exercises: [bench(working(1))] });
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [workout], active: null }) });
+    return { workout, ...renderApp(`/app/workouts/${workout.id}`) };
+  }
+
+  it("with a workout title, the Workout summary h1 is drawn one step smaller; its text and role are unchanged", async () => {
+    withTitle("Heavy bench day");
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Workout summary" });
+    expect(h1.className).toMatch(/titleSmall/);
+  });
+
+  it("with no title of its own, the h1 keeps the display size", async () => {
+    withTitle(null);
+    expect((await screen.findByRole("heading", { level: 1, name: "Workout summary" })).className).not.toMatch(/titleSmall/);
+  });
+
+  it("review focus 4: the size follows the refreshed title, not the first render", async () => {
+    const { workout, queryClient } = withTitle("Heavy bench day");
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Workout summary" });
+    expect(h1.className).toMatch(/titleSmall/);
+    act(() => queryClient.setQueryData(WORKOUT_KEYS.detail(workout.id), { ...workout, title: null }));
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1, name: "Workout summary" }).className).not.toMatch(/titleSmall/));
+  });
+});
 
 describe("17.2 AC8 / AC9 — the summary header shows duration, exercises, sets and volume", () => {
   it("sits under the unchanged h1; the date line drops the minutes; no extra heading", async () => {

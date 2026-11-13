@@ -218,6 +218,8 @@ describe("18.2 AC50 — confirm and after", () => {
     expect(await screen.findByText("Deleted Echo Bike.")).toHaveAttribute("role", "status");
     await waitFor(() => expect(router.state.location.state).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Exercises" })));
+    // Spec 17.13 review focus 2: the title focus lands on is hidden from sight now (AC10), but still the target.
+    expect(screen.getByRole("heading", { level: 1, name: "Exercises" }).className).toMatch(/titleHidden/);
     expect(screen.queryByRole("link", { name: /^Echo Bike/ })).toBeNull();
     expect(observability.track).toHaveBeenCalledWith("custom_exercise_deleted", { routineCount: 1 });
   });

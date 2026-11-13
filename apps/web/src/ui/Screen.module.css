@@ -23,6 +23,16 @@
   line-height: 1.2;
 }
 
+/* Spec 17.13 AC10: hidden from sight, kept in the tree. Absolute, so it leaves the column and its gap goes too. */
+.titleHidden {
+  composes: hidden from "./VisuallyHidden.module.css";
+}
+
+/* Spec 17.13 AC11: one step under the page's own larger title. */
+.titleSmall {
+  font-size: var(--font-size-lg);
+}
+
 /* #98: the slot above the <h1> keeps its content's width, so a link never becomes a full-width tap target. */
 .lead {
   align-self: flex-start;

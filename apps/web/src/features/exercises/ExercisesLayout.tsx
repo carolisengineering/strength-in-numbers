@@ -24,7 +24,7 @@ export function ExercisesLayout() {
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const context: ExercisesOutletContext = { titleRef };
   return (
-    <Screen title={EXERCISES_COPY.title} titleRef={titleRef}>
+    <Screen title={EXERCISES_COPY.title} titleRef={titleRef} hideTitle>
       <nav aria-label={EXERCISES_COPY.viewsLabel} className={styles.views}>
         <NavLink to={EXERCISES_PATH} end replace className={viewClass}>
           {EXERCISES_COPY.allView}

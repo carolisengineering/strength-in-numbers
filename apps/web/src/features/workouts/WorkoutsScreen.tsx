@@ -83,7 +83,7 @@ export function WorkoutsScreen() {
   if (active.isError && active.data === undefined) {
     const { requestId } = classifyWorkoutError(active.error, { op: "load-active" });
     return (
-      <Screen title="Workouts">
+      <Screen title="Workouts" hideTitle>
         <InlineNotice tone="error" requestId={requestId} actionLabel="Try again" onAction={() => void active.refetch()}>
           Couldn't load your workout.
         </InlineNotice>
