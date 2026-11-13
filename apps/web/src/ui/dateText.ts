@@ -41,19 +41,28 @@ const DAY: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day:
 const TIME: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
 const DAY_KEY: Intl.DateTimeFormatOptions = { year: "numeric", month: "2-digit", day: "2-digit" };
 
-function formatter(name: string, options: Intl.DateTimeFormatOptions, timeZone?: string, keyLocale?: string): Intl.DateTimeFormat {
+/**
+ * Every form is Gregorian: the locale decides order, punctuation and the clock, but each "show the year?" decision in
+ * the app compares Gregorian years and the chart's ticks sit on Gregorian month starts (final review M4, code review).
+ * The cache key is the options themselves, so two option sets can never share a formatter.
+ */
+function formatter(options: Intl.DateTimeFormatOptions, timeZone?: string, keyLocale?: string): Intl.DateTimeFormat {
   const loc = keyLocale ?? appLocale();
+  const withCalendar: Intl.DateTimeFormatOptions = { ...options, calendar: "gregory" };
   // An empty zone is no zone, as `timeZone ? { timeZone } : {}` treated it before this module (final review M1).
-  if (!timeZone) return new Intl.DateTimeFormat(loc, options);
-  const key = `${loc}|${name}|${timeZone}`;
+  if (!timeZone) return new Intl.DateTimeFormat(loc, withCalendar);
+  const key = `${loc}|${timeZone}|${JSON.stringify(withCalendar)}`;
   let found = cache.get(key);
   if (!found) {
     // A zone the host doesn't know throws here, before anything is cached.
-    found = new Intl.DateTimeFormat(loc, { ...options, timeZone });
+    found = new Intl.DateTimeFormat(loc, { ...withCalendar, timeZone });
     cache.set(key, found);
   }
   return found;
 }
+
+/** A stored `localDate` (`"2026-10-06"`) as its UTC midnight, the instant every stored-day form formats in UTC (AC4a). */
+const utcDay = (localDate: string): Date => new Date(`${localDate}T00:00:00Z`);
 
 // AC4: modern ICU puts a narrow no-break space before AM / PM; the app shows a plain one.
 const plain = (text: string): string => text.replace(/\u202f/g, " ");
@@ -61,47 +70,48 @@ const plain = (text: string): string => text.replace(/\u202f/g, " ");
 /** A day: en-US "Wed, Nov 4"; with `year`, "Wed, Nov 4, 2026". */
 export function dayText(date: Date, { timeZone, year = false }: Zone & { year?: boolean } = {}): string {
   const options = year ? { ...DAY, year: "numeric" as const } : DAY;
-  return plain(formatter(year ? "dayYear" : "day", options, timeZone).format(date));
+  return plain(formatter(options, timeZone).format(date));
 }
 
 /** A time: en-US "5:10 PM"; a 24-hour locale "17:10". */
 export function timeText(date: Date, { timeZone }: Zone = {}): string {
-  return plain(formatter("time", TIME, timeZone).format(date));
+  return plain(formatter(TIME, timeZone).format(date));
 }
 
 /** A day and a time in one formatter, so the locale chooses the separator: en-US "Wed, Nov 4, 5:10 PM". */
 export function momentText(date: Date, { timeZone }: Zone = {}): string {
-  return plain(formatter("moment", { ...DAY, ...TIME }, timeZone).format(date));
+  return plain(formatter({ ...DAY, ...TIME }, timeZone).format(date));
 }
 
 /** A long day: en-US "November 4, 2026". */
 export function longDayText(date: Date, { timeZone }: Zone = {}): string {
-  return plain(formatter("long", { dateStyle: "long" }, timeZone).format(date));
+  return plain(formatter({ dateStyle: "long" }, timeZone).format(date));
 }
 
 /** A stored `localDate` with no weekday: en-US "Oct 6"; with `withYear`, "Oct 6, 2026". */
 export function monthDayText(localDate: string, { withYear = false }: { withYear?: boolean } = {}): string {
   const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}) };
-  return plain(formatter(withYear ? "monthDayYear" : "monthDay", options, "UTC").format(new Date(`${localDate}T00:00:00Z`)));
+  return plain(formatter(options, "UTC").format(utcDay(localDate)));
 }
 
 /** A month (1–12): en-US "Aug"; with `withYear`, "Dec 2025". */
 export function monthText(year: number, month: number, { withYear = false }: { withYear?: boolean } = {}): string {
-  // The chart puts this on a Gregorian month start, so it names the Gregorian month even where the locale's default
-  // calendar is another one (fa-IR's is Persian; final review M4).
-  const options: Intl.DateTimeFormatOptions = { month: "short", calendar: "gregory", ...(withYear ? { year: "numeric" } : {}) };
-  return plain(formatter(withYear ? "monthYear" : "month", options, "UTC").format(new Date(Date.UTC(year, month - 1, 1))));
+  const options: Intl.DateTimeFormatOptions = { month: "short", ...(withYear ? { year: "numeric" } : {}) };
+  return plain(formatter(options, "UTC").format(new Date(Date.UTC(year, month - 1, 1))));
 }
 
 /** Whether two instants fall on one calendar day in the zone. Compares en-CA keys, never shown text. */
 export function isSameDay(a: Date, b: Date, { timeZone }: Zone = {}): boolean {
-  const key = formatter("dayKey", DAY_KEY, timeZone, "en-CA");
+  const key = formatter(DAY_KEY, timeZone, "en-CA");
   return key.format(a) === key.format(b);
 }
 
-/** `"2026-10-06"` → en-US `"Tue, Oct 6"`: a stored calendar day, in UTC so it never shifts (Spec 08.0 AC11, 17.13 AC4a). */
-export function formatLocalDate(localDate: string): string {
-  return dayText(new Date(`${localDate}T00:00:00Z`), { timeZone: "UTC" });
+/**
+ * `"2026-10-06"` → en-US `"Tue, Oct 6"`; with `year`, `"Tue, Oct 6, 2026"`. A stored calendar day, in UTC so it never
+ * shifts (Spec 08.0 AC11, 17.13 AC4a).
+ */
+export function formatLocalDate(localDate: string, { year = false }: { year?: boolean } = {}): string {
+  return dayText(utcDay(localDate), { timeZone: "UTC", year });
 }
 
 /** A start's time: en-US "6:05 PM". `timeZone` exists so tests are machine-independent. */

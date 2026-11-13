@@ -1,11 +1,11 @@
-import { dayText } from "../../ui/dateText";
+import { formatLocalDate } from "../../ui/dateText";
 
 /**
  * `"2026-10-06"` → en-US `"Tue, Oct 6, 2026"`: the readout and sessions rows, where All can repeat a day-month
  * (D9). UTC, like `formatLocalDate`, so the stored day never shifts (Spec 17.13).
  */
 export function formatLocalDateWithYear(localDate: string): string {
-  return dayText(new Date(`${localDate}T00:00:00Z`), { timeZone: "UTC", year: true });
+  return formatLocalDate(localDate, { year: true });
 }
 
 /** The device's local calendar date, `YYYY-MM-DD` — the default `ProgressClockContext` value (§6.1). */

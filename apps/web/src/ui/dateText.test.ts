@@ -135,6 +135,28 @@ describe("17.13 final review M1 — an empty zone means the device zone", () => 
   });
 });
 
+// Code review: every "show the year?" decision in the app compares Gregorian years, so every form is Gregorian.
+describe("17.13 code review — every form uses the Gregorian calendar", () => {
+  it("a Buddhist-calendar locale shows 2026, not 2569, on a day, a long day and a stored date", () => {
+    withLocale("th-TH", () => {
+      expect(dayText(INSTANT, { ...UTC, year: true })).toContain("2026");
+      expect(longDayText(INSTANT, UTC)).toContain("2026");
+      expect(monthDayText("2026-11-04", { withYear: true })).toContain("2026");
+      expect(dayText(INSTANT, { ...UTC, year: true })).not.toContain("2569");
+    });
+  });
+});
+
+describe("17.13 code review — the formatter cache keys on the options", () => {
+  it("a day with and without the year never share a cached formatter", () => {
+    withLocale("en-US", () => {
+      expect(dayText(INSTANT, UTC)).toBe("Wed, Nov 4");
+      expect(dayText(INSTANT, { ...UTC, year: true })).toBe("Wed, Nov 4, 2026");
+      expect(dayText(INSTANT, UTC)).toBe("Wed, Nov 4");
+    });
+  });
+});
+
 // M4: the chart's ticks sit on Gregorian month starts, so their names are Gregorian months in every locale.
 describe("17.13 final review M4 — month ticks are Gregorian months", () => {
   it("a locale whose default calendar is another one still names the Gregorian month", () => {

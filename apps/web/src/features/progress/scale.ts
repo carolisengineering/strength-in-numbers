@@ -122,10 +122,6 @@ export function hitAreas(layout: ChartLayout): HitArea[] {
   return layout.points.map((p) => byId.get(p.id)!);
 }
 
-/**
- * 3–4 month-start labels inside the span, else first/last day-month; a year only across a year boundary (D9), and
- * the full year (Spec 17.13): under en-US a two-digit one reads as a day ("Dec 25").
- */
 export type LabelAnchor = "start" | "middle" | "end";
 
 // A generous width per character at the labels' 14-unit font, so a label estimated to fit really does.
@@ -139,6 +135,10 @@ function monthAnchor(x: number, text: string): LabelAnchor {
   return "middle";
 }
 
+/**
+ * 3–4 month-start labels inside the span, else first/last day-month; a year only across a year boundary (D9), and
+ * the full year (Spec 17.13): under en-US a two-digit one reads as a day ("Dec 25").
+ */
 export function xLabels(layout: ChartLayout): { x: number; text: string; anchor: LabelAnchor }[] {
   const pts = layout.points;
   const first = pts[0];
@@ -169,7 +169,8 @@ export function xLabels(layout: ChartLayout): { x: number; text: string; anchor:
     return starts
       .filter((_, i) => i % every === 0)
       .map((s) => {
-        const [x, text] = [xOf(s.localDate), monthText(s.y, s.m, { withYear })];
+        const x = xOf(s.localDate);
+        const text = monthText(s.y, s.m, { withYear });
         return { x, text, anchor: monthAnchor(x, text) };
       });
   }
