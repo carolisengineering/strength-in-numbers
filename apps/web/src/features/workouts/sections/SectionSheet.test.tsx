@@ -93,7 +93,7 @@ describe("10.6 AC5 — the sheet", () => {
 });
 
 describe("10.6 AC7 / AC8 — edit mode", () => {
-  it("prefilled fields, Save, and Remove section in the row, with its line under the divider in the body (17.10)", async () => {
+  it("prefilled fields, Save, and Remove section in the row; no remove line or divider in the body (minor 498)", async () => {
     const removeRef = vi.fn();
     const { user, onRemove, onSubmit } = renderSheet({ mode: "edit", section: stored, removeRef });
     const d = dialog("Edit section");
@@ -102,8 +102,8 @@ describe("10.6 AC7 / AC8 — edit mode", () => {
     expect(d.getByLabelText("Note")).toHaveValue("5 min");
     const remove = d.getByRole("button", { name: "Remove section" });
     expect(removeRef).toHaveBeenCalledWith(remove);
-    const line = within(sheetBody()).getByText("Its exercises and sets stay in the workout, without a section.");
-    expect(line.closest("[data-divider]")).not.toBeNull();
+    expect(within(sheetBody()).queryByText(SECTION_COPY.removeLine)).toBeNull();
+    expect(sheetBody().querySelector("[data-divider]")).toBeNull();
     expect(remove.closest("[data-sheet-actions]")).not.toBeNull();
     await user.click(remove);
     expect(onRemove).toHaveBeenCalledTimes(1);
@@ -125,9 +125,9 @@ describe("17.10 AC15 — the workout section sheet uses the action row", () => {
     expect(rowLabels()).toEqual(["Cancel", "Add section"]);
   });
 
-  it("Remove section is described by its line", () => {
+  it("minor 498: Remove section has no description; its confirm says what happens", () => {
     renderSheet({ mode: "edit", section: stored });
-    expect(sheetRow().getByRole("button", { name: "Remove section" })).toHaveAccessibleDescription(SECTION_COPY.removeLine);
+    expect(sheetRow().getByRole("button", { name: "Remove section" })).not.toHaveAccessibleDescription();
   });
 
   it("while busy, Cancel is aria-disabled and does nothing; Remove section is disabled", async () => {

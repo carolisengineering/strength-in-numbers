@@ -6,7 +6,7 @@ import { applyEditedCaches } from "../../records/cache";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "../cache";
 import { WORKOUT_KEYS, useEditWorkoutClient } from "../queries";
 import type { WorkoutUpdate } from "../workoutClient";
-import { guardReads, rereadIfStale, type ReadGuard } from "../readGuard";
+import { guardReads, rereadIfStale, type ReadGuard, rereadUntilLanded } from "../readGuard";
 import { mergeWorkout } from "./editCache";
 
 /**
@@ -171,7 +171,8 @@ export function useEditAddExercise(): UseMutationResult<WorkoutExercise, Error, 
     mutationFn: ({ workoutId, exerciseId }) => client.addExercise(workoutId, { exerciseId }),
     onSuccess: (_row, { workoutId }) => {
       editSucceeded(queryClient, "exercise_added");
-      return queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(workoutId) });
+      // Minor 323: resolve once the re-read has landed, as the section writes do.
+      return rereadUntilLanded(queryClient, WORKOUT_KEYS.detail(workoutId));
     },
   });
 }

@@ -13,9 +13,15 @@ export function SectionDialogs({
   actions,
   sections,
   timerLockFor,
+  structureBusy = false,
 }: {
   actions: SectionActions;
   sections: readonly WorkoutSection[];
+  /**
+   * Spec 10.6 AC12 / 10.7 AC16 (minor 324): another structure write is running, so a confirm's action waits
+   * (disabled) instead of ignoring the tap. Its own write shows as `busy` instead.
+   */
+  structureBusy?: boolean;
   /** Spec 10.7 AC40: the lock line for a section with unsent timer entries, else `undefined` (the live screen passes it). */
   timerLockFor?: (sectionId: string) => string | undefined;
 }) {
@@ -23,6 +29,7 @@ export function SectionDialogs({
   if (view === null) return null;
   const section = view.sectionId === null ? undefined : sections.find((s) => s.id === view.sectionId);
   const timerLocked = section && timerLockFor ? timerLockFor(section.id) : undefined;
+  const waitForOther = structureBusy && !actions.busy;
   return (
     <>
       <SectionSheet
@@ -46,6 +53,7 @@ export function SectionDialogs({
           cancelLabel={SECTION_COPY.cancel}
           variant="danger"
           busy={actions.busy}
+          confirmDisabled={waitForOther}
           onConfirm={() => void actions.confirmRemove()}
           onCancel={actions.cancelRemove}
         >
@@ -61,6 +69,7 @@ export function SectionDialogs({
           variant="danger"
           busy={actions.busy}
           dismissible={!actions.busy}
+          confirmDisabled={waitForOther}
           onConfirm={() => void actions.confirmTimerChange()}
           onCancel={actions.cancelTimerChange}
         >

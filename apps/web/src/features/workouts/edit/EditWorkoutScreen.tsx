@@ -607,7 +607,7 @@ function EditBody({
         >
           <p>{removing ? `${plural(removing.sets.length, "set", "sets")} will be deleted.` : null}</p>
         </ConfirmDialog>
-        <SectionDialogs actions={sectionActions} sections={workout.sections} />
+        <SectionDialogs actions={sectionActions} sections={workout.sections} structureBusy={structureBusy} />
         {resultActions.sheet ? (
           <ResultSheet
             key={resultActions.sheet.openCount}

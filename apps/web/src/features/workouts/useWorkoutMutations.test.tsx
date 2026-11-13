@@ -190,6 +190,17 @@ describe("exercise-structure writes", () => {
     await waitFor(() => expect(settled).toBe(true));
   });
 
+  it("10.7 AC22 / minor 323 — Add exercise asks again when its re-read is canceled, up to three times", async () => {
+    const { qc, detail, exercise } = seeded();
+    const client = fakeClient({ getActive: () => Promise.resolve(detail), addExercise: async () => ({ ...exercise, id: "added" }) as never });
+    const { result } = renderHook(() => ({ active: useActiveWorkout(), add: useAddExercise() }), { wrapper: wrapperWith(qc, client) });
+    await waitFor(() => expect(result.current.active.isSuccess).toBe(true));
+    // A set write's guard cancels each re-read: the call returns and nothing new lands.
+    const reread = vi.spyOn(qc, "invalidateQueries").mockResolvedValue(undefined);
+    await act(() => result.current.add.mutateAsync({ workoutId: detail.id, exerciseId: "e1", modality: "weight_reps" }));
+    expect(reread.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(WORKOUT_KEYS.active))).toHaveLength(3);
+  });
+
   it("a remove answering 404 counts as success", async () => {
     const { qc } = seeded();
     const { result } = renderHook(() => useRemoveExercise(), {

@@ -998,6 +998,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       <SectionDialogs
         actions={sectionActions}
         sections={workout.sections}
+        structureBusy={structureBusy}
         timerLockFor={(sectionId) => {
           const state = sectionOpsState(outboxState.ops, sectionId);
           return state === "none" ? undefined : state === "failed" ? RESULT_COPY.timerLockedFailed : RESULT_COPY.timerLocked;

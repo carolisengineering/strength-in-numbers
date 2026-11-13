@@ -62,7 +62,6 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
   const timerShown = useClearOnEdit(ownTimerErrors ?? errors.timer ?? NO_TIMER_ERRORS);
   const editing = mode === "edit";
   const formId = useId();
-  const lineId = useId();
   const removable = editing && onRemove !== undefined;
 
   function submit(event: FormEvent) {
@@ -130,20 +129,12 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
         />
         {timerLocked !== undefined ? <p className={styles.timerLocked}>{timerLocked}</p> : null}
       </form>
-      {/* Spec 17.10: the line stays in the body, last, and describes the row's Remove section; in the status line it
-          would sit above Save on every edit. */}
-      {removable ? (
-        <div className={styles.remove} data-divider="">
-          <p id={lineId} className={styles.removeLine}>
-            {SECTION_COPY.removeLine}
-          </p>
-        </div>
-      ) : null}
+      {/* Minor 498: no line under the fields; Remove section's confirm says what happens to the exercises. */}
       <SheetActions
         notice={errors.form ? <InlineNotice tone="error">{errors.form}</InlineNotice> : null}
         danger={
           removable ? (
-            <Button variant="danger" disabled={busy} onClick={onRemove} ref={removeRef} aria-describedby={lineId}>
+            <Button variant="danger" disabled={busy} onClick={onRemove} ref={removeRef}>
               {SECTION_COPY.removeSection}
             </Button>
           ) : undefined
