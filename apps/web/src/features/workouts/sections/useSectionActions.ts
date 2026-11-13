@@ -201,6 +201,8 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     pendingFocus.current = null;
     setSubmitting(true);
     setBanner(null);
+    // Minors 496, 502 (final review): a new write empties the sheet's failure, so the same words twice are heard twice.
+    setErrors(NO_ERRORS);
     return true;
   }
   function end() {

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { SummaryList } from "./SummaryList";
 
 describe("minor 528 — summary dates follow the device", () => {
-  it("a row's date reads like every other date; a row with no date starts with its title", async () => {
+  it("a row's date reads like every other date, with its year (an import spans years); a row with no date starts with its title", async () => {
     render(
       <SummaryList
         label="Duplicates"
@@ -17,6 +17,6 @@ describe("minor 528 — summary dates follow the device", () => {
     );
     await userEvent.setup().click(screen.getByText("Duplicates"));
     const items = screen.getAllByRole("listitem").map((li) => li.textContent);
-    expect(items).toEqual(["Sun, Oct 4 · Push day · Duplicate", "Legs · Duplicate"]);
+    expect(items).toEqual(["Sun, Oct 4, 2026 · Push day · Duplicate", "Legs · Duplicate"]);
   });
 });
