@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
 
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
@@ -27,6 +26,7 @@ import { MAPPING_FILENAME, mappingCsvBlob } from "./downloadMapping";
 import { LoadMappingSheet } from "./LoadMappingSheet";
 import { PlaceholderSheet } from "./PlaceholderSheet";
 import { useHevyMapping } from "./useHevyMapping";
+import { NavRow } from "../../../ui/NavRow";
 import styles from "./MappingCard.module.css";
 
 
@@ -104,10 +104,9 @@ export function MappingCard() {
           {DOWNLOAD_FILE}
         </Button>
       </div>
-      <Link className={styles.review} to={PAIRINGS_PATH}>
+      <NavRow to={PAIRINGS_PATH} chevron>
         {REVIEW_PAIRINGS}
-        <span aria-hidden="true"> ›</span>
-      </Link>
+      </NavRow>
       <p className={styles.status} role="status" tabIndex={-1} ref={statusRef} data-testid="hevy-mapping-status">
         {announcement.text}
       </p>

@@ -54,9 +54,10 @@
   color: var(--color-muted);
 }
 
+/* Minor 551: the picked chip fills the first column, so it lines up with the other choices; Change keeps its width. */
 .picked {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
 }

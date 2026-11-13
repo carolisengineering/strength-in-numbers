@@ -1,6 +1,5 @@
 import { useId, useMemo, type Ref } from "react";
 import { HEVY_IMPORT_DROP_CODES } from "@sin/core";
-import { Link } from "react-router";
 
 import { Button } from "../../../ui/Button";
 import { HEVY_PATH } from "../paths";
@@ -26,6 +25,7 @@ import {
   workoutsRead,
 } from "./messages";
 import { SummaryList } from "./SummaryList";
+import { NavRow } from "../../../ui/NavRow";
 import styles from "./ImportScreen.module.css";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
@@ -144,9 +144,7 @@ export function ImportSummaryView({
         {nothing ? (
           <>
             <p className={styles.text}>{NOTHING_NEW}</p>
-            <Link className={styles.link} to={HEVY_PATH}>
-              {DONE}
-            </Link>
+            <NavRow to={HEVY_PATH}>{DONE}</NavRow>
           </>
         ) : (
           <>

@@ -97,14 +97,6 @@
   background: var(--color-muted);
 }
 
-.link {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--tap-target-min);
-  font-weight: 600;
-  color: var(--color-text);
-}
-
 .picks {
   display: flex;
   flex-direction: column;

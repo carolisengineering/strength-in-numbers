@@ -36,6 +36,7 @@ import {
   leftOutHeading,
   lineLabel,
   loadButton,
+  loadOffNeedsChoice,
   loaded,
   markerLine,
   needsRuleLine,
@@ -93,6 +94,7 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
   if (live !== null && (live.page !== lastPage.page || live.pageCount !== lastPage.pageCount)) setLastPage(live);
   const progress = live ?? lastPage;
   const noteId = useId();
+  const needsChoiceId = useId();
   // Each file read has a number; Cancel, close and unmount move it on, so a late answer is ignored.
   const readId = useRef(0);
   /** Minors 231, 272: this sheet's latest template read; it is canceled only while that read owns the fetch. */
@@ -227,11 +229,17 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
           {/* Spec 17.10: a failed replace shows in the row, where the Load tap was, however far the preview is scrolled. */}
           <SheetActions
             error={step.error}
+            status={
+              step.resolved.needsRule.length > 0 ? <span id={needsChoiceId}>{loadOffNeedsChoice(step.resolved.needsRule.length)}</span> : null
+            }
             primary={
               <Button
                 busy={put.isPending}
                 disabled={put.isPending || step.resolved.needsRule.length > 0}
-                aria-describedby={step.resolved.leftOut.length > 0 ? noteId : undefined}
+                aria-describedby={
+                  [step.resolved.needsRule.length > 0 ? needsChoiceId : null, step.resolved.leftOut.length > 0 ? noteId : null].filter(Boolean).join(" ") ||
+                  undefined
+                }
                 onClick={() => void save(step.resolved)}
               >
                 {loadButton(step.resolved.pairs.length)}

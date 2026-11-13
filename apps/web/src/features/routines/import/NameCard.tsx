@@ -114,7 +114,7 @@ export function NameCard({ card, problem, exerciseName, muscleGroups, equipment,
         ) : null}
         {card.pickedId !== null && pickedName !== null ? (
           <div className={styles.picked}>
-            <RadioChip {...radio("picked")}>
+            <RadioChip block {...radio("picked")}>
               <span>{pickedName}</span>
             </RadioChip>
             <Button variant="secondary" aria-label={`${CHANGE}: ${pickedName}`} onClick={onChooseAnother}>

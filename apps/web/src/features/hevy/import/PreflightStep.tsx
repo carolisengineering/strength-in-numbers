@@ -39,7 +39,7 @@ export function PreflightStep({ onStart, headingRef }: { onStart: () => void; he
             <>
               {" "}
               {preflightZoneDiffers(me.timezone)}{" "}
-              <Link className={styles.link} to="/app/profile">
+              <Link to="/app/profile">
                 {PROFILE_LINK}
               </Link>
             </>

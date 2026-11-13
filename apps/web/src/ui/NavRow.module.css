@@ -1,0 +1,10 @@
+/* Minor 553: a navigation row: bold ink, 44 px, no underline, at its own width on its own line. */
+.row {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: var(--tap-target-min);
+  color: var(--color-text);
+  font-weight: 600;
+  text-decoration: none;
+}
