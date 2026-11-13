@@ -13,7 +13,7 @@ export function useCollapseToggle() {
   useEffect(() => {
     if (expanded || !collapsedByTap.current) return;
     collapsedByTap.current = false;
-    buttonRef.current?.scrollIntoView({ block: "nearest" });
+    buttonRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [expanded]);
   const toggle = () => {
     collapsedByTap.current = expanded;

@@ -94,6 +94,10 @@ describe("17.6 AC11 / AC13 — long lists collapse", () => {
     expect(button).toHaveAttribute("aria-expanded", "true");
     expect(button).toHaveFocus();
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("New records on 5 lifts");
+    // Collapsing again works where the browser has no scrollIntoView (jsdom; minor 474's reveal is optional-called).
+    await user.click(button);
+    expect(within(panel()).getAllByRole("listitem")).toHaveLength(3);
+    await user.click(button);
     // Review Focus 2: a refetch that drops the list to 4 removes the button and shows all 4.
     rerender(<RecordLedgerPanel heading="New records on 4 lifts" lifts={lifts(4)} />);
     expect(within(panel()).getAllByRole("listitem")).toHaveLength(4);
