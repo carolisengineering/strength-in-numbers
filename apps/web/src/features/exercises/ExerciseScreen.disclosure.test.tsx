@@ -28,6 +28,7 @@ import { createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "../
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 import { EXERCISE_KEYS } from "./keys";
 import { EXERCISES_COPY } from "./messages";
+import { detailsTable } from "../../test/exerciseHelpers";
 import { exercisePath } from "./paths";
 
 afterEach(() => cleanupApp());
@@ -115,7 +116,7 @@ describe("17.11 AC3 — one closed disclosure holds what rarely changes", () => 
     const details = disclosure();
     expect(details).not.toHaveAttribute("open");
     expect(summary()).toHaveTextContent(EXERCISES_COPY.detailsLabel);
-    expect(details).toContainElement(screen.getByLabelText(EXERCISES_COPY.detailsLabel));
+    expect(details).toContainElement(detailsTable());
     for (const label of buttons) expect(details).toContainElement(screen.getByRole("button", { name: label, hidden: true }));
     if (id === BUILT_IN) expect(details).toContainElement(screen.getByText(EXERCISES_COPY.builtInNote));
   });

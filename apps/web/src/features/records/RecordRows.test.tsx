@@ -34,18 +34,18 @@ describe("17.11 AC7 — recordParts gives a record's label, value and previous v
 
   it.each(TABLE)("%s (%s) %s was %s in %s → %s, was %s", (recordType, unit, value, previousValue, pref, valueText, wasText) => {
     const record = makePersonalRecord({ recordType, unit, value, previousValue });
-    expect(recordParts(record, pref)).toEqual({ label: recordLabel(recordType), value: valueText, was: wasText });
+    expect(recordParts(record, pref)).toEqual({ label: recordLabel(recordType), value: valueText, was: wasText, first: false });
   });
 
   it("a first record has was: null", () => {
     const record = makePersonalRecord({ value: 82.5, previousValue: null });
-    expect(recordParts(record, "kg")).toEqual({ label: "Heaviest weight", value: "82.5 kg", was: null });
+    expect(recordParts(record, "kg")).toEqual({ label: "Heaviest weight", value: "82.5 kg", was: null, first: true });
   });
 
   it("18.1 AC28 — a calories record keeps its values", () => {
     const r = makePersonalRecord({ exerciseName: "Echo Bike", recordType: "max_calories", unit: "cal", value: 120, previousValue: 110 });
-    expect(recordParts(r, "kg")).toEqual({ label: "Most calories", value: "120 cal", was: "110 cal" });
-    expect(recordParts({ ...r, previousValue: null }, "kg")).toEqual({ label: "Most calories", value: "120 cal", was: null });
+    expect(recordParts(r, "kg")).toEqual({ label: "Most calories", value: "120 cal", was: "110 cal", first: false });
+    expect(recordParts({ ...r, previousValue: null }, "kg")).toEqual({ label: "Most calories", value: "120 cal", was: null, first: true });
   });
 });
 
@@ -92,3 +92,26 @@ describe("17.11 AC9 — a row reads as a sentence", () => {
     expect(rows[1]!.textContent).toBe("Heaviest weight: 82.5 kg, First record");
   });
 });
+
+describe("minor 511 — an old and new value that read the same show the value alone", () => {
+  // 100 kg and 100.01 kg both read 220.5 lb.
+  const same = () => makePersonalRecord({ exerciseName: "Bench Press", value: 100.01, previousValue: 100 });
+
+  it("recordParts gives no was, and it isn't a first record", () => {
+    expect(recordParts(same(), "lb")).toEqual({ label: "Heaviest weight", value: "220.5 lb", was: null, first: false });
+  });
+
+  it("the row shows the value with neither a was line nor First record", () => {
+    render(<RecordRows records={[same()]} unitPreference="lb" />);
+    const row = screen.getByRole("listitem");
+    expect(row).toHaveTextContent("220.5 lb");
+    expect(row).not.toHaveTextContent(/was/);
+    expect(row).not.toHaveTextContent(FIRST_RECORD);
+  });
+
+  it("a real first record still says First record", () => {
+    render(<RecordRows records={[makePersonalRecord({ value: 82.5, previousValue: null })]} unitPreference="kg" />);
+    expect(screen.getByRole("listitem")).toHaveTextContent(FIRST_RECORD);
+  });
+});
+

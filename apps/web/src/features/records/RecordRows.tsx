@@ -19,8 +19,12 @@ export function RecordRows({ records, unitPreference }: { records: readonly Pers
             <span className={styles.label}>{parts.label}</span>
             <VisuallyHidden>: </VisuallyHidden>
             <span className={styles.value}>{parts.value}</span>
-            <VisuallyHidden>, </VisuallyHidden>
-            <span className={styles.was}>{parts.was === null ? FIRST_RECORD : `was ${parts.was}`}</span>
+            {parts.first || parts.was !== null ? (
+              <>
+                <VisuallyHidden>, </VisuallyHidden>
+                <span className={styles.was}>{parts.first ? FIRST_RECORD : `was ${parts.was}`}</span>
+              </>
+            ) : null}
           </li>
         );
       })}

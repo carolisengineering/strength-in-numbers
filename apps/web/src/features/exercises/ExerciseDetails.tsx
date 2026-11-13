@@ -6,7 +6,6 @@ import { useCatalog } from "../catalog/useCatalog";
 import { useEquipment, useMuscleGroups } from "../catalog/referenceData";
 import { detailRows, type RefState } from "./detailRows";
 import styles from "./ExerciseDetails.module.css";
-import { EXERCISES_COPY } from "./messages";
 
 const refState = <T,>(query: UseQueryResult<T[]>): RefState<T> =>
   query.data !== undefined ? { status: "ok", rows: query.data } : query.isError ? { status: "error" } : { status: "pending" };
@@ -21,8 +20,9 @@ export function ExerciseDetails({ row }: { row: Exercise }) {
     [row.forkedFromExerciseId, state.rows],
   );
   const rows = detailRows(row, { muscles: refState(muscles), equipment: refState(equipment), origin });
+  // Minor 515: the table has no label of its own; the disclosure's summary, "Exercise details", already names it.
   return (
-    <dl className={styles.details} aria-label={EXERCISES_COPY.detailsLabel}>
+    <dl className={styles.details}>
       {rows.map(({ label, value }) => (
         <div key={label} className={styles.row}>
           <dt className={styles.label}>{label}</dt>

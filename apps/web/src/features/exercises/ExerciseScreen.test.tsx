@@ -27,6 +27,7 @@ import { createWorkoutFake, problemResponse, type WorkoutFakeOptions } from "../
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 import { EXERCISE_KEYS } from "./keys";
 import { EXERCISES_COPY } from "./messages";
+import { detailsTable, findDetailsTable } from "../../test/exerciseHelpers";
 import { exercisePath } from "./paths";
 
 beforeEach(() => {
@@ -151,14 +152,14 @@ describe("18.2 AC20 — chrome", () => {
 });
 
 describe("18.2 AC21 — details block", () => {
-  const details = () => screen.findByLabelText(EXERCISES_COPY.detailsLabel);
+  const details = () => findDetailsTable();
   const pairs = (dl: HTMLElement) =>
     [...dl.querySelectorAll("dt")].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent ?? null]);
 
   it("a built-in, with names from the reference lists", async () => {
     setup();
     await details();
-    await waitFor(() => expect(pairs(screen.getByLabelText(EXERCISES_COPY.detailsLabel))).toEqual([
+    await waitFor(() => expect(pairs(detailsTable())).toEqual([
       ["Source", "Built-in exercise"],
       ["Type", "Weight × reps"],
       ["Primary muscle", "Chest"],
@@ -171,14 +172,14 @@ describe("18.2 AC21 — details block", () => {
     const mine = makeExercise({ id: ID, name: "Barbell bench press", ownerUserId: USER_ID, primaryMuscleId: null, equipmentId: null });
     setup({ catalog: [mine] });
     await details();
-    expect(pairs(screen.getByLabelText(EXERCISES_COPY.detailsLabel))[0]).toEqual(["Source", "Your exercise"]);
+    expect(pairs(detailsTable())[0]).toEqual(["Source", "Your exercise"]);
   });
 
   it("your copy names its built-in", async () => {
     const fork = makeExercise({ id: FORK, name: "My bench", ownerUserId: USER_ID, forkedFromExerciseId: ID });
     setup({ catalog: [bench, fork], path: exercisePath(FORK), fake: { progress: { [FORK]: points }, usage: [{ rootId: ID, lastLoggedOn: "2026-10-06" }] } });
     await details();
-    expect(pairs(screen.getByLabelText(EXERCISES_COPY.detailsLabel))[0]).toEqual(["Source", "Your copy of Barbell bench press"]);
+    expect(pairs(detailsTable())[0]).toEqual(["Source", "Your copy of Barbell bench press"]);
   });
 });
 
@@ -190,7 +191,7 @@ describe("18.2 AC22 — never logged", () => {
     queryClient.setQueryData(EXERCISE_KEYS.usage, []);
     await router.navigate(exercisePath(ID));
     expect(await screen.findByText(EXERCISES_COPY.neverLogged)).toBeInTheDocument();
-    expect(screen.getByLabelText(EXERCISES_COPY.detailsLabel)).toBeInTheDocument();
+    expect(detailsTable()).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Range" })).toBeNull();
     expect(progressGets(fake)).toEqual([]);
   });
@@ -335,3 +336,13 @@ describe("18.2 AC25 — gone is still gone", () => {
     expect(await screen.findByTestId("not-found")).toBeInTheDocument();
   });
 });
+
+describe("minor 515 — Exercise details is said once", () => {
+  it("the table under the disclosure has no accessible name of its own", async () => {
+    setup();
+    const dl = await findDetailsTable();
+    expect(dl).not.toHaveAttribute("aria-label");
+    expect(screen.getAllByText(EXERCISES_COPY.detailsLabel)).toHaveLength(1);
+  });
+});
+
