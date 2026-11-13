@@ -1,6 +1,7 @@
 import type { Equipment, Exercise, MuscleGroup } from "@sin/core";
 
 import { Button } from "../../../ui/Button";
+import { RadioChip } from "../../../ui/RadioChip";
 import { ExerciseFields } from "../../catalog/ExerciseFields";
 import { HEVY_TYPE_LABELS } from "../labels";
 import {
@@ -71,7 +72,6 @@ export function PairingCard({ card, problem, missing, rows, muscleGroups, equipm
   const matchName = nameOf(card.match?.exerciseId ?? null);
   const pickedName = card.selected === "picked" ? nameOf(card.pickedId) : null;
   const radio = (selected: PairingCardState["selected"]) => ({
-    type: "radio" as const,
     name: radioName,
     checked: card.selected === selected,
     onChange: () => onChange((c) => ({ ...c, selected })),
@@ -90,28 +90,24 @@ export function PairingCard({ card, problem, missing, rows, muscleGroups, equipm
       </p>
       <div className={styles.options}>
         {card.match !== null && matchName !== null ? (
-          <label className={styles.option}>
-            <input {...radio("match")} disabled={card.hevyType === null} />
+          <RadioChip block {...radio("match")} disabled={card.hevyType === null}>
             <span>{matchName}</span>{" "}
             <span className={styles.tag}>{card.match.kind === "exact" ? EXACT_MATCH : SIMILAR_MATCH}</span>
-          </label>
+          </RadioChip>
         ) : null}
         {card.pickedId !== null && pickedName !== null ? (
-          <label className={styles.option}>
-            <input {...radio("picked")} />
+          <RadioChip block {...radio("picked")}>
             <span>{pickedName}</span>
-          </label>
+          </RadioChip>
         ) : null}
         {card.hevyType !== null ? (
-          <label className={styles.option}>
-            <input {...radio("new")} />
+          <RadioChip block {...radio("new")}>
             <span>{NEW_EXERCISE}</span>
-          </label>
+          </RadioChip>
         ) : null}
-        <label className={styles.option}>
-          <input {...radio("skip")} />
+        <RadioChip block {...radio("skip")}>
           <span>{SKIP_EXERCISE}</span>
-        </label>
+        </RadioChip>
       </div>
       {card.selected === "new" ? (
         <ExerciseFields

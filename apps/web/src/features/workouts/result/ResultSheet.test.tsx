@@ -102,6 +102,18 @@ describe("minor 331 — Next is in the round field's description", () => {
   });
 });
 
+describe("17.13 AC16 — Finished / Hit the cap is a Segmented strip", () => {
+  it("the group is named Result; Hit the cap checks and switches the mode", async () => {
+    const { dialog, user } = renderSheet(section({ format: "time_cap", capSeconds: 900 }));
+    expect(dialog.getByRole("group", { name: "Result" })).toBeInTheDocument();
+    const hitCap = dialog.getByRole("radio", { name: "Hit the cap" });
+    await user.click(hitCap);
+    expect(hitCap).toBeChecked();
+    expect(dialog.queryByLabelText("Finish time")).toBeNull();
+    expect(hitCap.closest("fieldset")!.className).toMatch(/fieldset/);
+  });
+});
+
 describe("10.7 AC31 / AC33 — Save and Clear result (component)", () => {
   it("an invalid row shows its error, focuses that field and saves nothing", async () => {
     const { dialog, user, onSave } = renderSheet(section(SET5));

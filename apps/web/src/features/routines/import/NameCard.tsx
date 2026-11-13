@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 
 import { ExerciseFields } from "../../catalog/ExerciseFields";
 import { Button } from "../../../ui/Button";
+import { RadioChip } from "../../../ui/RadioChip";
 import { chooseExisting, type CardProblem, type CardState } from "./cards";
 import styles from "./ImportNames.module.css";
 import {
@@ -56,7 +57,6 @@ export function NameCard({ card, problem, exerciseName, muscleGroups, equipment,
   });
 
   const radio = (selected: CardState["selected"]) => ({
-    type: "radio" as const,
     name: radioName,
     checked: card.selected === selected,
     onChange: () => onChange((c) => ({ ...c, selected })),
@@ -106,28 +106,25 @@ export function NameCard({ card, problem, exerciseName, muscleGroups, equipment,
       ) : null}
       <div className={styles.options}>
         {card.match !== null && matchName !== null ? (
-          <label className={styles.option}>
-            <input {...radio("match")} />
+          <RadioChip block {...radio("match")}>
             <span>{matchName}</span>
             <span className={styles.tag}>{card.match.kind === "exact" ? IN_YOUR_LIST : SIMILAR}</span>
-          </label>
+          </RadioChip>
         ) : null}
         {card.pickedId !== null && pickedName !== null ? (
           <div className={styles.picked}>
-            <label className={styles.option}>
-              <input {...radio("picked")} />
+            <RadioChip {...radio("picked")}>
               <span>{pickedName}</span>
-            </label>
+            </RadioChip>
             <Button variant="secondary" aria-label={`${CHANGE}: ${pickedName}`} onClick={onChooseAnother}>
               {CHANGE}
             </Button>
           </div>
         ) : null}
         {card.match?.kind !== "exact" || card.match.chosen || matchName === null ? (
-          <label className={styles.option}>
-            <input {...radio("new")} />
+          <RadioChip block {...radio("new")}>
             <span>{newOption(newName)}</span>
-          </label>
+          </RadioChip>
         ) : null}
       </div>
       {card.selected === "new" ? (

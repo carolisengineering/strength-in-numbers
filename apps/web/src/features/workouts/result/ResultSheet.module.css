@@ -66,25 +66,6 @@
   color: var(--color-muted);
 }
 
-.radios {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
-.radio {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--tap-target-min);
-}
-
-.radio input {
-  min-width: var(--tap-target-min);
-  min-height: var(--tap-target-min);
-  margin: 0;
-}
-
 .addRound {
   align-self: flex-start;
   min-height: var(--tap-target-min);

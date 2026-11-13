@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { RESULT_REPS_MAX, RESULT_ROUNDS_MAX, TIMER_ROUNDS_MAX, formatClock, sectionScore } from "@sin/core";
 import { Button } from "../../../ui/Button";
 import { InlineNotice } from "../../../ui/InlineNotice";
+import { Segmented } from "../../../ui/Segmented";
 import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
@@ -24,6 +25,12 @@ import {
   type TimedSection,
 } from "./resultDraft";
 import styles from "./ResultSheet.module.css";
+
+// Spec 17.13 AC16: two fixed choices are a Segmented strip.
+const MODE_OPTIONS = [
+  { value: "finished", label: RESULT_COPY.finished },
+  { value: "capped", label: RESULT_COPY.hitCap },
+] as const;
 
 export interface ResultSheetProps {
   open: boolean;
@@ -191,23 +198,17 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
         {timer.format === "time_cap" ? (
           <>
             {timer.capSeconds !== null ? (
-              <fieldset className={styles.group}>
-                <legend>
-                  <VisuallyHidden>{RESULT_COPY.outcome}</VisuallyHidden>
-                </legend>
-                <div className={styles.radios}>
-                  {(["finished", "capped"] as const).map((mode) => (
-                    <label key={mode} className={styles.radio}>
-                      <input type="radio" name="result-mode" checked={draft.mode === mode} onChange={() => {
-                        // Another mode shows other fields; its messages belong to the old one.
-                        shown.edit("rounds", "reps", "finish");
-                        setDraft((d) => withMode(d, mode));
-                      }} />
-                      {mode === "finished" ? RESULT_COPY.finished : RESULT_COPY.hitCap}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
+              <Segmented
+                name="result-mode"
+                legend={<VisuallyHidden>{RESULT_COPY.outcome}</VisuallyHidden>}
+                options={MODE_OPTIONS}
+                value={draft.mode}
+                onChange={(mode) => {
+                  // Another mode shows other fields; its messages belong to the old one.
+                  shown.edit("rounds", "reps", "finish");
+                  setDraft((d) => withMode(d, mode));
+                }}
+              />
             ) : null}
             {draft.mode === "finished" ? (
               <ClockField id="result-finish" label={RESULT_COPY.finishTime} digits={draft.finishDigits} error={shown.of("finish")} onChange={(d) => {

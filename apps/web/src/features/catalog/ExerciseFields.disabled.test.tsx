@@ -17,6 +17,7 @@ const base: ExerciseFieldsProps = {
 describe("18.2 AC57 — disabled choice", () => {
   // Re-recorded for Spec 17.7 AC7: Primary muscle and Equipment are drawn by the shared Select (a span, the select
   // and a chevron); nothing else in this markup changed.
+  // Re-recorded for Spec 17.13 AC16: the type radios are RadioChips (only their label's class changed).
   it("with no new props the markup is exactly what it was before Phase B", () => {
     const { container } = render(
       <div data-testid="root">
@@ -32,9 +33,9 @@ describe("18.2 AC57 — disabled choice", () => {
     render(<ExerciseFields {...base} disabledModalities={disabled} modalityNotice={<p>Locked note</p>} />);
     const calories = screen.getByRole("radio", { name: "Calories" });
     expect(calories).toBeDisabled();
-    expect(calories.closest("label")!.className).toMatch(/choiceDisabled/);
+    // Spec 17.13 AC16: a RadioChip mutes its label through :has(input:disabled) (RadioChip.test.tsx pins the rule).
+    expect(calories.closest("label")!.className).toMatch(/chip/);
     expect(screen.getByRole("radio", { name: "Weight × reps" })).toBeEnabled();
-    expect(screen.getByRole("radio", { name: "Weight × reps" }).closest("label")!.className).not.toMatch(/choiceDisabled/);
     const note = screen.getByText("Locked note");
     expect(note.closest("fieldset")).toBe(calories.closest("fieldset"));
   });

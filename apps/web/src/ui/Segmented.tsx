@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 
 import styles from "./Segmented.module.css";
 
@@ -10,7 +10,8 @@ export interface SegmentedOption<T extends string> {
 export interface SegmentedProps<T extends string> {
   /** The radios' shared `name`: unique per strip, so two strips on one screen never share a group. */
   name: string;
-  legend: string;
+  /** Text, or a node such as `<VisuallyHidden>` when the sheet already says what the choice is. */
+  legend: ReactNode;
   options: readonly SegmentedOption<T>[];
   /** `null` checks nothing (a routine plan's "mixed" units, Spec 10.2 AC13). */
   value: T | null;

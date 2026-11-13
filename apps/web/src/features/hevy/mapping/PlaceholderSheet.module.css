@@ -21,13 +21,6 @@
   font-weight: var(--font-weight-label);
 }
 
-.option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: var(--tap-target-min);
-}
-
 .search {
   min-height: var(--tap-target-min);
   padding: var(--space-2) var(--space-3);
