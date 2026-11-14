@@ -71,13 +71,13 @@ export interface AuditRow {
 export const UNSAFE_ALLOWLIST: Record<string, string> = {
   "src/db/rls.ts#setRls": "Table names come only from the constant RLS_LOCK_ORDER / RLS_TABLES, through quoteIdent; DDL cannot take bound parameters.",
   "src/repositories/exercise.prisma.ts#exerciseColumns":
-    "Joins the constant EXERCISE_DB_COLUMNS list, optionally prefixed by a table alias every caller passes as a literal (`e`).",
+    "Joins the constant EXERCISE_DB_COLUMNS list, optionally prefixed by the table alias, whose type is the literal `\"e\"`.",
   "src/repositories/planned-sets.ts#plannedSetsJson":
     "Table and column are literal-union parameters; the parent reference is a column literal at both call sites.",
   "src/repositories/section-timer-columns.ts#timedFieldsJson": "The section alias is the literal type `\"s\"`; the rest is constant text.",
-  "src/repositories/section-timer-columns.ts#roundTimesJson": "The section reference is a column literal at every call site (`s.id`, `\"workout_section\".id`).",
+  "src/repositories/section-timer-columns.ts#roundTimesJson": "The section reference is the literal type `\"s.id\" | '\"workout_section\".id'`; the rest is constant text.",
   "src/repositories/workout-section.prisma.ts#SECTION_COLUMNS": "A constant column list plus roundTimesJson of a column literal.",
-  "src/repositories/workout.prisma.ts#workoutSectionsJson": "The parent reference is a column literal at both call sites (`w.id`, `\"workout\".id`).",
+  "src/repositories/workout.prisma.ts#workoutSectionsJson": "The parent reference is the literal type `\"w.id\" | '\"workout\".id'`; the rest is constant text.",
   "src/repositories/workout.prisma.ts#routineIsOneOffSql": "The workout alias is the literal union `w` | `\"workout\"`.",
   "src/seed/catalog.ts#upsertReference": "The table name is the literal union `muscle_group` | `equipment`; every value stays a bound parameter.",
 };
