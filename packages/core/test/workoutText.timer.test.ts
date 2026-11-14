@@ -319,6 +319,10 @@ describe("#276 — a double-bulleted cap line times its section", () => {
     expect(r.items).toHaveLength(3);
     expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
     expect(r.sections[0]!.notes).not.toContain("15 Burpees");
+    // Minor 371 (10.4 AC70): it reads exactly as the single-bulleted line does, named Burpees.
+    const single = readWorkoutText(["Main", "TIME", "21-15-9", "Thrusters", "- 15 Burpees", "Pull-ups"].join("\n"));
+    expect(r.items[1]!.name).toBe("Burpees");
+    expect(r.items[1]).toEqual(single.items[1]);
   });
 });
 
