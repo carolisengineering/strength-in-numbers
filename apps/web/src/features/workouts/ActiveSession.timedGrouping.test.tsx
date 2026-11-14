@@ -203,6 +203,19 @@ describe("10.7 AC23 — when grouping fails (live)", () => {
     expect(groupPatches(fake).length).toBe(before);
   });
 
+  it("minor 321 — with no re-read of its own, Try again reads the workout first and keeps another device's superset", async () => {
+    const { user, fake } = await setup({ sections: [{ name: "Main" }], exercises: [ex("A", 0), ex("B", 0)] }, { failRegroup: { times: 1 } });
+    await setTimer(user, "Main", "amrap");
+    await screen.findByText("Timer saved, but the exercises couldn't be grouped — try again");
+    // Another device groups them; this screen's cache still shows them loose.
+    fake.state.active = { ...fake.state.active!, exercises: fake.state.active!.exercises.map((e) => ({ ...e, supersetGroup: 4 })) };
+    const before = groupPatches(fake).length;
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByText(/couldn't be grouped/)).toBeNull());
+    expect(groupPatches(fake).length).toBe(before);
+    expect(groupsIn(fake, "Main")).toEqual([4, 4]);
+  });
+
   it("Try again after a regroup that partly landed groups them all (final review I-1)", async () => {
     const { user, fake } = await setup({ sections: [{ name: "Main" }], exercises: [ex("A", 0), ex("B", 0), ex("C", 0), ex("D", 0)] });
     // The first two group PATCHes land, the third fails: the cache re-reads as a 2-of-4 superset.

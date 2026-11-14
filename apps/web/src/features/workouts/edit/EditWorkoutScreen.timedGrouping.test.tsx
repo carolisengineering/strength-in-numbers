@@ -117,3 +117,19 @@ describe("10.7 AC23 — when grouping fails (edit)", () => {
     expect(fake.requests.filter((r) => r.method === "PATCH" && r.path.startsWith("/v1/workout-sections/"))).toHaveLength(1);
   });
 });
+
+describe("minor 321 — Try again re-reads the workout first (edit)", () => {
+  it("a superset made on another device meanwhile is kept: Try again sends no grouping write", async () => {
+    const { user, fake, workout } = await openEdit({ sections: [{ name: "Main" }], exercises: [ex("A", 0), ex("B", 0)] }, { failRegroup: { times: 1 } });
+    await makeAmrap(user, "Main");
+    await screen.findByText("Timer saved, but the exercises couldn't be grouped — try again");
+    // Another device links A and B as superset 3; this screen's cache still shows them loose.
+    const stored = fake.state.finished.get(workout.id)!;
+    fake.state.finished.set(workout.id, { ...stored, exercises: stored.exercises.map((e) => ({ ...e, supersetGroup: 3 })) });
+    const sent = groupPatches(fake).length;
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByText(/couldn't be grouped/)).toBeNull());
+    expect(groupPatches(fake)).toHaveLength(sent);
+    expect(groupsIn(fake, workout.id, "Main")).toEqual([3, 3]);
+  });
+});

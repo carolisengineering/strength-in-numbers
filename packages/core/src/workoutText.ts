@@ -881,8 +881,8 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     s.run = null;
     return "separator";
   }
+
   // 7. A movement under an open run (AC8–AC11, AC49–AC51). Every leading bullet comes off (AC70, minor 371).
-  // 7. A movement under an open run (AC8–AC11, AC49–AC51).
   if (s.run !== null && s.run.kind !== "list") {
     // Minor 280 (AC67): a bare "for time" is the run's note. The colon form only before the run's first movement:
     // after them, "For Time:" heads a new block and closes the run, as before (final review).
