@@ -115,3 +115,14 @@ describe("10.7 AC1 / minor 315 — pasting a TimerLine clock back", () => {
     expect(screen.getByLabelText("Cap")).toHaveValue("90:00");
   });
 });
+
+describe("minor 537 — a refused keystroke isn't an edit", () => {
+  it("a refused sixth digit calls no onChange", async () => {
+    const onChange = vi.fn();
+    render(<ClockField id="cap" label="Cap" digits="12345" onChange={onChange} />);
+    const input = screen.getByLabelText("Cap");
+    await userEvent.type(input, "6");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input).toHaveValue("123:45");
+  });
+});

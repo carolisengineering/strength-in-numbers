@@ -36,7 +36,12 @@ export function ClockField({ id, label, hint, describedBy, digits, error, onChan
           inputMode="numeric"
           autoComplete="off"
           value={digitsToText(digits)}
-          onChange={(event) => onChange(nextDigits(digits, event.target.value))}
+          onChange={(event) => {
+            // Minor 537: a keystroke `nextDigits` refuses (a sixth digit) isn't an edit, so it can't hide a message.
+            // The input is controlled, so React puts the shown value back.
+            const next = nextDigits(digits, event.target.value);
+            if (next !== digits) onChange(next);
+          }}
           onBlur={onBlur}
         />
       )}
