@@ -1,7 +1,7 @@
 /**
  * Spec 16 — `pnpm --filter @sin/loadtest run loadtest <run|cleanup|seed> …`. Wires the real side effects (k6 as a
  * child process, dev-idp tokens, the API, result files, Ctrl-C) into `runLoad`. Tokens never leave memory except as
- * the k6 child's `LOADTEST_LIFTERS` environment variable.
+ * the k6 child's `LOADTEST_LIFTER_<i>` environment variables, one per lifter.
  */
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -14,7 +14,7 @@ import { apiFor } from "./node/api.ts";
 import { parseArgs } from "./node/args.ts";
 import { cleanupAll } from "./node/cleanup.ts";
 import { politeApis } from "./node/polite.ts";
-import { runLoad, type RunDeps } from "./node/run.ts";
+import { runLoad, type GymResult, type RunDeps } from "./node/run.ts";
 import { ensureSeeded } from "./node/seed.ts";
 import { localTokens } from "./node/tokens-local.ts";
 
@@ -71,7 +71,7 @@ function realDeps(baseUrl: string): RunDeps {
         .sort()
         .at(-1);
       if (!newest) return undefined;
-      return JSON.parse(readFileSync(join(RESULTS_DIR, newest), "utf8")) as { n: number | null };
+      return JSON.parse(readFileSync(join(RESULTS_DIR, newest), "utf8")) as GymResult;
     },
     commit: async (url) => {
       try {

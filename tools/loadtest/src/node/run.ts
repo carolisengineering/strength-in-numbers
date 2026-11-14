@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { BURST_STEPS, GYM_STEPS } from "../plan/constants.ts";
+import { lifterEnv, runNonce } from "../plan/lifters.ts";
 import { report, stepResults, type Report, type StepResult } from "../plan/report.ts";
 import { seededRoutineSets } from "../plan/routine.ts";
 import { burstSchedule, estimateRequests, gymSchedule, meanSessionS, type Schedule } from "../plan/schedule.ts";
@@ -27,12 +28,40 @@ export interface RunDeps {
   writeResult(name: string, body: Record<string, unknown>): void;
   readSummary(path: string): unknown | undefined;
   /** The newest gym result for a target, if any (D9). */
-  latestGymResult(target: string): { n: number | null } | undefined;
+  latestGymResult(target: string): GymResult | undefined;
   commit(baseUrl: string): Promise<string | null>;
   /** Registers a Ctrl-C handler; returns its removal. */
   onSigint(handler: () => void): () => void;
   now(): Date;
   log(line: string): void;
+}
+
+/** What the push gate reads from a gym result file. Files written before minor 366 have no `flags`. */
+export interface GymResult {
+  n: number | null;
+  status?: string;
+  cleanup?: string;
+  flags?: { steps: number[] | null; holdScale: number | null; lifters?: number | null };
+}
+
+/**
+ * D9 / minor 366 — a push run may follow only a gym run that finished, cleaned up after itself (leftover live
+ * workouts would skew the push), climbed the full ladder (no `--steps`, `--hold-scale` or `--lifters`: a push
+ * climbs the full ladder, so one tested step is not enough), and passed at least one step. Returns why not, or
+ * `null` when it may.
+ */
+export function gymGate(result: GymResult | undefined): string | null {
+  if (!result) return "there is no gym run";
+  if (result.status !== "complete") return "the newest gym run is incomplete";
+  if (result.cleanup !== "done") return "the newest gym run's cleanup failed";
+  if (!result.flags) return "the newest gym run doesn't record how it was run";
+  if (result.flags.steps !== null || result.flags.holdScale !== null) {
+    return "the newest gym run was shortened with --steps / --hold-scale";
+  }
+  // `!== null`, so a file written before `lifters` was recorded doesn't pass either.
+  if (result.flags.lifters !== null) return "the newest gym run used --lifters instead of the full ladder";
+  if (result.n === null) return "the newest gym run has no passing step";
+  return null;
 }
 
 const K6_SCRIPT = fileURLToPath(new URL("../../k6/run.ts", import.meta.url));
@@ -78,9 +107,9 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   if (cmd.dryRun) return 0;
 
   if (cmd.type === "push" && !cmd.allowUnpassedPush) {
-    const gym = deps.latestGymResult(target.name);
-    if (!gym || gym.n === null) {
-      deps.log(`push needs a passing gym run on ${target.name} first (or --allow-unpassed-push)`);
+    const reason = gymGate(deps.latestGymResult(target.name));
+    if (reason) {
+      deps.log(`push needs a passing gym run on ${target.name} first: ${reason} (or --allow-unpassed-push)`);
       return 2;
     }
   }
@@ -95,8 +124,10 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   const start = deps.now();
   const stamp = start.toISOString().replace(/[:.]/g, "-");
   const summaryPath = `.summary-${stamp}.json`;
+  const nonce = runNonce(start);
   const env: Record<string, string> = {
-    LOADTEST_LIFTERS: JSON.stringify(tokens.map((token, i) => ({ token, routineId: seeded[i]!.routineId, sets: seeded[i]!.sets }))),
+    LOADTEST_RUN_NONCE: String(nonce),
+    ...lifterEnv(tokens.map((token, i) => ({ token, routineId: seeded[i]!.routineId }))),
     LOADTEST_TARGET: target.name,
     LOADTEST_BASE_URL: baseUrl,
     LOADTEST_TYPE: cmd.type,
@@ -151,8 +182,12 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     x: r.x,
     nonMonotonic: r.nonMonotonic,
     window: { start: start.toISOString(), end: deps.now().toISOString() },
+    // Not secret; with it a run's payloads can be rebuilt (minor 365).
+    runNonce: nonce,
     status: complete ? "complete" : "incomplete",
     cleanup,
+    // The push gate (D9) refuses a shortened gym run, so the result records how this one was run.
+    flags: { steps: cmd.steps ?? null, holdScale: cmd.holdScale ?? null, lifters: cmd.lifters ?? null },
   });
   for (const line of table(steps)) deps.log(line);
   deps.log(r.sentence);
