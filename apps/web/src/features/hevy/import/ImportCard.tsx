@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { NavRow } from "../../../ui/NavRow";
 
 import { useHevyKey } from "../useHevyKey";
 import { ADD_KEY_FIRST, IMPORT_CARD_BODY, IMPORT_CARD_TITLE } from "./messages";
@@ -15,9 +15,7 @@ export function ImportCard() {
       </h2>
       <p className={styles.muted}>{IMPORT_CARD_BODY}</p>
       {hasKey ? (
-        <Link className={styles.link} to={HEVY_IMPORT_PATH}>
-          {IMPORT_CARD_TITLE}
-        </Link>
+        <NavRow to={HEVY_IMPORT_PATH}>{IMPORT_CARD_TITLE}</NavRow>
       ) : (
         <p className={styles.text}>{ADD_KEY_FIRST}</p>
       )}

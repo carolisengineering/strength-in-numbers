@@ -1,8 +1,8 @@
 import { useId, useMemo, type Ref } from "react";
 import { HEVY_IMPORT_DROP_CODES } from "@sin/core";
-import { Link } from "react-router";
 
 import { Button } from "../../../ui/Button";
+import { NavRow } from "../../../ui/NavRow";
 import { HEVY_PATH } from "../paths";
 import type { ImportState } from "./importSession";
 import { aggregateResults, confirmLabel, sendable, summaryLists, type ListGroup } from "./importSummary";
@@ -144,9 +144,7 @@ export function ImportSummaryView({
         {nothing ? (
           <>
             <p className={styles.text}>{NOTHING_NEW}</p>
-            <Link className={styles.link} to={HEVY_PATH}>
-              {DONE}
-            </Link>
+            <NavRow to={HEVY_PATH}>{DONE}</NavRow>
           </>
         ) : (
           <>

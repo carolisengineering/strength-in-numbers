@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type Ref } from "react";
-import { Link } from "react-router";
 
 import { Button } from "../../../ui/Button";
+import { NavRow } from "../../../ui/NavRow";
 import { HEVY_PATH } from "../paths";
 import { buildImportReport, downloadReport } from "./importReport";
 import type { ImportState } from "./importSession";
@@ -118,15 +118,11 @@ export function DoneStep({
         </div>
       ) : null}
       <div className={styles.actions}>
-        <Link className={styles.link} to={HISTORY_PATH}>
-          {VIEW_HISTORY}
-        </Link>
+        <NavRow to={HISTORY_PATH}>{VIEW_HISTORY}</NavRow>
         <Button variant="secondary" onClick={download}>
           {DOWNLOAD_REPORT}
         </Button>
-        <Link className={styles.link} to={HEVY_PATH}>
-          {BACK_TO_HEVY}
-        </Link>
+        <NavRow to={HEVY_PATH}>{BACK_TO_HEVY}</NavRow>
       </div>
     </section>
   );

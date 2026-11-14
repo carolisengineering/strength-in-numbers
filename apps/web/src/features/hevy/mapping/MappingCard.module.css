@@ -32,15 +32,6 @@
   gap: var(--space-3);
 }
 
-.review {
-  display: flex;
-  align-items: center;
-  min-height: var(--tap-target-min);
-  color: var(--color-text);
-  font-weight: 600;
-  text-decoration: none;
-}
-
 /* Focus moves here after a load; the line is not a control, so it draws no focus ring. */
 .status {
   outline: none;

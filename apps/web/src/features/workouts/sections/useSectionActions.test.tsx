@@ -10,6 +10,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: observabilit
 
 import { ApiError } from "../../../api";
 import { makeWorkoutDetail } from "../../../test/workoutFixtures";
+import { sheetError } from "../../../test/sheetHelpers";
 import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../../test/workoutHarness";
 import { WORKOUT_KEYS } from "../queries";
 import type { WorkoutClient } from "../workoutClient";
@@ -269,6 +270,21 @@ describe("10.6 AC12 — lock and online-only", () => {
     await user.click(sheet("New section").getByRole("button", { name: "Add section" }));
     expect(await sheet("New section").findByText(OFFLINE)).toBeInTheDocument();
     expect(sheet("New section").getByLabelText("Name")).toHaveValue("Cooldown");
+  });
+
+  it("final review: a second Save empties the failure first, so the same failure twice is heard twice (review focus 1)", async () => {
+    const second = deferred<WorkoutSection>();
+    const addSection = vi.fn().mockRejectedValueOnce(network()).mockImplementationOnce(() => second.promise);
+    const { user } = setup({ addSection });
+    await user.click(screen.getByRole("button", { name: "Open add" }));
+    await user.type(sheet("New section").getByLabelText("Name"), "Cooldown");
+    await user.click(sheet("New section").getByRole("button", { name: "Add section" }));
+    await waitFor(() => expect(sheetError()).toBe(OFFLINE));
+    await user.click(sheet("New section").getByRole("button", { name: "Add section" }));
+    await waitFor(() => expect(addSection).toHaveBeenCalledTimes(2));
+    expect(sheetError()).toBe("");
+    await act(async () => second.reject(network()));
+    await waitFor(() => expect(sheetError()).toBe(OFFLINE));
   });
 
   it("the lock is taken during a write and released after", async () => {

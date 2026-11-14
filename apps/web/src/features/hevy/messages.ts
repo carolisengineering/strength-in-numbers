@@ -100,6 +100,8 @@ export const idTitleNotice = (line: number) => `Line ${line}: the Hevy id and ti
 export const exportAsTwiceNotice = (line: number) => `Line ${line}: another line already sends this exercise to Hevy, so this one won't`;
 export const SHOW_LIST = "Show the list";
 export const needsRuleLine = (hevyTitle: string, sinName: string) => `${hevyTitle} with ${sinName} needs one more choice:`;
+/** Minor 504: why Load is off, in the row, while pairings above still need a choice. */
+export const loadOffNeedsChoice = (n: number) => (n === 1 ? "1 pairing above needs a choice." : `${n} pairings above need a choice.`);
 export const placeholderMissing = (which: "warmup" | "workout") =>
   `The ${which === "warmup" ? "Warmup" : "workout"} marker in the file wasn't found in Hevy.`;
 export const typeMismatch = (hevyTitle: string, sinName: string) => `${hevyTitle} can't be paired with ${sinName}: the types don't match`;

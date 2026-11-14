@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { RESULT_REPS_MAX, RESULT_ROUNDS_MAX, TIMER_ROUNDS_MAX, formatClock, sectionScore } from "@sin/core";
 import { Button } from "../../../ui/Button";
-import { InlineNotice } from "../../../ui/InlineNotice";
 import { Segmented } from "../../../ui/Segmented";
 import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
@@ -234,7 +233,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
 
       </form>
       <SheetActions
-        notice={formError ? <InlineNotice tone="error">{formError}</InlineNotice> : null}
+        error={formError}
         primary={
           <Button type="submit" form={formId} busy={busy}>
             {RESULT_COPY.save}

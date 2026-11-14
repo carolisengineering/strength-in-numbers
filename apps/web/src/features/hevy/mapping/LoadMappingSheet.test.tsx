@@ -16,7 +16,7 @@ import { API_BASE_URL, stubAccountEnv, unstubAccountEnv } from "../../../test/ac
 import { exerciseId, makeExercise } from "../../../test/catalogFixtures";
 import { USER_ID, VALID_KEY, clearHevyKey, renderHevyScreen, templatesHandler, setInstantPacing, userInfoOk } from "../../../test/hevyHarness";
 import { server } from "../../../test/msw/server";
-import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
+import { findSheetError, sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { TREATMENT_LABELS } from "../labels";
 import { hevyClientFor } from "../sharedClient";
 import { hevyTemplatesQuery } from "./useHevyTemplates";
@@ -35,6 +35,7 @@ import {
   exportAsTwiceNotice,
   idTitleNotice,
   leaveOutNote,
+  loadOffNeedsChoice,
   needsRuleLine,
   loadButton,
   loaded,
@@ -200,6 +201,18 @@ describe("20.0 AC19, AC21, AC22 — final review fixes", () => {
     const dialog = await openSheet();
     await choose(dialog, csv(`exercise,T-ROW,,${ROW.id},,,`));
     expect(await within(dialog).findByText(needsRuleLine("Echo Bike (calories)", "Row Erg"))).toBeInTheDocument();
+  });
+
+  it("minor 504: while a pairing needs a choice, the row says so and Load is described by it", async () => {
+    const dialog = await openSheet();
+    await choose(dialog, csv(`exercise,T-ROW,,${ROW.id},,,`));
+    await within(dialog).findByText(needsRuleLine("Echo Bike (calories)", "Row Erg"));
+    const line = sheetRow().getByText(loadOffNeedsChoice(1));
+    const load = sheetRow().getByRole("button", { name: /^Load / });
+    expect(load).toBeDisabled();
+    expect(load.getAttribute("aria-describedby") ?? "").toContain(line.id);
+    expect(loadOffNeedsChoice(1)).toBe("1 pairing above needs a choice.");
+    expect(loadOffNeedsChoice(3)).toBe("3 pairings above need a choice.");
   });
 
   it("lists the id/title and export_as notices with their lines", async () => {
@@ -564,7 +577,7 @@ describe("17.10 AC15 — a failed replace is the row's notice (final review)", (
     const dialog = await openSheet();
     await choose(dialog, GOOD);
     await userEvent.click(await within(dialog).findByRole("button", { name: loadButton(2) }));
-    const alert = await sheetRow().findByRole("alert");
+    const alert = await findSheetError();
     expect(alert).toHaveTextContent(MAPPING_OFFLINE);
     expect(within(dialog).getByTestId("hevy-load-errors")).toHaveTextContent("");
     expect(within(dialog).getByRole("region", { name: "Preview" })).toBeInTheDocument();

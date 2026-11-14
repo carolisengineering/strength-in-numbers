@@ -22,7 +22,7 @@ import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { editDoneButton, openEditFromSummary } from "../../../test/sessionHelpers";
-import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
+import { sheetBody, sheetErrorRegion, sheetRow } from "../../../test/sheetHelpers";
 import { WORKOUT_KEYS } from "../queries";
 import { EDIT_COPY } from "./editCopy";
 
@@ -213,7 +213,7 @@ describe("17.10 AC14, AC7, AC3 — the Details sheet uses the action row", () =>
     await user.click(cancel);
     expect(screen.getByRole("dialog", { name: "Details" })).toBeInTheDocument();
     held.resolve();
-    await waitFor(() => expect(sheetRow().getByRole("alert")).toHaveTextContent("Couldn't save the details — try again"));
+    await waitFor(() => expect(sheetErrorRegion()).toHaveTextContent("Couldn't save the details — try again"));
   });
 
   it("Enter in Notes adds a line", async () => {

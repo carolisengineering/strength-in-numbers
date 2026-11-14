@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { MODALITY_VALUES } from "@sin/core";
 import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
@@ -191,3 +194,20 @@ describe("10.4 AC21 — the session keeps choices for the same text", () => {
     expect(within(await cardGroup("Strict Press")).getByRole("radio", { name: /Overhead press/ })).toBeChecked();
   });
 });
+
+describe("minor 551 — the picked chip lines up with the other choices", () => {
+  it("the picked radio's chip is block, and .picked is a grid that gives Change its own width", async () => {
+    const { user } = await openNames();
+    const card = await cardGroup("Front Raise");
+    await user.click(within(card).getByRole("button", { name: `${CHOOSE_ANOTHER} for Front Raise` }));
+    const dialog = await screen.findByRole("dialog", { name: "Add exercise" });
+    await user.click(within(within(dialog).getByRole("region", { name: "All exercises" })).getByRole("button", { name: /Barbell row/ }));
+    const picked = within(card).getByRole("radio", { name: "Barbell row" });
+    expect(picked.closest("label")!.className).toMatch(/block/);
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ImportNames.module.css"), "utf8");
+    const rule = css.match(/\.picked\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(rule).toMatch(/display:\s*grid/);
+    expect(rule).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  });
+});
+

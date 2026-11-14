@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { useId, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { sheetBody, sheetRow } from "../test/sheetHelpers";
+import { sheetBody, sheetError, sheetRow } from "../test/sheetHelpers";
 
 import { Button } from "./Button";
 import { Sheet } from "./Sheet";
@@ -176,24 +176,20 @@ describe("17.10 AC4 — status line and notice", () => {
     expect(status.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("notice shows above status and keeps the caller's role=alert (a failed save stays in view)", () => {
+  it("a save failure shows above status (a failed save stays in view)", () => {
     render(
       <Sheet open title="Edit set" onClose={vi.fn()}>
-        <SheetActions
-          notice={<p role="alert">Couldn't save. Try again.</p>}
-          status={<span>status text</span>}
-          primary={<Button>Save</Button>}
-        />
+        <SheetActions error="Couldn't save. Try again." status={<span>status text</span>} primary={<Button>Save</Button>} />
       </Sheet>,
     );
-    const alert = sheetRow().getByRole("alert");
-    expect(alert).toHaveTextContent("Couldn't save. Try again.");
+    expect(sheetError()).toBe("Couldn't save. Try again.");
+    const region = document.querySelector("dialog[open] [data-sheet-error]") as HTMLElement;
     const status = sheetRow().getByText("status text");
-    expect(alert.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(region.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("the notice and status boxes take no room while empty", () => {
-    expect(css).toMatch(/\.notice:empty[^{]*\{[^}]*display:\s*none/);
+  it("the status box takes no room while empty; the error region stays rendered (a hidden live region isn't watched)", () => {
+    expect(css).not.toMatch(/\.notice:empty/);
     expect(css).toMatch(/\.status:empty[^{]*\{[^}]*display:\s*none/);
     expect(ruleOf(".status")).toMatch(/color:\s*var\(--color-muted\)/);
     expect(ruleOf(".status")).toMatch(/font-size:\s*var\(--font-size-sm\)/);
@@ -243,15 +239,17 @@ describe("17.10 AC5, AC8, AC9, AC11, AC12 — the row's CSS", () => {
     expect(tokens).toMatch(/--sheet-messages-reserve:\s*13\.25rem;/);
     expect(tokens).not.toMatch(/--sheet-messages-share/);
     expect(ruleOf(".buttons")).toMatch(/flex:\s*none/);
-    expect(css).toMatch(/\.messages:not\(:has\(> :not\(:empty\)\)\)\s*\{[^}]*display:\s*none/);
+    // The empty box takes no room: the row has no gap, and the box adds its space only when it holds a message.
+    expect(ruleOf(".actions")).toMatch(/gap:\s*0/);
+    expect(css).toMatch(/\.messages:has\(> :not\(:empty\)\)\s*\{[^}]*margin-bottom:\s*var\(--space-2\)/);
     render(
       <Sheet open title="Edit set" onClose={vi.fn()}>
-        <SheetActions notice={<p role="alert">Couldn't save.</p>} status={<span>Delete set 2?</span>} primary={<Button>Save</Button>} />
+        <SheetActions error="Couldn't save." status={<span>Delete set 2?</span>} primary={<Button>Save</Button>} />
       </Sheet>,
     );
     const box = document.querySelector("dialog[open] [data-sheet-messages]") as HTMLElement;
     expect(box).not.toBeNull();
-    expect(box).toContainElement(sheetRow().getByRole("alert"));
+    expect(box).toContainElement(document.querySelector<HTMLElement>("dialog[open] [data-sheet-error]"));
     expect(box).toContainElement(sheetRow().getByText("Delete set 2?"));
     expect(box).not.toContainElement(sheetRow().getByRole("button", { name: "Save" }));
   });
@@ -406,5 +404,52 @@ describe("17.10 AC15, AC7 — every sheet uses the row", () => {
       if (others !== (IN_BODY_CANCELS[path] ?? 0)) stray.push(`${path}: ${others}`);
     }
     expect(stray).toEqual([]);
+  });
+});
+
+describe("minors 496, 502, 503 — one save-failure notice", () => {
+  function ErrorSheet({ error, requestId }: { error: string | null; requestId?: string | null }) {
+    return (
+      <Sheet open title="Edit set" onClose={vi.fn()}>
+        <SheetActions error={error} errorRequestId={requestId ?? null} primary={<Button>Save</Button>} />
+      </Sheet>
+    );
+  }
+  const region = () => document.querySelector<HTMLElement>("dialog[open] [data-sheet-error]")!;
+
+  it("502: the region is mounted, empty and assertive before any failure (an alert inserted with its text may go unheard)", () => {
+    render(<ErrorSheet error={null} />);
+    expect(region()).not.toBeNull();
+    expect(region()).toBeEmptyDOMElement();
+    expect(region()).toHaveAttribute("aria-live", "assertive");
+    expect(region()).toHaveAttribute("aria-atomic", "true");
+    expect(region()).not.toHaveAttribute("role");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("503: a failure fills the region in InlineNotice's error look, with no role of its own", () => {
+    render(<ErrorSheet error="Couldn't save." />);
+    expect(sheetError()).toBe("Couldn't save.");
+    const notice = region().firstElementChild as HTMLElement;
+    expect(notice.className).toMatch(/error/);
+    expect(notice).not.toHaveAttribute("role");
+  });
+
+  it("review focus 4: a request ID keeps its line", () => {
+    render(<ErrorSheet error="Couldn't save." requestId="req-1" />);
+    expect(region()).toHaveTextContent("Request ID: req-1");
+  });
+
+  it("review focus 1: the same failure twice is heard twice: the region empties between Saves", () => {
+    const { rerender } = render(<ErrorSheet error="Couldn't save." />);
+    rerender(<ErrorSheet error={null} />);
+    expect(region()).toBeEmptyDOMElement();
+    rerender(<ErrorSheet error="Couldn't save." />);
+    expect(sheetError()).toBe("Couldn't save.");
+  });
+
+  it("an empty string is no error", () => {
+    render(<ErrorSheet error="" />);
+    expect(region()).toBeEmptyDOMElement();
   });
 });

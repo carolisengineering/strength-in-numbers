@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Button } from "../../../ui/Button";
+import { formatLocalDate } from "../../../ui/dateText";
 import type { ListRow } from "./importSummary";
 import { SHOW_MORE } from "./messages";
 import styles from "./ImportScreen.module.css";
@@ -22,7 +23,10 @@ export function SummaryList({ label, rows }: { label: string; rows: readonly Lis
           <ul className={styles.rows}>
             {rows.slice(0, shown).map((row) => (
               <li key={row.id}>
-                {row.date} · {row.title} · {row.reason}
+                {/* Minor 528: the date reads like every other date, with its year (an import spans years); a row with
+                    no date starts with its title. */}
+                {row.date === "" ? null : `${formatLocalDate(row.date, { year: true })} · `}
+                {row.title} · {row.reason}
               </li>
             ))}
           </ul>

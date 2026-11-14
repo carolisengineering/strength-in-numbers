@@ -144,7 +144,7 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
           {group(MARKER_WORKOUT, workout, setWorkout, "hevy-marker-workout", warmup)}
           {/* Spec 17.10 AC15: Save markers only once there is something to save. */}
           <SheetActions
-            notice={failure !== null ? <p role="alert">{failure}</p> : null}
+            error={failure}
             primary={
               <Button busy={patch.isPending} disabled={patch.isPending} onClick={() => save()}>
                 {SAVE_MARKERS}

@@ -4,11 +4,6 @@
   gap: var(--space-4);
 }
 
-.formError {
-  color: var(--color-danger);
-  font-size: var(--font-size-sm);
-}
-
 /* Minor 491: the Delete set question is what the two buttons answer, so it reads as a question (ConfirmDialog's
    title role at body size), not as a muted status line. Not brick: brick means failed, and a save failure may sit above it. */
 .question {

@@ -24,7 +24,7 @@ export interface SetSheetActionsProps {
 /**
  * Spec 17.10 AC14, with Spec 17.5's confirm: the set sheets' row. Editing, it is Delete set, Cancel, Save. Asking, Keep
  * set takes Delete set's place (so a double tap keeps the set) and the confirm's Delete set takes Save's, with the
- * question as the row's status line. A save failure is the row's notice, so it shows however far the body is scrolled.
+ * question as the row's status line. A save failure is the row's error (minor 496), so it shows however far the body is scrolled.
  */
 export function SetSheetActions({ formId, confirm, question, primaryLabel, saving, deleting, canSave, onDelete, formError }: SetSheetActionsProps) {
   const questionId = useId();
@@ -36,15 +36,10 @@ export function SetSheetActions({ formId, confirm, question, primaryLabel, savin
     // `?.` on the method: jsdom has no scrollIntoView, and tests that don't stub it render this too.
     if (asking) questionRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [asking]);
-  const notice = formError ? (
-    <p className={styles.formError} role="alert">
-      {formError}
-    </p>
-  ) : null;
   if (asking) {
     return (
       <SheetActions
-        notice={notice}
+        error={formError}
         status={
           <span id={questionId} ref={questionRef} className={styles.question}>
             {question}
@@ -65,7 +60,7 @@ export function SetSheetActions({ formId, confirm, question, primaryLabel, savin
   }
   return (
     <SheetActions
-      notice={notice}
+      error={formError}
       danger={
         question !== null ? (
           <Button variant="danger" ref={confirm.askRef} disabled={saving || deleting} onClick={confirm.ask}>

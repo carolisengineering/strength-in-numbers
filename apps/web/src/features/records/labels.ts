@@ -42,8 +42,10 @@ export const FIRST_RECORD = "First record";
 export interface RecordParts {
   readonly label: string;
   readonly value: string;
-  /** The previous value, formatted ("80 kg"), or `null` for a first record. */
+  /** The previous value, formatted ("80 kg"); `null` for a first record, or when it reads the same as `value` (minor 511). */
   readonly was: string | null;
+  /** True only when there was no previous value (the row says "First record"). */
+  readonly first: boolean;
 }
 
 /**
@@ -51,9 +53,8 @@ export interface RecordParts {
  * name-free row, "Heaviest weight 82.5 kg was 80 kg". Replaces 08.0's name-prefixed `recordLine`.
  */
 export function recordParts(record: PersonalRecord, pref: UnitPreference): RecordParts {
-  return {
-    label: recordLabel(record.recordType),
-    value: formatRecordByType(record.recordType, record.value, record.unit, pref),
-    was: record.previousValue === null ? null : formatRecordByType(record.recordType, record.previousValue, record.unit, pref),
-  };
+  const value = formatRecordByType(record.recordType, record.value, record.unit, pref);
+  const was = record.previousValue === null ? null : formatRecordByType(record.recordType, record.previousValue, record.unit, pref);
+  // Minor 511: two values that round to one figure read as the value alone, as `formatRecordPair` shows them.
+  return { label: recordLabel(record.recordType), value, was: was === value ? null : was, first: record.previousValue === null };
 }

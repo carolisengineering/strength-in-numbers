@@ -25,7 +25,7 @@ import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../../test/wor
 import { createWorkoutFake, problemResponse } from "../../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { addSetButton, card, deleteSetIn, editDoneButton } from "../../../test/sessionHelpers";
-import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
+import { sheetBody, sheetErrorRegion, sheetRow } from "../../../test/sheetHelpers";
 import { WORKOUT_KEYS } from "../queries";
 import { EDIT_COPY } from "./editCopy";
 
@@ -134,7 +134,7 @@ describe("17.5 AC19 — the second tap commits (edit sheet)", () => {
     await openSet(user, /80 kg × 5/);
     await user.type(sheet(/^Set 2/).getByLabelText("Reps"), "{Control>}a{/Control}12");
     await deleteSetIn(user, sheet(/^Set 2/));
-    await waitFor(() => expect(sheet(/^Set 2/).getByRole("alert")).toBeInTheDocument());
+    await waitFor(() => expect(sheetErrorRegion()).toHaveTextContent(/\S/));
     expect(sheet(/^Set 2/).queryByRole("group", { name: /will be removed/ })).toBeNull();
     expect(sheet(/^Set 2/).getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(sheet(/^Set 2/).getByLabelText("Reps")).toHaveValue("12");
@@ -217,7 +217,7 @@ describe("18.0 AC14, minor 494 — the set sheet stays open while a write is in 
     expect(screen.getByRole("dialog", { name: /^Set 2/ })).toBeInTheDocument();
     expect(sheetRow().getByRole("button", { name: "Cancel" })).toHaveAttribute("aria-disabled", "true");
     held.resolve();
-    await waitFor(() => expect(sheetRow().getByRole("alert")).toHaveTextContent(EDIT_COPY.retry["update-set"]));
+    await waitFor(() => expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.retry["update-set"]));
     expect(sheet(/^Set 2/).getByLabelText("Reps")).toHaveValue("6");
     expect(sheetRow().getByRole("button", { name: "Cancel" })).not.toHaveAttribute("aria-disabled");
   });
@@ -276,7 +276,7 @@ describe("18.0 AC8 — add a set", () => {
     await user.click(submit);
     await user.click(submit);
     held.resolve();
-    await waitFor(() => expect(s.getByRole("alert")).toHaveTextContent(EDIT_COPY.retry["create-set"]));
+    await waitFor(() => expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.retry["create-set"]));
     const posts = writes(fake).filter((r) => r.method === "POST");
     expect(posts).toHaveLength(1);
     expect(posts[0]!.body).toMatchObject({ isComplete: true, clientGeneratedId: expect.stringMatching(/^[0-9a-f-]{36}$/) });
@@ -294,7 +294,7 @@ describe("18.0 AC17 — retry keeps the key", () => {
     fake.failNext({ method: "POST", path: /\/sets$/ }, () => HttpResponse.error());
     await user.click(addSetButton("Bench Press"));
     await user.click(sheet("New set · Bench Press").getByRole("button", { name: "Add set" }));
-    await waitFor(() => expect(sheet("New set · Bench Press").getByRole("alert")).toHaveTextContent(EDIT_COPY.offline));
+    await waitFor(() => expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.offline));
     await user.click(sheet("New set · Bench Press").getByRole("button", { name: "Add set" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     const keys = writes(fake).map((r) => (r.body as { clientGeneratedId: string }).clientGeneratedId);
@@ -310,10 +310,10 @@ describe("18.0 AC17 — retry keeps the key", () => {
 
 describe("18.0 AC15 / AC16 — failures stay where the lifter acted", () => {
   const cases: [string, () => Response, (s: ReturnType<typeof sheet>) => void][] = [
-    ["offline", () => HttpResponse.error(), (s) => expect(s.getByRole("alert")).toHaveTextContent(EDIT_COPY.offline)],
-    ["500", () => problemResponse(500, "about:blank"), (s) => expect(s.getByRole("alert")).toHaveTextContent(EDIT_COPY.retry["update-set"])],
+    ["offline", () => HttpResponse.error(), () => expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.offline)],
+    ["500", () => problemResponse(500, "about:blank"), () => expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.retry["update-set"])],
     ["422 reps", () => problemResponse(422, "validation-error", { errors: [{ path: "reps", message: "Required" }] }), (s) => expect(s.getByText("Required")).toBeInTheDocument()],
-    ["409 workout-finished", () => problemResponse(409, "workout-finished"), (s) => expect(s.getByRole("alert")).toHaveTextContent(EDIT_COPY.retry["update-set"])],
+    ["409 workout-finished", () => problemResponse(409, "workout-finished"), () => expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.retry["update-set"])],
   ];
 
   it.each(cases)("PATCH %s: the sheet stays open with the typed values; the cache is untouched", async (_name, response, check) => {
@@ -339,7 +339,7 @@ describe("18.0 AC15 / AC16 — failures stay where the lifter acted", () => {
     fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => HttpResponse.error());
     await openSet(user, /80 kg × 5/);
     await deleteSetIn(user, sheet(/^Set 2/));
-    await waitFor(() => expect(sheet(/^Set 2/).getByRole("alert")).toHaveTextContent(EDIT_COPY.offline));
+    await waitFor(() => expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.offline));
     expect(within(card("Bench Press")).getByRole("button", { name: /80 kg × 5/ })).toBeInTheDocument();
   });
 });
@@ -511,7 +511,7 @@ describe("17.10 AC14, AC7 — the edit screen's set sheet uses the action row", 
     await openSet(user, /80 kg × 5/);
     await user.type(sheet(/^Set 2/).getByLabelText("Reps"), "{Control>}a{/Control}7");
     await user.click(sheetRow().getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(sheetRow().getByRole("alert")).toHaveTextContent(EDIT_COPY.retry["update-set"]));
+    await waitFor(() => expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.retry["update-set"]));
     expect(within(sheetBody()).queryByRole("alert")).toBeNull();
   });
 
@@ -521,7 +521,7 @@ describe("17.10 AC14, AC7 — the edit screen's set sheet uses the action row", 
     fake.failNext({ method: "DELETE", path: /\/v1\/sets\// }, () => HttpResponse.error());
     await openSet(user, /80 kg × 5/);
     await deleteSetIn(user, sheet(/^Set 2/));
-    await waitFor(() => expect(sheetRow().getByRole("alert")).toHaveTextContent(EDIT_COPY.offline));
+    await waitFor(() => expect(sheetErrorRegion()).toHaveTextContent(EDIT_COPY.offline));
     expect(rowNames()).toEqual(["Delete set", "Cancel", "Save"]);
   });
 });

@@ -2,7 +2,6 @@ import { useId, useMemo, useState, type FormEvent } from "react";
 import type { WorkoutSection } from "@sin/core";
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
-import { InlineNotice } from "../../../ui/InlineNotice";
 import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
 import { useClearOnEdit } from "../../../ui/useClearOnEdit";
@@ -142,7 +141,7 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
       </form>
       {/* Minor 498: no line under the fields; Remove section's confirm says what happens to the exercises. */}
       <SheetActions
-        notice={errors.form ? <InlineNotice tone="error">{errors.form}</InlineNotice> : null}
+        error={errors.form}
         danger={
           removable ? (
             <Button variant="danger" disabled={busy} onClick={onRemove} ref={removeRef}>

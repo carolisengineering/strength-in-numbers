@@ -1687,12 +1687,24 @@ try {
             // question is the real confirm's (body size now). The failure is written in by hand first (a failed save can't be
             // staged here), as it would already show when the lifter taps Delete set; then the confirm brings its question
             // into view (final review #1), and its first line must show inside the messages box.
+            // Minors PR C: the stand-in is drawn like the real one, SheetActions' `InlineNotice tone="error"` (its padding,
+            // border and radius through the CSSOM, which the CSP allows), inside the sheet's error region.
             await page.evaluate(() => {
               const d = document.querySelector("dialog[open]");
-              const alert = document.createElement("p");
-              alert.setAttribute("role", "alert");
-              alert.textContent = "Couldn't save the set — check your connection and try again.";
-              d.querySelector("[data-sheet-messages] > :first-child").append(alert);
+              const notice = document.createElement("div");
+              for (const [prop, value] of [
+                ["display", "flex"],
+                ["flex-direction", "column"],
+                ["padding", "var(--card-pad-block) var(--card-pad-inline)"],
+                ["border", "1px solid var(--color-danger)"],
+                ["border-radius", "var(--radius-md)"],
+                ["background", "var(--color-surface)"],
+              ]) notice.style.setProperty(prop, value);
+              const message = document.createElement("p");
+              message.style.setProperty("margin", "0");
+              message.textContent = "Couldn't save the set — check your connection and try again.";
+              notice.append(message);
+              d.querySelector("[data-sheet-error]").append(notice);
             });
             await page.locator("dialog[open] [data-sheet-actions]").getByRole("button", { name: "Delete set" }).click();
             await page.waitForTimeout(150);

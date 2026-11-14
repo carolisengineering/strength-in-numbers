@@ -4,7 +4,6 @@ import type { UpdatedWorkout, WorkoutDetail } from "@sin/core";
 
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
-import { InlineNotice } from "../../../ui/InlineNotice";
 import { Sheet } from "../../../ui/Sheet";
 import { SheetActions } from "../../../ui/SheetActions";
 import { EDIT_COPY } from "../edit/editCopy";
@@ -172,13 +171,8 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
         </fieldset>
       </form>
       <SheetActions
-        notice={
-          errors.form ? (
-            <InlineNotice tone="error" requestId={requestId}>
-              {errors.form}
-            </InlineNotice>
-          ) : null
-        }
+        error={errors.form}
+        errorRequestId={requestId}
         primary={
           <Button type="submit" form={formId} busy={mutation.isPending}>
             Save time

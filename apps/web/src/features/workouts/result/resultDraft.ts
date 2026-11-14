@@ -17,6 +17,7 @@ import { digitsToSeconds, secondsToDigits } from "../../sectionTimer/clockDigits
 import { CAP_MAX_ERROR, SECONDS_MAX_ERROR } from "../../sectionTimer/timerCopy";
 import { timerIssueCopy } from "../../sectionTimer/timerIssueCopy";
 import { orderRoundWrites } from "./orderRoundWrites";
+import { RESULT_COPY } from "./resultCopy";
 
 /**
  * Spec 10.7 §6.5 — the Log result sheet's draft: digits as typed for each round row (Set Timer: one per planned
@@ -109,17 +110,18 @@ function filledRows(draft: ResultDraft): RoundTime[] {
   });
 }
 
-const whole = (text: string, max: number): number | null => {
+/** A whole number as typed (minor 330: never clamped; `validateDraft` flags one over its max). */
+const whole = (text: string): number | null => {
   if (text.trim() === "") return null;
   const n = Number(text);
-  return Number.isInteger(n) && n >= 0 ? Math.min(n, max) : null;
+  return Number.isInteger(n) && n >= 0 ? n : null;
 };
 
 /** Spec 10.7 AC29–AC30: the result body the draft asks for; `null` when every result field is empty (a Set Timer always). */
 export function resultBody(draft: ResultDraft): SetSectionResult | null {
   if (draft.format === "set_timer") return null;
-  const rounds = whole(draft.rounds, RESULT_ROUNDS_MAX);
-  const reps = whole(draft.reps, RESULT_REPS_MAX);
+  const rounds = whole(draft.rounds);
+  const reps = whole(draft.reps);
   if (draft.format === "amrap") return rounds === null && reps === null ? null : { rounds, reps };
   if (draft.mode === "finished") {
     const finish = clockValue(draft.finishDigits);
@@ -155,6 +157,8 @@ export function validateDraft(timer: SectionTimer, draft: ResultDraft): DraftErr
   }
   const body = resultBody(draft);
   if (body === null) return errors;
+  if ((body.rounds ?? 0) > RESULT_ROUNDS_MAX) errors["rounds"] = RESULT_COPY.roundsMax;
+  if ((body.reps ?? 0) > RESULT_REPS_MAX) errors["reps"] = RESULT_COPY.repsMax;
   for (const issue of resultIssues(timer, body)) {
     const key = RESULT_PATH_KEY[issue.path] ?? "rounds";
     errors[key] ??= timerIssueCopy(issue.code);

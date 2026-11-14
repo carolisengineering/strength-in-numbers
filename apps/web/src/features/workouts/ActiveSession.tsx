@@ -966,7 +966,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
 
       <ActionBar data-testid="session-bar" data-session-bar="" className={styles.sessionBar}>
         {/* Spec 17.4 AC10, AC11: one line, always reserved, so a message never moves the button under a thumb. Spec 17.5 AC2: Undo shares that line. */}
-        <div className={styles.statusRow} {...(undo.offer ? { "data-undo": "" } : {})}>
+        {/* Minor 426: left-aligned from the offer through the undo's own line, so the text doesn't jump on the tap. */}
+        <div className={styles.statusRow} {...(undo.offer || undo.undoText !== null ? { "data-undo": "" } : {})}>
           <p className={styles.sessionStatus} data-testid="session-status" data-session-status="">
             {statusLineText({
               undo: undo.undoText,

@@ -47,7 +47,11 @@ interface SetFieldsBase {
  * `entry`: the current-set panel (steppers, the Warm-up toggle and More, Spec 17.1 / 17.7). `sheet`: the edit sheet's
  * layout, with the same steppers and the set type and units shown (Spec 17.8 AC16).
  */
-export type SetFieldsProps = SetFieldsBase & { variant?: "sheet" | "entry" };
+export type SetFieldsProps = SetFieldsBase & {
+  variant?: "sheet" | "entry";
+  /** Minor 449 (entry only): the row's successful logs so far. More stays open until the lifter closes it or this changes. */
+  logCount?: number;
+};
 
 const WEIGHT_UNITS = ["kg", "lb"] as const;
 const DISTANCE_UNITS = DISTANCE_UNIT_VALUES; // Spec 05.3 D20: ft joins m, km, mi
@@ -293,12 +297,13 @@ function StepperMeasures({ modality, draft, errors, onChange, id, exerciseName, 
  * Spec 17.1 §6.4–§6.5, Spec 17.8 Phase B: a stepper for every measure (`StepperMeasures`).
  * Spec 17.7 Phase B: a Warm-up toggle and More in one row; More reveals set type and the units, scrolled clear of the bar.
  */
-function EntryFields(props: Common & { exerciseName: string }) {
-  const { modality, draft, onChange, id, exerciseName } = props;
-  // More is open for one set: the attempt key changes when the set is logged (or an Undo restores one), so the next
-  // set's panel starts compact and 17.4's post-log reveal can fit it above the bar (at 320 × 568 an open block could not).
-  const [openFor, setOpenFor] = useState<string | null>(null);
-  const optionsOpen = openFor === draft.attemptKey;
+function EntryFields(props: Common & { exerciseName: string; logCount?: number | undefined }) {
+  const { modality, draft, onChange, id, exerciseName, logCount = 0 } = props;
+  // More is open for one log: a successful log closes it, so the next set's panel starts compact and 17.4's post-log
+  // reveal can fit it above the bar (at 320 × 568 an open block could not). Minor 449: nothing else closes it (an Undo
+  // restore, a re-seed after a correction, a delete or another device's set), so focus in its strips is never dropped.
+  const [openFor, setOpenFor] = useState<number | null>(null);
+  const optionsOpen = openFor === logCount;
   const revealed = useRef<HTMLDivElement>(null);
   // AC16: only an opening scrolls; a block already open on mount, or closing, doesn't. The scroller's padding is 17.4's
   // --session-bar-clearance, so "nearest" lands it above the bar.
@@ -311,7 +316,7 @@ function EntryFields(props: Common & { exerciseName: string }) {
       <StepperMeasures {...props} nameCarryUnit />
       <div className={styles.panelActions}>
         <WarmupToggle exerciseName={exerciseName} pressed={draft.setType === "warmup"} onToggle={() => onChange("setType", draft.setType === "warmup" ? "working" : "warmup")} />
-        <Button variant="secondary" aria-expanded={optionsOpen} aria-label={`More set options for ${exerciseName}`} onClick={() => setOpenFor(optionsOpen ? null : draft.attemptKey)}>
+        <Button variant="secondary" aria-expanded={optionsOpen} aria-label={`More set options for ${exerciseName}`} onClick={() => setOpenFor(optionsOpen ? null : logCount)}>
           More
         </Button>
       </div>

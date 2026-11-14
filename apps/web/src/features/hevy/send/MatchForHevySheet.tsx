@@ -316,13 +316,7 @@ export function MatchForHevySheet({
         {/* Spec 17.10: Continue keeps its secondary look (20.2's), in the primary slot; the reason it is off is the
             row's status line. */}
         <SheetActions
-          notice={
-            saveError !== null ? (
-              <p className={styles.error} role="alert">
-                {saveError}
-              </p>
-            ) : null
-          }
+          error={saveError}
           status={allLeftOut ? AT_LEAST_ONE : undefined}
           primary={
             <Button variant="secondary" disabled={!canContinue(cards) || allLeftOut || saving} busy={saving} onClick={() => void proceed()}>

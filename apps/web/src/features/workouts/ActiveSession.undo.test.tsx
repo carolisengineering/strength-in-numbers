@@ -25,7 +25,7 @@ const observability = vi.hoisted(() => ({ track: vi.fn(), reportError: vi.fn() }
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
-import { card, deleteSetIn, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
+import { card, deleteSetIn, logButton, makeCurrent, openSetOptions, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, fakeClient, makeQueryClient, prepareApp, renderApp, wrapperWith } from "../../test/workoutHarness";
@@ -657,3 +657,34 @@ describe("17.5 AC14 — double taps", () => {
     }
   });
 });
+
+describe("minor 426 — the line doesn't jump when Undo is tapped", () => {
+  const row = () => status().parentElement!;
+
+  it("stays left-aligned (data-undo) while the undo's own line shows, and isn't before any log", async () => {
+    const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
+    expect(row()).not.toHaveAttribute("data-undo");
+    await logThenOffer(user);
+    await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
+    expect(row()).toHaveAttribute("data-undo");
+    goOffline(fake);
+    await user.click(undoButton()!);
+    await waitFor(() => expect(status().textContent).toBe("Undoing set 2… · 1 set not saved yet"));
+    expect(row()).toHaveAttribute("data-undo");
+    goOnline(fake);
+    await waitFor(() => expect(status().textContent).toBe("Set 2 undone"));
+    expect(row()).toHaveAttribute("data-undo");
+  });
+});
+
+describe("minor 449 — an Undo restore leaves More open", () => {
+  it("More stays open across the restore", async () => {
+    const { user } = await setup([ex("A", { sets: [firstSet()] })]);
+    await logThenOffer(user);
+    await openSetOptions(user, card("A"));
+    await user.click(undoButton()!);
+    await waitFor(() => expect(status().textContent).toBe("Set 2 undone"));
+    expect(within(card("A")).getByRole("button", { name: /^More set options for / })).toHaveAttribute("aria-expanded", "true");
+  });
+});
+

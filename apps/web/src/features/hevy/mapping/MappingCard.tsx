@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
 
 import { ApiError } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
+import { NavRow } from "../../../ui/NavRow";
 import { saveBlob } from "../../account/saveBlob";
 import { useCatalog } from "../../catalog/useCatalog";
 import {
@@ -104,10 +104,9 @@ export function MappingCard() {
           {DOWNLOAD_FILE}
         </Button>
       </div>
-      <Link className={styles.review} to={PAIRINGS_PATH}>
+      <NavRow to={PAIRINGS_PATH} chevron>
         {REVIEW_PAIRINGS}
-        <span aria-hidden="true"> ›</span>
-      </Link>
+      </NavRow>
       <p className={styles.status} role="status" tabIndex={-1} ref={statusRef} data-testid="hevy-mapping-status">
         {announcement.text}
       </p>

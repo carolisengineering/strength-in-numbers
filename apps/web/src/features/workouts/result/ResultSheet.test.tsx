@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoundTime, SectionResult, SectionTimer } from "@sin/core";
-import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
+import { sheetBody, sheetErrorRegion, sheetRow } from "../../../test/sheetHelpers";
 import { makeTimedSection } from "../../../test/workoutFixtures";
 import type { TimedSection } from "./resultDraft";
 import { ResultSheet } from "./ResultSheet";
@@ -244,7 +244,24 @@ describe("17.10 AC14, AC7, AC3 — the Log result sheet uses the action row", ()
 
   it("a save failure shows in the row (Review Focus 1)", () => {
     render(<ResultSheet open section={section(SET5)} busy={false} formError="Couldn't save the result." onSave={vi.fn()} onCancel={vi.fn()} />);
-    expect(sheetRow().getByRole("alert")).toHaveTextContent("Couldn't save the result.");
+    expect(sheetErrorRegion()).toHaveTextContent("Couldn't save the result.");
     expect(within(sheetBody()).queryByRole("alert")).toBeNull();
   });
 });
+
+describe("minor 330 — the sheet refuses over the max", () => {
+  it("1000 rounds shows the error and saves nothing; review focus 3: − to 999 clears it and Save sends 999", async () => {
+    const { dialog, user, onSave } = renderSheet(section({ format: "amrap", capSeconds: 720 }));
+    await user.type(dialog.getByLabelText("Rounds"), "1000");
+    await user.type(dialog.getByLabelText("Reps"), "5");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getByText("Keep it to 999 or less.")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    await user.click(dialog.getByRole("button", { name: "\u22121, decrease rounds" }));
+    expect(dialog.queryByText("Keep it to 999 or less.")).toBeNull();
+    expect(dialog.getByLabelText("Rounds")).toHaveValue("999");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ rounds: "999", reps: "5" }));
+  });
+});
+

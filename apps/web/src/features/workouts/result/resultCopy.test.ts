@@ -9,6 +9,8 @@ describe("10.7 AC56 — Phase C copy is pinned", () => {
       next: "Next",
       rounds: "Rounds",
       reps: "Reps",
+      roundsMax: "Keep it to 999 or less.",
+      repsMax: "Keep it to 9,999 or less.",
       // Spec 17.8 AC4: the visible step leads each name.
       stepDown: "−1",
       stepUp: "+1",
