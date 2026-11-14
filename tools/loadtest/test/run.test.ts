@@ -236,12 +236,15 @@ describe("--dry-run", () => {
 });
 
 describe("secrets stay out of argv and logs", () => {
-  it("tokens travel in LOADTEST_LIFTERS only", async () => {
+  it("tokens travel one per LOADTEST_LIFTER_<i> only (minor 367)", async () => {
     const { d, lines } = deps();
     await runLoad(gym, d);
     const [args, env] = (d.spawnK6 as ReturnType<typeof vi.fn>).mock.calls[0]! as [string[], Record<string, string>];
-    expect(JSON.parse(env.LOADTEST_LIFTERS!)).toHaveLength(3);
-    expect(env.LOADTEST_LIFTERS).toContain(TOKEN);
+    expect(env.LOADTEST_LIFTER_COUNT).toBe("3");
+    for (const i of [0, 1, 2]) {
+      expect(JSON.parse(env[`LOADTEST_LIFTER_${i}`]!)).toEqual({ token: TOKEN, routineId: "0190f6c2-2222-7000-8000-000000000001" });
+    }
+    expect(env.LOADTEST_LIFTERS).toBeUndefined();
     for (const a of args) expect(a).not.toContain(TOKEN);
     for (const l of lines) expect(l).not.toContain(TOKEN);
   });

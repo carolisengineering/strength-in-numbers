@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { BURST_STEPS, GYM_STEPS } from "../plan/constants.ts";
+import { lifterEnv } from "../plan/lifters.ts";
 import { report, stepResults, type Report, type StepResult } from "../plan/report.ts";
 import { seededRoutineSets } from "../plan/routine.ts";
 import { burstSchedule, estimateRequests, gymSchedule, meanSessionS, type Schedule } from "../plan/schedule.ts";
@@ -118,7 +119,7 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   const stamp = start.toISOString().replace(/[:.]/g, "-");
   const summaryPath = `.summary-${stamp}.json`;
   const env: Record<string, string> = {
-    LOADTEST_LIFTERS: JSON.stringify(tokens.map((token, i) => ({ token, routineId: seeded[i]!.routineId, sets: seeded[i]!.sets }))),
+    ...lifterEnv(tokens.map((token, i) => ({ token, routineId: seeded[i]!.routineId }))),
     LOADTEST_TARGET: target.name,
     LOADTEST_BASE_URL: baseUrl,
     LOADTEST_TYPE: cmd.type,

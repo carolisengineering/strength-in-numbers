@@ -3,8 +3,8 @@
  * lifter's plan through the pure executor, tags every request, and writes k6's summary for the CLI to report.
  * Imports only k6 modules and relative `.ts` paths (k6 loads them itself; AC1).
  *
- * Inputs (LOADTEST_LIFTERS holds tokens: in memory only, never logged):
- *   LOADTEST_LIFTERS  JSON [{ token, routineId, sets }]   lifter i uses entry i
+ * Inputs (LOADTEST_LIFTER_<i> hold tokens: in memory only, never logged):
+ *   LOADTEST_LIFTER_COUNT, then LOADTEST_LIFTER_<i>  JSON { token, routineId }   lifter i+1 uses entry i (minor 367)
  *   LOADTEST_TARGET, LOADTEST_BASE_URL, LOADTEST_TYPE (gym | push | burst), LOADTEST_PUSH,
  *   LOADTEST_SCHEDULE JSON Schedule, LOADTEST_SUMMARY_PATH
  */
@@ -15,19 +15,16 @@ import { Counter, Rate } from "k6/metrics";
 import { BURST_WINDOW_S, WARMUP_MAX_S, WARMUP_REQUESTS } from "../src/plan/constants.ts";
 import { newLifterState, runActions, type ExecutorIo } from "../src/plan/executor.ts";
 import { createRng } from "../src/plan/rng.ts";
-import { SEEDED_ITEMS } from "../src/plan/routine.ts";
+import { readLifters } from "../src/plan/lifters.ts";
+import { SEEDED_ITEMS, seededRoutineSets } from "../src/plan/routine.ts";
 import { burstOffset, stepAt, toK6Scenario, type RunType, type Schedule } from "../src/plan/schedule.ts";
 import { OPEN_APP_READS, buildSession, joinAt, joinedActions, type Action } from "../src/plan/session.ts";
 import { buildThresholds, countsAsServerError } from "../src/plan/thresholds.ts";
 import type { TagKey } from "../src/plan/tags.ts";
 
-interface Lifter {
-  token: string;
-  routineId: string;
-  sets: number[];
-}
-
-const LIFTERS = JSON.parse(__ENV.LOADTEST_LIFTERS ?? "[]") as Lifter[];
+const LIFTERS = readLifters(__ENV);
+/** Every account holds the same seeded routine, so every lifter plans the same sets. */
+const SETS = seededRoutineSets();
 const SCHEDULE = JSON.parse(__ENV.LOADTEST_SCHEDULE ?? '{"warmupS":0,"pushFactor":1,"stages":[]}') as Schedule;
 const TYPE = (__ENV.LOADTEST_TYPE ?? "gym") as RunType;
 const TARGET = __ENV.LOADTEST_TARGET ?? "local";
@@ -111,7 +108,7 @@ export default function (data: { t0: number }): void {
     return;
   }
 
-  const { actions } = buildSession({ seed, sets: lifter.sets, pushFactor: PUSH });
+  const { actions } = buildSession({ seed, sets: SETS, pushFactor: PUSH });
   // The first session joins part-way so every step carries the full mix (AC13); later ones start from the top.
   const plan = iteration === 0 ? joinedActions(actions, joinAt(actions, createRng(seed * 7919))) : actions;
   runActions(plan, io, newLifterState({ seed, routineId: lifter.routineId, plannedWeights: weights }));
