@@ -21,6 +21,7 @@ import styles from "../SetEditSheet.module.css";
 import { EDIT_COPY } from "./editCopy";
 import { resolveEditFailure } from "./editFailure";
 import { useEditCreateSet, useEditDeleteSet, useEditUpdateSet } from "./useEditMutations";
+import { sheetError, type SheetError } from "../../../ui/SheetActions";
 
 export type EditSetTarget =
   | { readonly kind: "edit"; readonly set: SetEntry }
@@ -65,7 +66,7 @@ export function EditSetForm({ target, modality, exerciseName, unitPreference, on
       : draftForEdit(target.set, defaults),
   );
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<SheetError | null>(null);
   const inFlight = useRef(false);
   const confirm = useDeleteConfirm();
   const formId = useId();
@@ -102,11 +103,11 @@ export function EditSetForm({ target, modality, exerciseName, unitPreference, on
           else unmatched ??= message;
         }
         setServerErrors(matched);
-        if (unmatched !== null || Object.keys(matched).length === 0) setFormError(unmatched ?? failure.fallback);
+        if (unmatched !== null || Object.keys(matched).length === 0) setFormError(sheetError(unmatched ?? failure.fallback));
         return;
       }
       case "message":
-        setFormError(failure.text);
+        setFormError(sheetError(failure.text));
         return;
       case "missing":
       case "last-set":
@@ -116,7 +117,7 @@ export function EditSetForm({ target, modality, exerciseName, unitPreference, on
         return;
       default:
         // `done` never reaches here (the delete hook turns a 404 into success); no other kind applies to a set route.
-        setFormError(EDIT_COPY.retry[op]);
+        setFormError(sheetError(EDIT_COPY.retry[op]));
     }
   }
 

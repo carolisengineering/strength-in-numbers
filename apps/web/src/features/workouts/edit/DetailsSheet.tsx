@@ -4,7 +4,7 @@ import { WORKOUT_NOTES_MAX, WORKOUT_TITLE_MAX, type WorkoutDetail } from "@sin/c
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { Sheet } from "../../../ui/Sheet";
-import { SheetActions } from "../../../ui/SheetActions";
+import { SheetActions, sheetError, type SheetError } from "../../../ui/SheetActions";
 import styles from "../NoteSheet.module.css";
 import { reportUnexpected } from "../reportUnexpected";
 import type { EditScreenMode } from "../screenMode";
@@ -23,7 +23,7 @@ export function DetailsSheet({ open, workout, onClose, mode }: { open: boolean; 
   const [initial] = useState(() => initialForm(workout));
   const [form, setForm] = useState<DetailsForm>(initial);
   const [errors, setErrors] = useState<Partial<Record<DetailsField, string>>>({});
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<SheetError | null>(null);
   const formId = useId();
   const inFlight = useRef(false);
 
@@ -72,11 +72,11 @@ export function DetailsSheet({ open, workout, onClose, mode }: { open: boolean; 
       } else if (failure.type === "fields") {
         const rechecked = check(sent);
         if (Object.keys(rechecked).length > 0) setErrors(rechecked);
-        else setFormError(failure.fallback);
+        else setFormError(sheetError(failure.fallback));
       } else if (failure.type === "message") {
-        setFormError(failure.text);
+        setFormError(sheetError(failure.text));
       } else {
-        setFormError(EDIT_COPY.retry["update-details"]);
+        setFormError(sheetError(EDIT_COPY.retry["update-details"]));
       }
     } finally {
       inFlight.current = false;

@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import { Button } from "../../ui/Button";
 import { Field } from "../../ui/Field";
 import { Sheet } from "../../ui/Sheet";
-import { SheetActions } from "../../ui/SheetActions";
+import { SheetActions, type SheetError } from "../../ui/SheetActions";
 import { EXERCISE_NOTE_MAX, parseExerciseNote } from "./exerciseNote";
 import styles from "./NoteSheet.module.css";
 
@@ -15,7 +15,7 @@ export interface NoteSheetProps {
   /** Spec 18.0 AC12 (edit mode): Save is busy while the server answers, and a second submit does nothing. */
   saving?: boolean;
   /** Spec 18.0 AC12: the failed save's text, shown under the field when there is no parse error. */
-  saveError?: string | null;
+  saveError?: SheetError | null;
   /** DM-12 (edit mode): false while the save is in flight; Close, Escape and Cancel then do nothing. */
   dismissible?: boolean;
 }

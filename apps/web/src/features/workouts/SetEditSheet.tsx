@@ -21,6 +21,7 @@ import {
 import { useDeleteConfirm } from "./useDeleteConfirm";
 import { useDeleteSet, useUpdateSet } from "./useWorkoutMutations";
 import styles from "./SetEditSheet.module.css";
+import { sheetError, type SheetError } from "../../ui/SheetActions";
 
 const reduceDraft = createDraftReducer(() => "edit"); // an edit has no idempotency key to mint
 
@@ -100,7 +101,7 @@ function EditForm({
   const del = useDeleteSet();
   const [draft, dispatch] = useReducer(reduceDraft, undefined, () => draftForEdit(set, unitDefaultsFor(unitPreference, modality)));
   const [serverErrors, setServerErrors] = useState<Partial<Record<DraftField, string>>>({});
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<SheetError | null>(null);
   const inFlight = useRef(false);
   const confirm = useDeleteConfirm();
   const formId = useId();
@@ -132,10 +133,10 @@ function EditForm({
       }
       setServerErrors(matched);
       if (unmatched !== null || Object.keys(matched).length === 0) {
-        setFormError(unmatched ?? "Couldn't save the set — check the values and try again");
+        setFormError(sheetError(unmatched ?? "Couldn't save the set — check the values and try again"));
       }
     } else if (action.type === "retry") {
-      setFormError(action.text);
+      setFormError(sheetError(action.text));
     }
     // No `ok` branch: `useDeleteSet` already turns a 404 into success, so it never reaches here.
   }

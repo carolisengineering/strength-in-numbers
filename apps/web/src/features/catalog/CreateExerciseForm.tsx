@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { ApiError } from "../../api/problem";
 import { Button } from "../../ui/Button";
-import { SheetActions } from "../../ui/SheetActions";
+import { SheetActions, sheetError, type SheetError } from "../../ui/SheetActions";
 import { SAVE_OFF_INCOMPLETE, SAVE_OFF_NO_NAME, SAVE_OFF_NO_TYPE } from "./labels";
 import styles from "./CreateExerciseForm.module.css";
 import {
@@ -46,7 +46,7 @@ export function CreateExerciseForm({
   const { createCustom } = useCatalog();
   const [values, setValues] = useState<ExerciseFieldValues>({ ...EMPTY_EXERCISE_FIELDS, name: initialName.trim() });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
-  const [formError, setFormError] = useState<string | undefined>();
+  const [formError, setFormError] = useState<SheetError | undefined>();
   const [saving, setSaving] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const formId = useId();
@@ -89,7 +89,7 @@ export function CreateExerciseForm({
         error.status === 409 &&
         error.type === "exercise-limit-reached"
       ) {
-        setFormError(EXERCISE_LIMIT_MESSAGE);
+        setFormError(sheetError(EXERCISE_LIMIT_MESSAGE));
         return;
       }
       if (error instanceof ApiError && error.isValidation()) {
@@ -97,10 +97,10 @@ export function CreateExerciseForm({
         setFieldErrors(mapped.fieldErrors);
         // A message under a collapsed section would be invisible.
         if (mapped.openDetails) setDetailsOpen(true);
-        if (mapped.formError !== undefined) setFormError(mapped.formError);
+        if (mapped.formError !== undefined) setFormError(sheetError(mapped.formError));
         return;
       }
-      setFormError("Couldn't save. Try again.");
+      setFormError(sheetError("Couldn't save. Try again."));
     }
   };
 

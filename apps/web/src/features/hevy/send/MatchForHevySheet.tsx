@@ -6,7 +6,7 @@ import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
 import { Select } from "../../../ui/Select";
 import { Sheet } from "../../../ui/Sheet";
-import { SheetActions } from "../../../ui/SheetActions";
+import { SheetActions, sheetError, type SheetError } from "../../../ui/SheetActions";
 import { MODALITY_LABELS } from "../../catalog/labels";
 import { useCatalog } from "../../catalog/useCatalog";
 import { HevyError } from "../client/hevyErrors";
@@ -75,7 +75,7 @@ export function MatchForHevySheet({
   const [searches, setSearches] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, CreateDraft>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<SheetError | null>(null);
   const [saving, setSaving] = useState(false);
   /**
    * Minor 259: the cards whose create failed without a clear answer, with the draft that was sent; they offer Check
@@ -185,7 +185,7 @@ export function MatchForHevySheet({
     try {
       if (upsert.length > 0) await patch.mutateAsync({ upsert });
     } catch (err) {
-      setSaveError(mappingErrorMessage(err));
+      setSaveError(sheetError(mappingErrorMessage(err)));
       setSaving(false);
       return;
     }

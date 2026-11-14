@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ApiError } from "../../api/problem";
 import { Button } from "../../ui/Button";
 import { Sheet } from "../../ui/Sheet";
-import { SheetActions } from "../../ui/SheetActions";
+import { SheetActions, sheetError, type SheetError } from "../../ui/SheetActions";
 import formStyles from "../catalog/CreateExerciseForm.module.css";
 import { ExerciseFields, type ExerciseFieldName, type ExerciseFieldValues } from "../catalog/ExerciseFields";
 import fieldStyles from "../catalog/ExerciseFields.module.css";
@@ -62,7 +62,7 @@ function EditForm({
   const [values, setValues] = useState<ExerciseFieldValues>(initial);
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<ExerciseFieldName, string>>>({});
-  const [formError, setFormError] = useState<string | undefined>();
+  const [formError, setFormError] = useState<SheetError | undefined>();
   const [saving, setSaving] = useState(false);
   const formId = useId();
 
@@ -124,7 +124,7 @@ function EditForm({
       if (kind === "type-locked") {
         // AC41: the only programmatic reset; every other edit stays.
         setValues((current) => ({ ...current, modality: row.modality }));
-        setFormError(EXERCISES_COPY.typeLocked);
+        setFormError(sheetError(EXERCISES_COPY.typeLocked));
         void queryClient.invalidateQueries({ queryKey: EXERCISE_KEYS.usage });
         return;
       }
@@ -132,10 +132,11 @@ function EditForm({
         const mapped = mapExerciseFieldErrors(error);
         setFieldErrors(mapped.fieldErrors);
         if (mapped.openDetails) setDetailsOpen(true);
-        if (mapped.formError !== undefined) setFormError(mapped.formError);
+        if (mapped.formError !== undefined) setFormError(sheetError(mapped.formError));
         return;
       }
-      setFormError(exerciseErrorMessage(kind, "update") ?? undefined);
+      const text = exerciseErrorMessage(kind, "update");
+      setFormError(text ? sheetError(text) : undefined);
     }
   };
 

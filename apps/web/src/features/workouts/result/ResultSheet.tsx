@@ -23,6 +23,7 @@ import {
   type TimedSection,
 } from "./resultDraft";
 import styles from "./ResultSheet.module.css";
+import type { SheetError } from "../../../ui/SheetActions";
 
 // Spec 17.13 AC16: two fixed choices are a Segmented strip.
 const MODE_OPTIONS = [
@@ -36,7 +37,7 @@ export interface ResultSheetProps {
   section: TimedSection;
   busy: boolean;
   /** A save failure to show in the open sheet (the edit screen); `null` otherwise. */
-  formError: string | null;
+  formError: SheetError | null;
   onCancel(): void;
   onSave(draft: ResultDraft): void;
 }

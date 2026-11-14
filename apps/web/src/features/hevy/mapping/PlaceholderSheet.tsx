@@ -6,7 +6,7 @@ import { Button } from "../../../ui/Button";
 import { ConfirmDialog } from "../../../ui/ConfirmDialog";
 import { RadioChip } from "../../../ui/RadioChip";
 import { Sheet } from "../../../ui/Sheet";
-import { SheetActions } from "../../../ui/SheetActions";
+import { SheetActions, sheetError, type SheetError } from "../../../ui/SheetActions";
 import { useCatalog } from "../../catalog/useCatalog";
 import { fold } from "../../catalog/visibility";
 import { HevyError } from "../client/hevyErrors";
@@ -53,7 +53,7 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
   const [query, setQuery] = useState("");
   const [warmup, setWarmup] = useState<string | null>(null);
   const [workout, setWorkout] = useState<string | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<SheetError | null>(null);
 
   // Pre-select the exact titles once, when the list first arrives (case-sensitive: the file would not guess either);
   // a later re-read must not overwrite what the lifter chose.
@@ -101,7 +101,7 @@ export function PlaceholderSheet({ open, onClose }: PlaceholderSheetProps) {
         onError: (err) => {
           const kind = classifyMappingError(err);
           if (kind === "other") reportError(err, { source: "hevy", op: "mapping-patch" });
-          setFailure(mappingErrorMessage(err));
+          setFailure(sheetError(mappingErrorMessage(err)));
         },
       },
     );

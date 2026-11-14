@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { reportError } from "../../../observability/reportError";
 import { Button } from "../../../ui/Button";
 import { Sheet } from "../../../ui/Sheet";
-import { SheetActions } from "../../../ui/SheetActions";
+import { SheetActions, sheetError, type SheetError } from "../../../ui/SheetActions";
 import { useCatalog } from "../../catalog/useCatalog";
 import { HevyError } from "../client/hevyErrors";
 import { HEVY_KEYS } from "../keys";
@@ -62,7 +62,7 @@ type Step =
   | { kind: "choose"; errors: string[] }
   | { kind: "reading" }
   | { kind: "checking" }
-  | { kind: "preview"; resolved: Resolved; error: string | null };
+  | { kind: "preview"; resolved: Resolved; error: SheetError | null };
 
 export interface LoadMappingSheetProps {
   open: boolean;
@@ -169,7 +169,7 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
       const kind = classifyMappingError(err);
       const message = mappingErrorMessage(err);
       if (kind === "other") reportError(err instanceof Error ? err : new HevyError("unexpected_reply"), { source: "hevy", op: "mapping-put" });
-      setStep({ kind: "preview", resolved, error: message });
+      setStep({ kind: "preview", resolved, error: sheetError(message) });
     }
   }
 

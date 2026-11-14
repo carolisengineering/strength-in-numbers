@@ -28,3 +28,19 @@ describe("code review #5 — the sheet is never drawn against another timer shap
     expect(sheets[before]).toBeNull();
   });
 });
+
+describe("minor 557 — every failed Save is a new failure, even with the same words", () => {
+  it("two failed saves give two different error objects with the same text", async () => {
+    const writer = { save: vi.fn().mockResolvedValue({ ok: false }) };
+    const { result } = renderHook(() => useResultActions({ workout: BASE, writer, announce: vi.fn() }));
+    act(() => result.current.open(BASE.sections[0]!.id));
+    const draft = { format: "amrap" as const, rows: [], rounds: "5", reps: "0", mode: "finished" as const, finishDigits: "" };
+    await act(() => result.current.save(draft));
+    const first = result.current.formError;
+    await act(() => result.current.save(draft));
+    const second = result.current.formError;
+    expect(first).not.toBeNull();
+    expect(second).not.toBe(first);
+    expect(second?.text).toBe(first?.text);
+  });
+});

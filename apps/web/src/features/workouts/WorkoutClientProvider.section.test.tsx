@@ -78,6 +78,14 @@ async function boot(timer: SectionTimer | null, roundTimes: { round: number; sec
 }
 const cachedSection = (qc: Awaited<ReturnType<typeof boot>>["queryClient"]) => qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.active)!.sections[0]!;
 
+/** What must never reach an error report: the round time (250 s) or the section's name. */
+const LEAK = /250|Finisher/;
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+/** Minor 560: whether `text` leaks either, once random request IDs (UUIDs, which can hold "250") are taken out. */
+function leaks(text: string): boolean {
+  return LEAK.test(text.replace(UUID, ""));
+}
+
 describe("10.7 AC37 — cache after sync", () => {
   it("after a round PUT syncs, the active cache holds the server's section", async () => {
     const { fake, queryClient } = await boot(AMRAP12, [{ round: 1, seconds: 250 }], (w) => [w.sections[0]!.id, [{ round: 2, seconds: 515 }]]);
@@ -106,7 +114,14 @@ describe("10.7 AC37 — cache after sync", () => {
     expect(observability.track).toHaveBeenCalledWith("set_sync_failed", { status: 409 });
     const reported = JSON.stringify(observability.reportError.mock.calls);
     for (const call of observability.reportError.mock.calls) expect(call[1]).toEqual({ source: "workouts", op: "log-result" });
-    expect(reported).not.toMatch(/250|Finisher/);
+    expect(leaks(reported)).toBe(false);
+  });
+
+  it("minor 560 — the leak check catches a round time in any form, never a request ID", () => {
+    expect(leaks('{"seconds":250}')).toBe(true);
+    expect(leaks('{"ms":250000}')).toBe(true);
+    expect(leaks("round 1 took 250s")).toBe(true);
+    expect(leaks('"requestId":"630a82b2-3b2d-4250-9c1e-0d2f8a7b6c55"')).toBe(false);
   });
 });
 
