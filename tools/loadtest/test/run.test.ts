@@ -160,7 +160,9 @@ describe("result file and sentence", () => {
 
   it("a run with only --lifters records no flags (minor 366)", async () => {
     const { d, results } = deps({ readSummary: vi.fn(() => passingSummary(1)) });
-    const { steps: _steps, holdScale: _holdScale, ...lifterOnly } = gym;
+    const lifterOnly: RunCommand = { ...gym, lifters: 3 };
+    delete lifterOnly.steps;
+    delete lifterOnly.holdScale;
     await runLoad(lifterOnly, d);
     expect(results[0]!.body.flags).toEqual({ steps: null, holdScale: null });
   });
