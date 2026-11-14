@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RunCommand } from "../src/node/args.ts";
-import { runLoad, type RunDeps } from "../src/node/run.ts";
+import { gymGate, runLoad, type GymResult, type RunDeps } from "../src/node/run.ts";
 import type { Api } from "../src/node/api.ts";
 import { summary } from "./k6-summary.ts";
 
@@ -153,8 +153,46 @@ describe("result file and sentence", () => {
       n: 3,
       nonMonotonic: false,
       window: { start: "2026-11-06T12:00:00.000Z", end: "2026-11-06T12:00:00.000Z" },
+      flags: { steps: [1, 2, 3], holdScale: 0.05 },
     });
     expect(lines).toContain("local handles 3 lifters mid-workout at the same time; nothing failed up to the largest step tried");
+  });
+
+  it("a run with only --lifters records no flags (minor 366)", async () => {
+    const { d, results } = deps({ readSummary: vi.fn(() => passingSummary(1)) });
+    const { steps: _steps, holdScale: _holdScale, ...lifterOnly } = gym;
+    await runLoad(lifterOnly, d);
+    expect(results[0]!.body.flags).toEqual({ steps: null, holdScale: null });
+  });
+});
+
+const ok: GymResult = { n: 25, status: "complete", flags: { steps: null, holdScale: null } };
+
+describe("minor 366 — gymGate", () => {
+  it("refuses with no gym run", () => {
+    expect(gymGate(undefined)).toBe("there is no gym run");
+  });
+
+  it("refuses an incomplete gym run", () => {
+    expect(gymGate({ ...ok, status: "incomplete" })).toBe("the newest gym run is incomplete");
+  });
+
+  it("refuses a result file that doesn't record its flags", () => {
+    expect(gymGate({ n: 25, status: "complete" })).toBe("the newest gym run doesn't record how it was run");
+  });
+
+  it("refuses a run shortened with --steps or --hold-scale", () => {
+    const shortened = "the newest gym run was shortened with --steps / --hold-scale";
+    expect(gymGate({ ...ok, flags: { steps: [1, 2], holdScale: null } })).toBe(shortened);
+    expect(gymGate({ ...ok, flags: { steps: null, holdScale: 0.5 } })).toBe(shortened);
+  });
+
+  it("refuses a run with no passing step", () => {
+    expect(gymGate({ ...ok, n: null })).toBe("the newest gym run has no passing step");
+  });
+
+  it("passes a complete, unshortened run with an N", () => {
+    expect(gymGate(ok)).toBeNull();
   });
 });
 
@@ -164,17 +202,24 @@ describe("D9 — push runs need a passing gym run first", () => {
   it("refuses with exit 2 when there is none", async () => {
     const { d, lines } = deps();
     expect(await runLoad(push, d)).toBe(2);
-    expect(lines).toContain("push needs a passing gym run on local first (or --allow-unpassed-push)");
+    expect(lines).toContain("push needs a passing gym run on local first: there is no gym run (or --allow-unpassed-push)");
+    expect(d.tokens).not.toHaveBeenCalled();
+  });
+
+  it("refuses an incomplete gym run (minor 366)", async () => {
+    const { d, lines } = deps({ latestGymResult: vi.fn(() => ({ ...ok, status: "incomplete" })) });
+    expect(await runLoad(push, d)).toBe(2);
+    expect(lines).toContain("push needs a passing gym run on local first: the newest gym run is incomplete (or --allow-unpassed-push)");
     expect(d.tokens).not.toHaveBeenCalled();
   });
 
   it("refuses when the newest gym run passed no step", async () => {
-    const { d } = deps({ latestGymResult: vi.fn(() => ({ n: null })) });
+    const { d } = deps({ latestGymResult: vi.fn(() => ({ ...ok, n: null })) });
     expect(await runLoad(push, d)).toBe(2);
   });
 
   it("runs after a passing gym run, or with the override", async () => {
-    expect(await runLoad(push, deps({ latestGymResult: vi.fn(() => ({ n: 25 })) }).d)).toBe(0);
+    expect(await runLoad(push, deps({ latestGymResult: vi.fn(() => ok) }).d)).toBe(0);
     expect(await runLoad({ ...push, allowUnpassedPush: true }, deps().d)).toBe(0);
   });
 });

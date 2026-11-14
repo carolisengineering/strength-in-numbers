@@ -27,12 +27,34 @@ export interface RunDeps {
   writeResult(name: string, body: Record<string, unknown>): void;
   readSummary(path: string): unknown | undefined;
   /** The newest gym result for a target, if any (D9). */
-  latestGymResult(target: string): { n: number | null } | undefined;
+  latestGymResult(target: string): GymResult | undefined;
   commit(baseUrl: string): Promise<string | null>;
   /** Registers a Ctrl-C handler; returns its removal. */
   onSigint(handler: () => void): () => void;
   now(): Date;
   log(line: string): void;
+}
+
+/** What the push gate reads from a gym result file. Files written before minor 366 have no `flags`. */
+export interface GymResult {
+  n: number | null;
+  status?: string;
+  flags?: { steps: number[] | null; holdScale: number | null };
+}
+
+/**
+ * D9 / minor 366 — a push run may follow only a gym run that finished, wasn't shortened with the local-only
+ * `--steps` / `--hold-scale`, and passed at least one step. Returns why not, or `null` when it may.
+ */
+export function gymGate(result: GymResult | undefined): string | null {
+  if (!result) return "there is no gym run";
+  if (result.status !== "complete") return "the newest gym run is incomplete";
+  if (!result.flags) return "the newest gym run doesn't record how it was run";
+  if (result.flags.steps !== null || result.flags.holdScale !== null) {
+    return "the newest gym run was shortened with --steps / --hold-scale";
+  }
+  if (result.n === null) return "the newest gym run has no passing step";
+  return null;
 }
 
 const K6_SCRIPT = fileURLToPath(new URL("../../k6/run.ts", import.meta.url));
@@ -78,9 +100,9 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   if (cmd.dryRun) return 0;
 
   if (cmd.type === "push" && !cmd.allowUnpassedPush) {
-    const gym = deps.latestGymResult(target.name);
-    if (!gym || gym.n === null) {
-      deps.log(`push needs a passing gym run on ${target.name} first (or --allow-unpassed-push)`);
+    const reason = gymGate(deps.latestGymResult(target.name));
+    if (reason) {
+      deps.log(`push needs a passing gym run on ${target.name} first: ${reason} (or --allow-unpassed-push)`);
       return 2;
     }
   }
@@ -153,6 +175,8 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     window: { start: start.toISOString(), end: deps.now().toISOString() },
     status: complete ? "complete" : "incomplete",
     cleanup,
+    // The push gate (D9) refuses a shortened gym run, so the result records how this one was run.
+    flags: { steps: cmd.steps ?? null, holdScale: cmd.holdScale ?? null },
   });
   for (const line of table(steps)) deps.log(line);
   deps.log(r.sentence);
