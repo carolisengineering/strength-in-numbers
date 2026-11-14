@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { apiProgram, overlayPath, rel as relPath, srcFiles } from "./helpers/ts-program.js";
+import { apiProgram, overlayPath, rel as relPath, srcFiles, srcProgram } from "./helpers/ts-program.js";
 
 /**
  * Spec 21.1 AC14, AC16, AC20 — the static guards that keep "who is asking" on every statement:
@@ -55,11 +55,20 @@ export function bareClientUses(p: ts.Program, files: readonly string[]): string[
   const out: string[] = [];
   for (const file of files) {
     const sf = p.getSourceFile(file)!;
+    const bare = (receiver: ts.Node) => {
+      const t = checker.getTypeAtLocation(receiver);
+      return (t.isUnion() ? t.types : [t]).some((x) => (x.aliasSymbol ?? x.getSymbol())?.getName() === "PrismaClient");
+    };
+    const flag = (node: ts.Node) => out.push(`${relPath(file)}:${lineOf(sf, node)} ${node.getText(sf).slice(0, 60)}`);
     const visit = (node: ts.Node) => {
-      if (ts.isPropertyAccessExpression(node) && !NO_STATEMENT.has(node.name.text)) {
-        const t = checker.getTypeAtLocation(node.expression);
-        const names = (t.isUnion() ? t.types : [t]).map((x) => (x.aliasSymbol ?? x.getSymbol())?.getName());
-        if (names.includes("PrismaClient")) out.push(`${relPath(file)}:${lineOf(sf, node)} ${node.getText(sf).slice(0, 60)}`);
+      if (ts.isPropertyAccessExpression(node) && !NO_STATEMENT.has(node.name.text) && bare(node.expression)) flag(node);
+      // `p["$transaction"]` and `const { $transaction: t } = p` reach the bare client too (code review #3).
+      if (ts.isElementAccessExpression(node) && !(ts.isStringLiteralLike(node.argumentExpression) && NO_STATEMENT.has(node.argumentExpression.text)) && bare(node.expression)) flag(node);
+      if (ts.isObjectBindingPattern(node) && bare(node)) {
+        for (const el of node.elements) {
+          const key = el.propertyName ?? el.name;
+          if (!((ts.isIdentifier(key) || ts.isStringLiteralLike(key)) && NO_STATEMENT.has(key.text))) flag(el);
+        }
       }
       ts.forEachChild(node, visit);
     };
@@ -91,12 +100,12 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
 
   it("all of src, recursively, uses a bare client only in the allowed files", () => {
     const files = srcFiles();
-    expect(bareClientUses(apiProgram(files), files).filter((u) => BARE_CLIENT_ALLOWED[u.slice(0, u.indexOf(":"))] === undefined)).toEqual([]);
+    expect(bareClientUses(srcProgram(), files).filter((u) => BARE_CLIENT_ALLOWED[u.slice(0, u.indexOf(":"))] === undefined)).toEqual([]);
   });
 
   it("every allowed file still uses a bare client (the map can't go stale)", () => {
     const files = srcFiles();
-    const uses = bareClientUses(apiProgram(files), files);
+    const uses = bareClientUses(srcProgram(), files);
     for (const f of Object.keys(BARE_CLIENT_ALLOWED)) expect([f, uses.some((u) => u.startsWith(`${f}:`))]).toEqual([f, true]);
   });
 
@@ -111,6 +120,12 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
       `${head}export async function f(p: PrismaClient) {\n  await p.$connect();\n  await p.$disconnect();\n  void p.$metrics;\n  void p.$on;\n}\n`,
     );
     expect(uses).toEqual([]);
+  });
+
+  it("a bare client's member destructured or indexed is flagged too (code review #3)", () => {
+    expect(usesIn(`${head}export const f = (p: PrismaClient) => {\n  const { $transaction: t } = p;\n  return t;\n};\n`)).toHaveLength(1);
+    expect(usesIn(`${head}export const f = (p: PrismaClient) => p["$transaction"];\n`)).toHaveLength(1);
+    expect(usesIn(`${head}export const f = async (p: PrismaClient) => {\n  const { $disconnect } = p;\n  await $disconnect();\n};\n`)).toEqual([]);
   });
 
   it("a model call on the transaction client is not a bare use (Review Focus 5)", () => {

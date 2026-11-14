@@ -48,3 +48,10 @@ export function apiProgram(files: readonly string[], overlay: Readonly<Record<st
 
 /** The absolute path of an overlay file, as `apiProgram` names it. */
 export const overlayPath = (path: string): string => `${API_ROOT}${path}`;
+
+let srcProgramMemo: ts.Program | undefined;
+/** One type-checked program over all of `src`, built once per test file (code review #9: each build costs ~0.5–1 s). */
+export function srcProgram(): ts.Program {
+  srcProgramMemo ??= apiProgram(srcFiles());
+  return srcProgramMemo;
+}

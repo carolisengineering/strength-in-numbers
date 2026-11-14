@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TRIPWIRE_ALLOWED, rawSqlSpellingIssues } from "../../scripts/lib/query-tripwire.js";
-import { apiProgram, overlayPath, rel, srcFiles } from "./helpers/ts-program.js";
+import { apiProgram, overlayPath, rel, srcFiles, srcProgram } from "./helpers/ts-program.js";
 
 /**
  * Minor 393: the query audit's extractor reads syntax, so a statement spelled in a way it doesn't list would run with
@@ -62,6 +62,29 @@ describe("minor 393 — raw SQL only in spellings the audit lists", () => {
     expect(issues[0]).toContain("rule 3:");
   });
 
+  it.each([
+    ["a raw method instantiated with type arguments and saved (code review #1)", "const q = tx.$queryRaw<{ a: number }[]>;\nexport const a = q`SELECT 1`;\n", "rule 1:"],
+    ["a class extending Prisma.Sql (code review #1)", "class S extends Prisma.Sql {}\nexport const a = new S([sep], []);\n", "rule 3:"],
+    ["a computed key in a destructuring (code review #2)", 'const { ["$queryRaw"]: q } = tx;\nexport const a = q`SELECT 1`;\n', "rule 1:"],
+  ])("%s fails", (_name, body, rule) => {
+    const issues = issuesFor(body);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain(rule);
+  });
+
+  it("an inline type-only import of the runtime and `instanceof Prisma.Sql` build no SQL (code review #6, #7)", () => {
+    expect(issuesFor('export type X = Sql;\nexport const isSql = (x: unknown) => x instanceof Prisma.Sql;\n', HEAD + 'import { type Sql } from "@prisma/client/runtime/library";\n')).toEqual([]);
+  });
+
+  it("an allowed pass-through is excused only from rule 1 (code review #5)", () => {
+    const allowed = { [`${FIXTURE}#f`]: "a test pass-through" };
+    const run = (body: string) => rawSqlSpellingIssues(apiProgram([], { [FIXTURE]: HEAD + body }), [overlayPath(FIXTURE)], rel, allowed);
+    expect(run('export function f() {\n  return tx["$queryRaw"];\n}\n')).toEqual([]);
+    const issues = run("export function f() {\n  return new Prisma.Sql([sep], []);\n}\n");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("rule 3:");
+  });
+
   it("a computed key that names a raw method is caught", () => {
     const issues = issuesFor('declare const m: "$queryRaw" | "$executeRaw";\nexport const a = tx[m];\n');
     expect(issues).toHaveLength(1);
@@ -94,12 +117,12 @@ describe("minor 393 — raw SQL only in spellings the audit lists", () => {
 
   it("src on main passes, outside the handle's two pass-throughs", () => {
     const files = srcFiles();
-    expect(rawSqlSpellingIssues(apiProgram(files), files, rel)).toEqual([]);
+    expect(rawSqlSpellingIssues(srcProgram(), files, rel)).toEqual([]);
   });
 
   it("each allowed pass-through still forwards a raw method (the list can't go stale)", () => {
     const files = srcFiles();
-    const all = rawSqlSpellingIssues(apiProgram(files), files, rel, {});
+    const all = rawSqlSpellingIssues(srcProgram(), files, rel, {});
     for (const key of Object.keys(TRIPWIRE_ALLOWED)) expect([key, all.some((i) => i.includes(`(${key})`))]).toEqual([key, true]);
   });
 });

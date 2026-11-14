@@ -21,8 +21,8 @@ const NAMESPACE_MEMBERS = new Set(["sql", "raw", "join", "Sql"]);
 const PRISMA_RUNTIME = /^@prisma\/client\/runtime(\/|$)/;
 
 /**
- * The functions that may pass a raw method around, keyed `<file>#<function>`, each with its reason. Only the scoped
- * handle does: it forwards the caller's statement unchanged, and the audit lists that statement where it is written.
+ * The functions that may pass a raw method around (rule 1 only), keyed `<file>#<function>`, each with its reason. Only
+ * the scoped handle does: it forwards the caller's statement unchanged, and the audit lists it where it is written.
  */
 export const TRIPWIRE_ALLOWED: Readonly<Record<string, string>> = {
   "src/db/scoped.ts#scopedClient":
@@ -65,6 +65,12 @@ export function rawSqlSpellingIssues(
 
   const inTypePosition = (node: ts.Node): boolean => {
     for (let p = node.parent; p; p = p.parent) {
+      // `tx.$queryRaw<Row[]>` saved as a value, and a class's `extends Prisma.Sql`, are expressions (code review #1); only
+      // an `implements` clause (an interface's `extends` is caught below) makes one a type.
+      if (ts.isExpressionWithTypeArguments(p)) {
+        if (ts.isHeritageClause(p.parent) && p.parent.token === ts.SyntaxKind.ImplementsKeyword) return true;
+        continue;
+      }
       if (ts.isTypeNode(p) || ts.isTypeAliasDeclaration(p) || ts.isInterfaceDeclaration(p)) return true;
       if (ts.isStatement(p) || ts.isSourceFile(p)) return false;
     }
@@ -79,7 +85,8 @@ export function rawSqlSpellingIssues(
     if (!sf) continue;
     const report = (node: ts.Node, rule: number, what: string, accepted: string): true => {
       const key = `${relPath(file)}#${enclosingFunction(node)}`;
-      if (allowed[key] === undefined) {
+      // An allowed pass-through is excused from rule 1 only: forwarding a raw method (code review #5).
+      if (rule !== 1 || allowed[key] === undefined) {
         out.push(`${relPath(file)}:${sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1} rule ${rule}: ${what} — write ${accepted} (${key})`);
       }
       return true;
@@ -103,6 +110,7 @@ export function rawSqlSpellingIssues(
             return report(node, 3, "a Prisma.join separator, prefix or suffix that isn't a string literal (it is raw SQL text)", 'Prisma.join(values, ", ")');
           }
         }
+        if (name === "Sql" && ts.isBinaryExpression(node.parent) && node.parent.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword && node.parent.right === node) return false;
         if (name === "Sql") return report(node, 3, "Prisma.Sql used as a value (new Prisma.Sql([text], []) is raw SQL)", "Prisma.sql`…`, or Prisma.raw(…) on UNSAFE_ALLOWLIST");
         return report(node, 3, `Prisma.${name} used other than as Prisma.sql\`…\`, Prisma.raw(…) or Prisma.join(…)`, `Prisma.${name === "sql" ? "sql`…`" : `${name}(…)`} spelled with Prisma`);
       }
@@ -124,7 +132,14 @@ export function rawSqlSpellingIssues(
     const runtimeSpecifier = (spec: ts.Expression | undefined) => spec !== undefined && ts.isStringLiteralLike(spec) && PRISMA_RUNTIME.test(spec.text);
     const visit = (node: ts.Node): void => {
       if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && runtimeSpecifier(node.moduleSpecifier)) {
-        const typeOnly = ts.isImportDeclaration(node) ? node.importClause?.isTypeOnly === true : node.isTypeOnly;
+        // `import type { … }`, or every named binding marked `type` (code review #6): erased, so it builds no SQL.
+        const clause = ts.isImportDeclaration(node) ? node.importClause : undefined;
+        const named = ts.isImportDeclaration(node) ? clause?.namedBindings : node.exportClause;
+        const allTyped =
+          named !== undefined && (ts.isNamedImports(named) || ts.isNamedExports(named)) && named.elements.length > 0 && named.elements.every((e) => e.isTypeOnly);
+        const typeOnly = ts.isImportDeclaration(node)
+          ? clause?.isTypeOnly === true || (clause?.name === undefined && allTyped)
+          : node.isTypeOnly || allTyped;
         if (!typeOnly) report(node, 5, "the Prisma runtime imported directly (its sqltag / raw / join / Sql build SQL the audit can't see)", 'import { Prisma } from "@prisma/client"');
       } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === "require")) && runtimeSpecifier(node.arguments[0])) {
         report(node, 5, "the Prisma runtime loaded directly (its sqltag / raw / join / Sql build SQL the audit can't see)", 'import { Prisma } from "@prisma/client"');
@@ -139,6 +154,11 @@ export function rawSqlSpellingIssues(
         for (const el of node.elements) {
           const key = el.propertyName ?? el.name;
           if (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) check(el, node, key.text, "binding");
+          else if (ts.isComputedPropertyName(key)) {
+            // `{ ["$queryRaw"]: q }` or `{ [m]: q }` (code review #2).
+            const keys = ts.isStringLiteralLike(key.expression) ? [key.expression.text] : literalKeys(key.expression);
+            keys.some((k) => check(el, node, k, "binding"));
+          }
         }
       }
       ts.forEachChild(node, visit);
