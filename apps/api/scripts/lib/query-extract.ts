@@ -82,24 +82,24 @@ export const UNSAFE_ALLOWLIST: Record<string, string> = {
   "src/seed/catalog.ts#upsertReference": "The table name is the literal union `muscle_group` | `equipment`; every value stays a bound parameter.",
 };
 
-const QUERY_TAGS = new Set(["$queryRaw", "$executeRaw"]);
-const UNSAFE_CALLS = new Set(["$queryRawUnsafe", "$executeRawUnsafe"]);
+export const QUERY_TAGS = new Set(["$queryRaw", "$executeRaw"]);
+export const UNSAFE_CALLS = new Set(["$queryRawUnsafe", "$executeRawUnsafe"]);
 export const WRITE_COMMAND = "pnpm --filter @sin/api run audit:queries --write";
 
 const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
 
 /** `x.$queryRaw`, a destructured `$queryRaw`, … → `$queryRaw`. */
-function calleeName(expr: ts.Expression): string | undefined {
+export function calleeName(expr: ts.Expression): string | undefined {
   if (ts.isPropertyAccessExpression(expr)) return expr.name.text;
   if (ts.isIdentifier(expr)) return expr.text;
   return undefined;
 }
 
-const isPrismaMember = (expr: ts.Expression, member: string) =>
+export const isPrismaMember = (expr: ts.Expression, member: string) =>
   ts.isPropertyAccessExpression(expr) && expr.name.text === member && ts.isIdentifier(expr.expression) && expr.expression.text === "Prisma";
 
 /** Prisma's model-delegate operations: `prisma.user.findUnique(…)` runs SQL too (final review #3). */
-const MODEL_OPS = new Set([
+export const MODEL_OPS = new Set([
   "findUnique", "findUniqueOrThrow", "findFirst", "findFirstOrThrow", "findMany", "create", "createMany",
   "createManyAndReturn", "update", "updateMany", "upsert", "delete", "deleteMany", "count", "aggregate", "groupBy",
 ]);
@@ -108,7 +108,7 @@ const MODEL_OPS = new Set([
 export const MODEL_DELEGATES = new Set(["user", "exercise", "muscleGroup", "equipment", "workout", "workoutExercise", "routine", "routineItem", "routineItemSet", "workoutPlannedSet", "setEntry", "personalRecord", "routineSection", "workoutSection", "workoutSectionRound", "hevyExercisePair", "hevySectionRule", "hevyLink", "hevyAccount"]);
 
 /** `<client>.<model>.<op>(…)` on a model delegate (`prisma.user.update`, `tx.workout.findMany`). */
-function isModelCall(node: ts.CallExpression): boolean {
+export function isModelCall(node: ts.CallExpression): boolean {
   const callee = node.expression;
   if (!ts.isPropertyAccessExpression(callee) || !MODEL_OPS.has(callee.name.text)) return false;
   const model = callee.expression;
