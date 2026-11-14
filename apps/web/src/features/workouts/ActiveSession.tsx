@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
-import { canLinkRule, ROUTINE_SECTIONS_MAX, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
+import { canLinkRule, ROUTINE_SECTIONS_MAX, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type SetEntry, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { useSession } from "../../auth/useSession";
 import { track } from "../../observability/track";
@@ -60,9 +60,10 @@ import { FinishDialogBody, type FinishOneOff } from "./FinishDialog";
 import { finishEndedAt } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
+import { rereadFresh } from "./readGuard";
 import { useTimedGrouping } from "./sections/useTimedGrouping";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
-import { confirmationLine, notSavedYet, statusLineText, undoName } from "./undoOffer";
+import { confirmationLine, notSavedYet, setListed, statusLineText, undoName } from "./undoOffer";
 import { useUndoLastLog } from "./useUndoLastLog";
 import { useToday } from "./useToday";
 import { WorkoutMenu } from "./WorkoutMenu";
@@ -106,6 +107,9 @@ const EMPTY_IDS: ReadonlySet<string> = new Set();
 const SYNC_TAG = { pending: RESULT_COPY.notSaved, failed: RESULT_COPY.notSavedFailed } as const;
 
 type RegroupRequest = { type: "move"; id: string; direction: "up" | "down" } | { type: "toggleLink"; upperId: string };
+
+/** When the current panel may be shown again: a log's set count is listed, or the row an Undo deleted is gone. */
+type RevealGate = { kind: "count"; sets: number } | { kind: "gone"; set: SetEntry };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -225,9 +229,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     shownOnOpen.current = true;
     panel.scrollIntoView?.({ block: "nearest" });
   }, [current.currentId]);
-  // Spec 17.4 AC14, AC15: a log asks for the panel to be shown again, once the screen holds this many sets. See the
-  // effect below `totalSets`.
-  const [setsAwaited, setSetsAwaited] = useState<number | null>(null);
+  // Spec 17.4 AC14, AC15: a log asks for the panel to be shown again, once the screen holds this many sets; an Undo
+  // once the row it deleted has left the list (minor 428: a count only works for a list that grows). See the effect
+  // below `totalSets`.
+  const [revealGate, setRevealGate] = useState<RevealGate | null>(null);
 
   const [logStore] = useState(createLogActionStore);
   const [announcement, setAnnouncement] = useState("");
@@ -254,7 +259,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     if (logged) undo.offerFrom(event, { name: logged.exerciseNameSnapshot, modality: logged.modalitySnapshot }, restFor ? (rest?.get()?.startedAt ?? null) : null);
     if (!advance || currentIdRef.current !== exerciseId) return;
     const next = advanceAfterLog({ rows: freshRows, loggedId: exerciseId, wasExtra });
-    setSetsAwaited(fresh.exercises.reduce((n, e) => n + e.sets.length, 0));
+    setRevealGate({ kind: "count", sets: fresh.exercises.reduce((n, e) => n + e.sets.length, 0) });
     if (next === exerciseId) return;
     // Logged by Enter: focus sat in the panel that unmounts now, so hand it to the new card's heading. Logged from the
     // bar: the bar's button keeps it (AC29).
@@ -281,18 +286,22 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   }, [segments]);
   const totalSets = exercises.reduce((n, e) => n + e.sets.length, 0);
   // Spec 17.4 AC14, AC15: the new row is what pushes the panel down, and it renders after `onLogged` runs (the query
-  // cache tells its observers a moment later), so the reveal waits until the screen holds the set count the log left.
+  // cache tells its observers a moment later), so the reveal waits until the screen holds the set count the log left;
+  // after an Undo, until the undone row has left the list (minor 428).
   // Declared after the heading's reveal, so on an advance the panel goes second. Whatever has focus then goes last, so a
   // panel taller than the room left never hides it (AC13); the bar's button is skipped, because scrolling to a sticky
   // element drags the list to its place in the flow.
+  const revealReady =
+    revealGate !== null &&
+    (revealGate.kind === "count" ? totalSets >= revealGate.sets : !exercises.some((e) => setListed(e.sets, revealGate.set)));
   useEffect(() => {
-    if (setsAwaited === null || totalSets < setsAwaited) return;
-    setSetsAwaited(null);
+    if (!revealReady) return;
+    setRevealGate(null);
     if (current.currentId === null) return;
     panelOf(current.currentId)?.scrollIntoView?.({ block: "nearest" });
     const focused = document.activeElement;
     if (focused?.closest("main") && !focused.closest("[data-action-bar]")) focused.scrollIntoView?.({ block: "nearest" });
-  }, [setsAwaited, totalSets, current.currentId]);
+  }, [revealReady, current.currentId]);
   // Spec 17.2 AC6: the dialogs read "now" once, when one opens, so the duration does not tick under the lifter's eyes.
   const dialogOpen = finishOpen || endEarlyOpen;
   // eslint-disable-next-line react-hooks/exhaustive-deps -- recomputed only when a dialog opens or closes, by design
@@ -362,10 +371,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       const leaving = current.currentId;
       return leaving !== null && leaving !== id && (headingRefs.current.get(leaving)?.closest("article")?.contains(document.activeElement) ?? false);
     },
-    revealPanel: () => {
-      const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
-      setSetsAwaited(fresh ? fresh.exercises.reduce((n, e) => n + e.sets.length, 0) : 0);
-    },
+    revealPanel: (set) => setRevealGate({ kind: "gone", set }),
     onFailure: (error) => void handleFailure("delete-set", error),
     announce: setAnnouncement,
   });
@@ -419,6 +425,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // Spec 10.7 AC22: a timed section's grouping, through this screen's regroup, banner and lock.
   const timedGrouping = useTimedGrouping({
     regroup,
+    reread: () => rereadFresh(queryClient, WORKOUT_KEYS.active),
     readDetail: () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active),
     setBanner,
     structureLock,

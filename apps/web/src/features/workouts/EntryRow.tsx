@@ -10,6 +10,7 @@ import { resolveFailure } from "./sessionErrors";
 import { RestReadout } from "./RestReadout";
 import { SetFields, type DraftEditField } from "./SetFields";
 import { createDraftReducer, draftFieldForPath, parseDraft, seedDraft, setValuesKey, unitDefaultsFor, type DraftField } from "./setDraft";
+import { setListed } from "./undoOffer";
 import { useCreateSet } from "./useWorkoutMutations";
 import styles from "./EntryRow.module.css";
 
@@ -44,8 +45,6 @@ export interface DraftRestore {
   readonly set: SetEntry;
 }
 
-const listed = (sets: readonly SetEntry[], set: SetEntry) =>
-  sets.some((row) => row.id === set.id || (set.clientGeneratedId !== null && row.clientGeneratedId === set.clientGeneratedId));
 
 export interface EntryRowProps {
   exercise: WorkoutExerciseDetail;
@@ -101,7 +100,7 @@ export function EntryRow({ exercise, unitPreference, onGone, onLogged, logExtra,
   const [announcement, setAnnouncement] = useState("");
   // Minor 449: the row's successful logs; More closes when it changes, and on nothing else.
   const [logCount, setLogCount] = useState(0);
-  if (restore && restore.exerciseId === exercise.id && restore.token !== restoredToken && !listed(exercise.sets, restore.set)) {
+  if (restore && restore.exerciseId === exercise.id && restore.token !== restoredToken && !setListed(exercise.sets, restore.set)) {
     setRestoredToken(restore.token);
     setAnnouncement(""); // AC13: a re-log repeats "Set N logged", and a live region says nothing when its words don't change
     if (untouched) dispatch({ type: "restore", set: restore.set, defaults });

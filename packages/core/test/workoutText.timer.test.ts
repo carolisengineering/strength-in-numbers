@@ -319,6 +319,10 @@ describe("#276 — a double-bulleted cap line times its section", () => {
     expect(r.items).toHaveLength(3);
     expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
     expect(r.sections[0]!.notes).not.toContain("15 Burpees");
+    // Minor 371 (10.4 AC70): it reads exactly as the single-bulleted line does, named Burpees.
+    const single = readWorkoutText(["Main", "TIME", "21-15-9", "Thrusters", "- 15 Burpees", "Pull-ups"].join("\n"));
+    expect(r.items[1]!.name).toBe("Burpees");
+    expect(r.items[1]).toEqual(single.items[1]);
   });
 });
 
@@ -504,5 +508,44 @@ describe("#279 — only a label colon ends the run (owner ruling 2026-11-05)", (
     expect(r.items.map((i) => i.name)).toEqual(["Squats", "Lunges"]);
     expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
     expect(r.sections[0]!.timer).toBeUndefined();
+  });
+});
+
+describe("10.4 AC69 / minor 370 — a label before the run's first movement keeps the run open (owner decision 2026-11-13)", () => {
+  const read = (lines: string[]) => readWorkoutText(lines.join("\n"));
+
+  it("TIME / 21-15-9 / Time cap: 12:00 / Thrusters / Pull-ups → one run, the label in the note, a 12:00 cap", () => {
+    const r = read(["Main", "TIME", "21-15-9", "Time cap: 12:00", "Thrusters", "Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+    expect(r.sections[0]!.notes).toBe("Time cap: 12:00");
+    expect(r.sections[0]!.timer).toEqual(timeCap(720));
+  });
+
+  it("Review Focus 2: a lead-in run (3 Rounds / AMRAP: 12) keeps its movements", () => {
+    const r = read(["Main", "ROUNDS/REPS", "3 Rounds", "AMRAP: 12", "10 Squats", "10 Lunges"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Squats", "Lunges"]);
+    // Three rounds each: the lead-in run, not an AC62 counted-line list (whose items have no rows).
+    expect(r.items.map((i) => i.rows?.length)).toEqual([3, 3]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+    expect(r.sections[0]!.timer).toEqual(amrap(720));
+  });
+
+  it("Review Focus 2: two labels before the first movement keep one run", () => {
+    const r = read(["Main", "TIME", "21-15-9", "Time cap: 12:00", "AMRAP 12:", "Thrusters", "Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+  });
+
+  it("Review Focus 3: with no badge the run stays open and there is no timer", () => {
+    const r = read(["Main", "21-15-9", "Time cap: 12:00", "Thrusters", "Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters", "Pull-ups"]);
+    expect(new Set(r.items.map((i) => i.run)).size).toBe(1);
+    expect(r.sections[0]!.timer).toBeUndefined();
+  });
+
+  it("after the first movement a label still closes the run (#279)", () => {
+    const r = read(["Main", "TIME", "21-15-9", "Thrusters", "Time cap: 12:00", "Pull-ups"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Thrusters"]);
   });
 });

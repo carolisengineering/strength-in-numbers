@@ -1,4 +1,4 @@
-import { matchQuery, type QueryClient, type QueryKey } from "@tanstack/react-query";
+import { matchQuery, onlineManager, type QueryClient, type QueryKey } from "@tanstack/react-query";
 
 /**
  * A write that patches a cached workout from its own response must not be undone by a read of that workout
@@ -51,4 +51,18 @@ export async function rereadUntilLanded(queryClient: QueryClient, queryKey: Quer
     // The update counters, not the timestamps: two answers can land in the same millisecond (a canceled read reverts both).
     if (after.dataUpdateCount !== before.dataUpdateCount || after.errorUpdateCount !== before.errorUpdateCount) return;
   }
+}
+
+/**
+ * Minor 321: re-read the workout before planning from it (a timed section's Try again), and say whether the answer
+ * can be trusted. Offline it answers false at once: the live workout's read waits for the network (`networkMode`
+ * "online"), so it would never settle and the structure lock would stay held. A failed read is false too, and so is
+ * one that never landed (every attempt canceled, or no screen observing it): the cache is still the old answer.
+ */
+export async function rereadFresh(queryClient: QueryClient, queryKey: QueryKey): Promise<boolean> {
+  if (!onlineManager.isOnline()) return false;
+  const before = queryClient.getQueryState(queryKey)?.dataUpdateCount;
+  await rereadUntilLanded(queryClient, queryKey);
+  const after = queryClient.getQueryState(queryKey);
+  return before !== undefined && after?.status === "success" && after.dataUpdateCount !== before;
 }

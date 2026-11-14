@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { chooseSegmentValue, segmentChoice, segmented, segmentOptions } from "../../test/controls";
-import { FOR_TIME_HINT, SECONDS_MAX_ERROR } from "./timerCopy";
+import { useClearOnEdit } from "../../ui/useClearOnEdit";
+import { CAP_MAX_ERROR, FOR_TIME_HINT, SECONDS_MAX_ERROR } from "./timerCopy";
 import { fieldsFromTimer, type TimerFieldErrors, type TimerFieldsValue } from "./timerFields";
 import { TimerFields } from "./TimerFieldGroup";
 
@@ -127,5 +128,26 @@ describe("10.7 AC5 — errors under their fields", () => {
       "Enter the round length.",
       "Check the timer and try again.",
     ]);
+  });
+});
+
+describe("minor 537 — a refused keystroke keeps the field's message", () => {
+  const ERRORS: TimerFieldErrors = { capSeconds: CAP_MAX_ERROR };
+  function Sheet() {
+    const [value, setValue] = useState<TimerFieldsValue>({ format: "amrap", rounds: "", roundDigits: "", capDigits: "99999" });
+    const shown = useClearOnEdit<keyof TimerFieldErrors>(ERRORS);
+    return <TimerFields idPrefix="m" value={value} errors={shown.visible} onChange={setValue} onEdit={(field) => shown.edit(field)} />;
+  }
+
+  it("a refused sixth digit leaves the message; Backspace, a real edit, hides it (Review Focus 5)", async () => {
+    const user = userEvent.setup();
+    render(<Sheet />);
+    const input = screen.getByLabelText("Time limit");
+    expect(screen.getByRole("alert")).toHaveTextContent(CAP_MAX_ERROR);
+    await user.type(input, "6");
+    expect(input).toHaveValue("999:99");
+    expect(screen.getByRole("alert")).toHaveTextContent(CAP_MAX_ERROR);
+    await user.type(input, "{Backspace}");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

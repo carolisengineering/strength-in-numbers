@@ -29,6 +29,14 @@ export function offeredRow(offer: UndoOffer, exercises: readonly WorkoutExercise
   return row !== undefined && setValuesKey(row) === setValuesKey(offer.set) ? row : null;
 }
 
+/**
+ * Whether `set` is still among `sets`: by its id, or by its client key, since a queued create's row swaps the key for
+ * the server id when it syncs. The one rule for the restore (EntryRow) and Undo's reveal (minor 428). Pure.
+ */
+export function setListed(sets: readonly SetEntry[], set: SetEntry): boolean {
+  return sets.some((row) => row.id === set.id || (set.clientGeneratedId !== null && row.clientGeneratedId === set.clientGeneratedId));
+}
+
 export type UndoPhase = "undoing" | "undone" | "failed";
 
 /** AC6: "undone" only when no op for that set remains in the queue. */

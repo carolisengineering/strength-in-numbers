@@ -679,6 +679,22 @@ describe("10.4 AC68 / minor 284 — a scheme keeps the lead-in it replaces in th
   });
 });
 
+describe("10.4 AC70 / minor 371 — a movement line loses every leading bullet", () => {
+  it("Review Focus 4: `• - 15 Burpees` in a 21-15-9 run reads as `- 15 Burpees` does", () => {
+    const mixed = read(["Main", "TIME", "21-15-9", "Thrusters", "• - 15 Burpees", "Pull-ups"]);
+    const single = read(["Main", "TIME", "21-15-9", "Thrusters", "- 15 Burpees", "Pull-ups"]);
+    expect(mixed.items[1]!.name).toBe("Burpees");
+    expect(mixed.items[1]).toEqual(single.items[1]);
+  });
+
+  it("Review Focus 4: a bare `- - 15 Burpees` (no run) is one item named Burpees, as `- 15 Burpees` is", () => {
+    const double = read(["Main", "- - 15 Burpees"]);
+    const single = read(["Main", "- 15 Burpees"]);
+    expect(double.items.map((i) => i.name)).toEqual(["Burpees"]);
+    expect(double.items).toEqual(single.items);
+  });
+});
+
 describe("10.7 AC49–AC50 — section timers from the fixtures", () => {
   const fixture = (name: string) => readWorkoutText(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
   it.each<[string, (SectionTimer | null)[]]>([

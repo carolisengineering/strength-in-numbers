@@ -882,20 +882,22 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     return "separator";
   }
 
-  // 7. A movement under an open run (AC8–AC11, AC49–AC51).
+  // 7. A movement under an open run (AC8–AC11, AC49–AC51). Every leading bullet comes off (AC70, minor 371).
   if (s.run !== null && s.run.kind !== "list") {
     // Minor 280 (AC67): a bare "for time" is the run's note. The colon form only before the run's first movement:
     // after them, "For Time:" heads a new block and closes the run, as before (final review).
-    const bare = line.replace(BULLET, "").trim();
+    const bare = line.replace(LEADING_BULLETS, "").trim();
     const runId = s.run.id;
-    if (BARE_FOR_TIME.test(bare) && (!bare.endsWith(":") || !s.items.some((it) => it.run === runId))) return "note";
+    const noMovementYet = () => !s.items.some((it) => it.run === runId);
+    if (BARE_FOR_TIME.test(bare) && (!bare.endsWith(":") || noMovementYet())) return "note";
     // #262, #279: 10.4's "20 Minute Cap stays a note" also holds inside a run: every recognized Time Cap or AMRAP line
     // ("15 Minute Cap", "15 Min.Cap", "Time Cap 12:00") is the section's note and the run stays open. A label
     // ("Time cap: 12:00", "AMRAP 12:") closes the run, as "For Time:" does after the movements (owner ruling 2026-11-05).
-    if (isCapOrAmrapLine(bare) && !isCapOrAmrapLabel(bare)) return "note";
+    // AC69 (minor 370, owner decision 2026-11-13): before the run's first movement a label is a note too, and keeps it.
+    if (isCapOrAmrapLine(bare) && (!isCapOrAmrapLabel(bare) || noMovementYet())) return "note";
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
-    const { text: raw, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
+    const { text: raw, load, forTime } = splitMovement(line.replace(LEADING_BULLETS, "").replace(TRAILING_PLUS, ""));
     const loadNote = load === null ? [] : [load];
     const forTimeNote = forTime === null ? [] : [forTime];
     // Final review of minor 215: a line that only reads as structure once its "for time" is off ("Rounds for time",
@@ -943,10 +945,11 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     return "movement";
   }
 
-  // 8. A bare bullet with a rep form, or a Max form, is a rowless item (AC10, AC50). It closes an AC62 list.
+  // 8. A bare bullet with a rep form, or a Max form, is a rowless item (AC10, AC50). It closes an AC62 list. One bullet
+  // makes the line bulleted; every leading bullet comes off its text (AC70, minor 371).
   if (BULLET.test(line)) {
     s.run = null;
-    const { text, load, forTime } = splitMovement(line.replace(BULLET, "").replace(TRAILING_PLUS, ""));
+    const { text, load, forTime } = splitMovement(line.replace(LEADING_BULLETS, "").replace(TRAILING_PLUS, ""));
     const item = rowlessItemOf(text, { max: "any", counted: false });
     // Code review: "- 3 Rounds for time" is structure, never an exercise named "Rounds".
     if (!item || (forTime !== null && isStructureName(item.name))) return null;

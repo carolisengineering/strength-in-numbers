@@ -15,8 +15,8 @@ export interface UndoLastLogInput {
   select: (exerciseId: string) => void;
   /** Would making this exercise current collapse the card that holds focus? */
   focusLeavesWith: (exerciseId: string) => boolean;
-  /** Show the current panel once this commit lands (17.4's `setsAwaited`). */
-  revealPanel: () => void;
+  /** Show the current panel once the undone row has left the list (17.4's reveal; minor 428, `setListed`). */
+  revealPanel: (set: SetEntry) => void;
   onFailure: (error: unknown) => void;
   announce: (text: string) => void;
 }
@@ -114,7 +114,7 @@ export function useUndoLastLog({ exercises, ops, idMap, rest, select, focusLeave
     setUndoing((current) => (current?.row === set ? { row: set, settled: true } : current));
     if (offer.restStartedAt !== null && rest?.get()?.startedAt === offer.restStartedAt) rest.clear();
     select(offer.exerciseId);
-    revealPanel();
+    revealPanel(set);
     nextToken.current += 1;
     setRestore({ token: nextToken.current, exerciseId: offer.exerciseId, set });
   }
