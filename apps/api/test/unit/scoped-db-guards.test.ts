@@ -3,17 +3,18 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { apiProgram, overlayPath, rel as relPath, srcFiles } from "./helpers/ts-program.js";
 
 /**
  * Spec 21.1 AC14, AC16, AC20 — the static guards that keep "who is asking" on every statement:
- * - AC14: no repository, auth, records or account module runs SQL on a bare `PrismaClient`;
+ * - AC14: nothing in `src` runs a statement on a bare `PrismaClient`, outside the files `BARE_CLIENT_ALLOWED` lists
+ *   with their reasons (minor 406 widened it from four folders' raw SQL to all of `src` and any member);
  * - AC16: `shared()` is called only for the shared reference reads (and the operator scripts' cross-user listings);
  * - AC20: the composition root hands every repository factory the scoped handle, never the bare client.
  * A type-aware scan (the TypeScript checker), so a renamed variable cannot hide a bare client.
  */
 
 const API = fileURLToPath(new URL("../..", import.meta.url));
-const GUARDED_DIRS = ["src/repositories", "src/auth", "src/records", "src/account"];
 
 function filesIn(dirs: readonly string[]): string[] {
   return dirs.flatMap((d) =>
@@ -21,11 +22,6 @@ function filesIn(dirs: readonly string[]): string[] {
       .filter((f) => f.endsWith(".ts"))
       .map((f) => `${API}${d}/${f}`),
   );
-}
-
-function program(files: readonly string[]): ts.Program {
-  const config = ts.getParsedCommandLineOfConfigFile(`${API}tsconfig.json`, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => undefined })!;
-  return ts.createProgram(files, config.options);
 }
 
 const rel = (file: string) => file.slice(API.length);
@@ -39,18 +35,31 @@ function enclosingName(node: ts.Node): string {
   return "(module)";
 }
 
-/** AC14: `.$queryRaw` / `.$executeRaw` / `.$transaction` (and their Unsafe forms) on a receiver typed `PrismaClient`. */
-export function bareClientCalls(files: readonly string[]): string[] {
-  const p = program(files);
+/**
+ * AC14 (minor 406): the files that may use a bare client, each with its reason. Anything else in `src` that touches a
+ * `PrismaClient` beyond `$connect` / `$disconnect` / `$metrics` / `$on` (which run no statement) fails.
+ */
+export const BARE_CLIENT_ALLOWED: Readonly<Record<string, string>> = {
+  "src/db.ts": "The readiness probe and the pool metrics: no user's data, run before any request.",
+  "src/db/scoped.ts": "The per-user handle itself: it opens the transaction that carries the acting user's setting.",
+  "src/db/rls.ts": "The db:rls kill switch, an operator command on the owner login.",
+  "src/db/app-role.ts": "db:app-role, an operator command on the owner login that gives sin_app its login.",
+  "src/seed/catalog.ts": "The catalog seed, a release step on the owner login; it writes only the shared catalog.",
+};
+
+const NO_STATEMENT = new Set(["$connect", "$disconnect", "$metrics", "$on"]);
+
+/** AC14: each property access on a receiver typed `PrismaClient` (any union member), as `file:line text`. */
+export function bareClientUses(p: ts.Program, files: readonly string[]): string[] {
   const checker = p.getTypeChecker();
   const out: string[] = [];
   for (const file of files) {
     const sf = p.getSourceFile(file)!;
     const visit = (node: ts.Node) => {
-      if (ts.isPropertyAccessExpression(node) && /^\$(queryRaw|executeRaw|queryRawUnsafe|executeRawUnsafe|transaction)$/.test(node.name.text)) {
+      if (ts.isPropertyAccessExpression(node) && !NO_STATEMENT.has(node.name.text)) {
         const t = checker.getTypeAtLocation(node.expression);
         const names = (t.isUnion() ? t.types : [t]).map((x) => (x.aliasSymbol ?? x.getSymbol())?.getName());
-        if (names.includes("PrismaClient")) out.push(`${rel(file)}:${lineOf(sf, node)} ${node.getText(sf).slice(0, 60)}`);
+        if (names.includes("PrismaClient")) out.push(`${relPath(file)}:${lineOf(sf, node)} ${node.getText(sf).slice(0, 60)}`);
       }
       ts.forEachChild(node, visit);
     };
@@ -75,13 +84,43 @@ function sharedCallSites(files: readonly string[]): string[] {
   return [...out].sort();
 }
 
-describe("Spec 21.1 AC14 — no SQL on a bare PrismaClient in the guarded modules", () => {
-  it("src/repositories, src/auth, src/records and src/account never call $queryRaw / $executeRaw / $transaction on a PrismaClient", () => {
-    expect(bareClientCalls(filesIn(GUARDED_DIRS))).toEqual([]);
+describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient anywhere in src", () => {
+  const fixture = "src/repositories/x/fixture.ts";
+  const usesIn = (source: string) => bareClientUses(apiProgram([], { [fixture]: source }), [overlayPath(fixture)]);
+  const head = 'import { PrismaClient } from "@prisma/client";\n';
+
+  it("all of src, recursively, uses a bare client only in the allowed files", () => {
+    const files = srcFiles();
+    expect(bareClientUses(apiProgram(files), files).filter((u) => BARE_CLIENT_ALLOWED[u.slice(0, u.indexOf(":"))] === undefined)).toEqual([]);
   });
 
-  it("the scan sees a bare client where there is one (src/db.ts's readiness probe, outside the guarded modules)", () => {
-    expect(bareClientCalls([`${API}src/db.ts`]).some((s) => s.includes("checkDatabaseReady") || s.includes("$queryRaw"))).toBe(true);
+  it("every allowed file still uses a bare client (the map can't go stale)", () => {
+    const files = srcFiles();
+    const uses = bareClientUses(apiProgram(files), files);
+    for (const f of Object.keys(BARE_CLIENT_ALLOWED)) expect([f, uses.some((u) => u.startsWith(`${f}:`))]).toEqual([f, true]);
+  });
+
+  it("a model call on a bare client in a nested folder is flagged", () => {
+    const uses = usesIn(`${head}export const f = (p: PrismaClient) => p.user.update({ where: { id: "1" }, data: {} });\n`);
+    expect(uses).toHaveLength(1);
+    expect(uses[0]).toMatch(/^src\/repositories\/x\/fixture\.ts:2 p\.user/);
+  });
+
+  it("$connect, $disconnect, $metrics and $on are not statements", () => {
+    const uses = usesIn(
+      `${head}export async function f(p: PrismaClient) {\n  await p.$connect();\n  await p.$disconnect();\n  void p.$metrics;\n  void p.$on;\n}\n`,
+    );
+    expect(uses).toEqual([]);
+  });
+
+  it("a model call on the transaction client is not a bare use (Review Focus 5)", () => {
+    const uses = usesIn(`${head}export const f = (p: PrismaClient) => p.$transaction(async (tx) => tx.user.findUnique({ where: { id: "1" } }));\n`);
+    expect(uses).toHaveLength(1);
+    expect(uses[0]).toContain("p.$transaction");
+  });
+
+  it("the scan sees a bare client where there is one (src/db.ts's readiness probe)", () => {
+    expect(bareClientUses(apiProgram([`${API}src/db.ts`]), [`${API}src/db.ts`]).some((s) => s.includes("$queryRaw"))).toBe(true);
   });
 });
 
