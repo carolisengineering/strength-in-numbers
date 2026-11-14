@@ -6,7 +6,8 @@
  * Inputs (LOADTEST_LIFTER_<i> hold tokens: in memory only, never logged):
  *   LOADTEST_LIFTER_COUNT, then LOADTEST_LIFTER_<i>  JSON { token, routineId }   lifter i+1 uses entry i (minor 367)
  *   LOADTEST_TARGET, LOADTEST_BASE_URL, LOADTEST_TYPE (gym | push | burst), LOADTEST_PUSH,
- *   LOADTEST_SCHEDULE JSON Schedule, LOADTEST_SUMMARY_PATH
+ *   LOADTEST_SCHEDULE JSON Schedule, LOADTEST_SUMMARY_PATH,
+ *   LOADTEST_RUN_NONCE  this run's 32-bit nonce, mixed into each lifter's payload seed only (minor 365)
  */
 import { sleep } from "k6";
 import exec from "k6/execution";
@@ -15,7 +16,7 @@ import { Counter, Rate } from "k6/metrics";
 import { BURST_WINDOW_S, WARMUP_MAX_S, WARMUP_REQUESTS } from "../src/plan/constants.ts";
 import { newLifterState, runActions, type ExecutorIo } from "../src/plan/executor.ts";
 import { createRng } from "../src/plan/rng.ts";
-import { readLifters } from "../src/plan/lifters.ts";
+import { lifterSeeds, readLifters } from "../src/plan/lifters.ts";
 import { SEEDED_ITEMS, seededRoutineSets } from "../src/plan/routine.ts";
 import { burstOffset, stepAt, toK6Scenario, type RunType, type Schedule } from "../src/plan/schedule.ts";
 import { OPEN_APP_READS, buildSession, joinAt, joinedActions, type Action } from "../src/plan/session.ts";
@@ -31,6 +32,7 @@ const TARGET = __ENV.LOADTEST_TARGET ?? "local";
 const BASE_URL = __ENV.LOADTEST_BASE_URL ?? "http://localhost:8080";
 const PUSH = Number(__ENV.LOADTEST_PUSH ?? "1");
 const SUMMARY_PATH = __ENV.LOADTEST_SUMMARY_PATH ?? "summary.json";
+const NONCE = Number(__ENV.LOADTEST_RUN_NONCE ?? "0") >>> 0;
 
 export const options = {
   scenarios: toK6Scenario(SCHEDULE, TYPE),
@@ -99,19 +101,20 @@ export default function (data: { t0: number }): void {
   if (!lifter) throw new Error(`no account for lifter ${index + 1}; the CLI passes ${LIFTERS.length}`);
   const io = makeIo(lifter.token, data.t0);
   const iteration = exec.vu.iterationInInstance;
-  const seed = (index + 1) * 100_003 + iteration;
+  // `seed` shapes the plan (reproducible, AC2); `payload` makes the bodies, fresh each run (minor 365).
+  const { plan: seed, payload } = lifterSeeds(index, iteration, NONCE);
 
   if (TYPE === "burst") {
     sleep(burstOffset(createRng(seed), BURST_WINDOW_S));
     const reads: Action[] = OPEN_APP_READS.map((name) => ({ kind: "read", name }));
-    runActions(reads, io, newLifterState({ seed, routineId: lifter.routineId, plannedWeights: weights }));
+    runActions(reads, io, newLifterState({ seed: payload, routineId: lifter.routineId, plannedWeights: weights }));
     return;
   }
 
   const { actions } = buildSession({ seed, sets: SETS, pushFactor: PUSH });
   // The first session joins part-way so every step carries the full mix (AC13); later ones start from the top.
   const plan = iteration === 0 ? joinedActions(actions, joinAt(actions, createRng(seed * 7919))) : actions;
-  runActions(plan, io, newLifterState({ seed, routineId: lifter.routineId, plannedWeights: weights }));
+  runActions(plan, io, newLifterState({ seed: payload, routineId: lifter.routineId, plannedWeights: weights }));
 }
 
 export function handleSummary(summary: unknown): Record<string, string> {

@@ -328,7 +328,7 @@ D1–D8, D10, D11, D13 and D14 are from the owner-approved design of 2026-11-05;
 
 Calls made while building Phase A; none changes an acceptance criterion.
 
-- **Cleanup runs in the CLI's `finally`**, after the k6 child exits for any reason (Ctrl-C is forwarded to k6 and awaited), not in k6's teardown. Tokens and routine ids reach k6 through one child environment variable per lifter (`LOADTEST_LIFTER_<i>`, so 150 Auth0 tokens stay far under Linux's 128 KiB per-variable limit), never argv or disk.
+- **Cleanup runs in the CLI's `finally`**, after the k6 child exits for any reason (Ctrl-C is forwarded to k6 and awaited), not in k6's teardown. Tokens and routine ids reach k6 through one child environment variable per lifter (`LOADTEST_LIFTER_<i>`, so 150 Auth0 tokens stay far under Linux's 128 KiB per-variable limit), never argv or disk. Each run also passes `LOADTEST_RUN_NONCE` (its start time in milliseconds, 32 bits), mixed into each lifter's payload seed only, so client ids never repeat between runs while session plans stay reproducible (AC2); the result file records it.
 - **Phase A refuses `staging` and `prod`** ("… is not wired yet (Spec 16 Phase B)"); both need Auth0 tokens.
 - **A burst is judged on 5xx and 429 only.** It sends no set saves, so the set-save threshold cannot apply; its sentence reads "handles K lifters opening the app within a minute".
 - **The executor reads `GET /v1/workouts/active` after a start**, as the web app does: the start response has no exercises. A `409` on start adopts the live workout.

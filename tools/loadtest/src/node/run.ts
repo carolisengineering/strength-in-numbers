@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { BURST_STEPS, GYM_STEPS } from "../plan/constants.ts";
-import { lifterEnv } from "../plan/lifters.ts";
+import { lifterEnv, runNonce } from "../plan/lifters.ts";
 import { report, stepResults, type Report, type StepResult } from "../plan/report.ts";
 import { seededRoutineSets } from "../plan/routine.ts";
 import { burstSchedule, estimateRequests, gymSchedule, meanSessionS, type Schedule } from "../plan/schedule.ts";
@@ -118,7 +118,9 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   const start = deps.now();
   const stamp = start.toISOString().replace(/[:.]/g, "-");
   const summaryPath = `.summary-${stamp}.json`;
+  const nonce = runNonce(start);
   const env: Record<string, string> = {
+    LOADTEST_RUN_NONCE: String(nonce),
     ...lifterEnv(tokens.map((token, i) => ({ token, routineId: seeded[i]!.routineId }))),
     LOADTEST_TARGET: target.name,
     LOADTEST_BASE_URL: baseUrl,
@@ -174,6 +176,8 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     x: r.x,
     nonMonotonic: r.nonMonotonic,
     window: { start: start.toISOString(), end: deps.now().toISOString() },
+    // Not secret; with it a run's payloads can be rebuilt (minor 365).
+    runNonce: nonce,
     status: complete ? "complete" : "incomplete",
     cleanup,
     // The push gate (D9) refuses a shortened gym run, so the result records how this one was run.

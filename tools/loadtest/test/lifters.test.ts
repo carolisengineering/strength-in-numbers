@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { lifterEnv, readLifters, type LifterInput } from "../src/plan/lifters.ts";
+import { lifterEnv, lifterSeeds, readLifters, runNonce, type LifterInput } from "../src/plan/lifters.ts";
+import { startBody } from "../src/plan/payloads.ts";
+import { createRng } from "../src/plan/rng.ts";
+import { seededRoutineSets } from "../src/plan/routine.ts";
+import { buildSession } from "../src/plan/session.ts";
 
 const ROUTINE = "0190f6c2-2222-7000-8000-000000000001";
 const lifters = (n: number, tokenLength = 20): LifterInput[] =>
@@ -43,5 +47,46 @@ describe("minor 367 — one variable per lifter", () => {
 
   it("reads no lifters from an empty environment", () => {
     expect(readLifters({})).toEqual([]);
+  });
+});
+
+describe("minor 365 — a run nonce in the payload seed", () => {
+  const NOW = new Date("2026-11-14T12:00:00.000Z");
+  const id = (nonce: number) =>
+    (startBody(ROUTINE, createRng(lifterSeeds(0, 0, nonce).payload), NOW) as { clientGeneratedId: string }).clientGeneratedId;
+
+  it("keeps the plan seed, and so the session plan, independent of the nonce (AC2)", () => {
+    const a = lifterSeeds(4, 2, 111).plan;
+    const b = lifterSeeds(4, 2, 999).plan;
+    expect(a).toBe(5 * 100_003 + 2);
+    expect(b).toBe(a);
+    const plan = (seed: number) => buildSession({ seed, sets: seededRoutineSets(), pushFactor: 1 });
+    expect(plan(a)).toEqual(plan(b));
+  });
+
+  it("gives a lifter different client ids in different runs", () => {
+    expect(id(111)).not.toBe(id(222));
+  });
+
+  it("gives a lifter the same client ids for the same nonce", () => {
+    expect(id(111)).toBe(id(111));
+  });
+
+  it("never gives two lifters in one run the same payload seed", () => {
+    const nonce = runNonce(NOW);
+    const seeds = new Set(Array.from({ length: 150 }, (_, i) => lifterSeeds(i, 0, nonce).payload));
+    expect(seeds.size).toBe(150);
+  });
+
+  it("keeps the nonce and every payload seed an unsigned 32-bit integer", () => {
+    expect(runNonce(new Date(2 ** 33 + 5))).toBe(5);
+    for (const nonce of [0, 5, 2 ** 32 - 1, runNonce(NOW)]) {
+      for (const i of [0, 1, 149]) {
+        const { payload } = lifterSeeds(i, 3, nonce);
+        expect(Number.isInteger(payload)).toBe(true);
+        expect(payload).toBeGreaterThanOrEqual(0);
+        expect(payload).toBeLessThan(2 ** 32);
+      }
+    }
   });
 });

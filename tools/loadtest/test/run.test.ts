@@ -249,6 +249,15 @@ describe("secrets stay out of argv and logs", () => {
     for (const l of lines) expect(l).not.toContain(TOKEN);
   });
 
+  it("passes k6 a run nonce and records it (minor 365)", async () => {
+    const { d, results } = deps();
+    await runLoad(gym, d);
+    const [, env] = (d.spawnK6 as ReturnType<typeof vi.fn>).mock.calls[0]! as [string[], Record<string, string>];
+    const nonce = new Date("2026-11-06T12:00:00.000Z").getTime() >>> 0;
+    expect(env.LOADTEST_RUN_NONCE).toBe(String(nonce));
+    expect(results[0]!.body.runNonce).toBe(nonce);
+  });
+
   it("local runs send k6 metrics to local Prometheus unless --no-metrics-output", async () => {
     const on = deps();
     await runLoad(gym, on.d);
