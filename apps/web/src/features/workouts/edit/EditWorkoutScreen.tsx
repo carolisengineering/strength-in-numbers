@@ -35,6 +35,7 @@ import { useSectionActions } from "../sections/useSectionActions";
 import { supersetRows, type SupersetRow } from "../supersetRows";
 import type { SectionSegment } from "../sectionSegments";
 import { useRegroup } from "../useRegroup";
+import { rereadFresh } from "../readGuard";
 import { useTimedGrouping } from "../sections/useTimedGrouping";
 import { useDeleteWorkout } from "../useWorkoutMutations";
 import { WorkoutText } from "../WorkoutText";
@@ -284,6 +285,7 @@ function EditBody({
   // emits exercise_regrouped), banner and lock.
   const timedGrouping = useTimedGrouping({
     regroup,
+    reread: () => rereadFresh(queryClient, WORKOUT_KEYS.detail(workoutId)),
     readDetail: () => queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workoutId)),
     setBanner,
     structureLock,

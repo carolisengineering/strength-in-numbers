@@ -1,6 +1,6 @@
-import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import { onlineManager, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { guardReads, rereadIfStale, rereadUntilLanded } from "./readGuard";
+import { guardReads, rereadFresh, rereadIfStale, rereadUntilLanded } from "./readGuard";
 
 const KEY = ["workouts", "detail", "w1"] as const;
 let clients: QueryClient[] = [];
@@ -123,6 +123,39 @@ describe("#158 — a structure re-read resolves only once an answer has landed",
     unsubscribe();
     const before = fn.mock.calls.length;
     await rereadUntilLanded(queryClient, KEY);
+    expect(fn.mock.calls.length).toBe(before);
+  });
+});
+
+describe("minor 321 — rereadFresh: a re-read whose answer can be planned from", () => {
+  afterEach(() => onlineManager.setOnline(true));
+
+  it("a read that lands: true, and the new answer is cached", async () => {
+    let answer = "first";
+    const { queryClient } = setup(async () => answer);
+    await settle();
+    answer = "second";
+    await expect(rereadFresh(queryClient, KEY)).resolves.toBe(true);
+    expect(queryClient.getQueryData(KEY)).toBe("second");
+  });
+
+  it("a read that fails: false", async () => {
+    let calls = 0;
+    const { queryClient } = setup(async () => {
+      calls += 1;
+      if (calls > 1) throw new Error("server down");
+      return "first";
+    });
+    await settle();
+    await expect(rereadFresh(queryClient, KEY)).resolves.toBe(false);
+  });
+
+  it("Review Focus 1: offline, false at once and nothing is read (a paused read would never settle)", async () => {
+    const { queryClient, fn } = setup(async () => "server");
+    await settle();
+    const before = fn.mock.calls.length;
+    onlineManager.setOnline(false);
+    await expect(rereadFresh(queryClient, KEY)).resolves.toBe(false);
     expect(fn.mock.calls.length).toBe(before);
   });
 });

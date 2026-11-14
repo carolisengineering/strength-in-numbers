@@ -9,16 +9,17 @@ import { useTimedGrouping } from "./useTimedGrouping";
 const SET5: SectionTimer = { format: "set_timer", roundSeconds: 300, rounds: 5 };
 const ex = (name: string, sectionIndex: number | null, supersetGroup: number | null = null): ExerciseSpec => ({ modality: "weight_reps", name, sectionIndex, supersetGroup });
 
-function setup(detail: WorkoutDetail, outcomes: RegroupOutcome[]) {
+function setup(detail: WorkoutDetail, outcomes: RegroupOutcome[], options: { reread?: () => Promise<boolean> } = {}) {
   let current: WorkoutDetail = detail;
+  const reread = vi.fn(options.reread ?? (async () => true));
   const run = vi.fn<Regroup["run"]>(async () => outcomes.shift() ?? { status: "done" });
   const regroup: Regroup = { run, resend: vi.fn(), busy: false };
   const banners: (SectionBanner | null)[] = [];
   const structureLock = { current: false };
   const { result } = renderHook(() =>
-    useTimedGrouping({ regroup, readDetail: () => current, setBanner: (b) => banners.push(b), structureLock }),
+    useTimedGrouping({ regroup, reread, readDetail: () => current, setBanner: (b) => banners.push(b), structureLock }),
   );
-  return { result, run, banners, structureLock, setDetail: (d: WorkoutDetail) => (current = d) };
+  return { result, run, reread, banners, structureLock, setDetail: (d: WorkoutDetail) => (current = d) };
 }
 
 const loose3 = () => makeWorkoutDetail({ sections: [{ name: "Warm-up" }, { name: "Main", timer: SET5 }], exercises: [ex("w", 0), ex("a", 1), ex("b", 1), ex("c", 1)] });
@@ -97,5 +98,61 @@ describe("10.7 AC22 / AC23 — useTimedGrouping", () => {
     await act(() => result.current.couple(d.sections[0]!.id, "fill", "timer"));
     expect(run).not.toHaveBeenCalled();
     expect(banners).toEqual([]);
+  });
+});
+
+describe("minor 321 — Try again re-reads the workout before it plans", () => {
+  const grouped = (d: WorkoutDetail): WorkoutDetail => ({
+    ...d,
+    exercises: d.exercises.map((e) => (e.sectionId === d.sections[1]!.id ? { ...e, supersetGroup: 3 } : e)),
+  });
+
+  it("Try again re-reads first: another device's grouping is kept", async () => {
+    const d = loose3();
+    let setDetail: (d: WorkoutDetail) => void = () => {};
+    // The cache still shows the loose list; only the re-read brings the other device's superset.
+    const t = setup(d, [{ status: "failed", error: new Error("x"), retry: null }], {
+      reread: async () => {
+        setDetail(grouped(d));
+        return true;
+      },
+    });
+    setDetail = t.setDetail;
+    await act(() => t.result.current.couple(d.sections[1]!.id, "fill", "timer"));
+    await act(async () => t.banners[0]!.retry!());
+    expect(t.reread).toHaveBeenCalledTimes(1);
+    expect(t.run).toHaveBeenCalledTimes(1);
+    expect(t.banners.at(-1)).toBeNull();
+    expect(t.structureLock.current).toBe(false);
+  });
+
+  it("a failed re-read sends nothing and raises the banner again (Review Focus 1)", async () => {
+    const d = loose3();
+    const { result, run, banners, structureLock } = setup(d, [{ status: "failed", error: new Error("x"), retry: null }], {
+      reread: async () => false,
+    });
+    await act(() => result.current.couple(d.sections[1]!.id, "fill", "timer"));
+    await act(async () => banners[0]!.retry!());
+    expect(run).toHaveBeenCalledTimes(1);
+    const last = banners.at(-1)!;
+    expect(last).toMatchObject({ tone: "error", text: banners[0]!.text });
+    expect(typeof last.retry).toBe("function");
+    expect(structureLock.current).toBe(false);
+  });
+
+  it("the re-read runs under the structure lock", async () => {
+    const d = loose3();
+    let locked = false;
+    const lockRef = { current: { current: false } };
+    const t = setup(d, [{ status: "failed", error: new Error("x"), retry: null }], {
+      reread: async () => {
+        locked = lockRef.current.current;
+        return true;
+      },
+    });
+    lockRef.current = t.structureLock;
+    await act(() => t.result.current.couple(d.sections[1]!.id, "fill", "timer"));
+    await act(async () => t.banners[0]!.retry!());
+    expect(locked).toBe(true);
   });
 });

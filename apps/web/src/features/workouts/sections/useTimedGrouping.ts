@@ -17,6 +17,11 @@ const GROUP_FAILED: Readonly<Record<GroupCause, string>> = {
 export interface TimedGroupingDeps {
   /** The screen's own `useRegroup` (online-only; the edit screen's re-reads its detail and emits `exercise_regrouped`). */
   regroup: Regroup;
+  /**
+   * Re-read the workout before a Try again plans (minor 321: another device may have linked the exercises since);
+   * false if the read failed or the device is offline. The screens pass `rereadFresh` on their own query key.
+   */
+  reread(): Promise<boolean>;
   /** The workout as the cache holds it now (the structure write has re-read it). */
   readDetail(): WorkoutDetail | null | undefined;
   setBanner(banner: SectionBanner | null): void;
@@ -37,9 +42,9 @@ interface Attempt {
 /**
  * Spec 10.7 AC22–AC23 — a timed section's grouping as a second online step after a structure write. Each target
  * goes through the screen's `useRegroup.run` with the `groupRange` op (minimal PATCHes, one at a time). A failure
- * never rolls the change back: it raises a banner whose Try again works from the then-current detail — it finishes a
- * span that partly landed (`resumeTarget`), and otherwise recomputes, so a segment that is already grouped sends
- * nothing.
+ * never rolls the change back: it raises a banner whose Try again re-reads the workout (minor 321) and works from that
+ * detail — it finishes a span that partly landed (`resumeTarget`), and otherwise recomputes, so a segment that is
+ * already grouped sends nothing.
  */
 export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
   // The latest deps, so a Try again tapped later reads the screen as it is then.
@@ -51,6 +56,13 @@ export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
   // Built once: both functions read `latest` when called, so they never go stale and need no hook dependencies.
   const api = useRef<TimedGrouping | null>(null);
   if (api.current === null) {
+    /** The failure banner, whose Try again resumes `span` (the one place its text and retry are made). */
+    const failedBanner = (attempt: Attempt, span: readonly string[]): SectionBanner => ({
+      tone: "error",
+      text: GROUP_FAILED[attempt.cause],
+      retry: () => void retry(attempt, span),
+    });
+
     /** Send each target; on the first failure raise the banner, remembering the span that was being grouped. */
     const send = async (attempt: Attempt, targets: readonly TimedRegroupTarget[]): Promise<void> => {
       const { regroup, setBanner } = latest.current;
@@ -62,7 +74,7 @@ export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
         }
         if (outcome.status === "failed" || outcome.status === "busy") {
           const span = target.slots.slice(target.from, target.to + 1).map((s) => s.id);
-          setBanner({ tone: "error", text: GROUP_FAILED[attempt.cause], retry: () => void retry(attempt, span) });
+          setBanner(failedBanner(attempt, span));
           return;
         }
       }
@@ -76,12 +88,18 @@ export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
 
     /** From the banner: takes the lock itself. */
     const retry = async (attempt: Attempt, span: readonly string[]): Promise<void> => {
-      const { structureLock, setBanner, readDetail } = latest.current;
+      const { structureLock, setBanner, reread } = latest.current;
       if (structureLock.current) return;
       structureLock.current = true;
       setBanner(null);
       try {
-        const detail = readDetail();
+        // Minor 321: plan from the server's workout, not the cache, so a link made on another device stays. A read that
+        // fails (or can't start offline) sends nothing: the banner comes back with the same Try again.
+        if (!(await reread())) {
+          latest.current.setBanner(failedBanner(attempt, span));
+          return;
+        }
+        const detail = latest.current.readDetail();
         if (!detail) return;
         const resumed = resumeTarget(detail, attempt.sectionId, span);
         if (resumed === "done") return;

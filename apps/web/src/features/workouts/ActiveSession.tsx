@@ -60,6 +60,7 @@ import { FinishDialogBody, type FinishOneOff } from "./FinishDialog";
 import { finishEndedAt } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
+import { rereadFresh } from "./readGuard";
 import { useTimedGrouping } from "./sections/useTimedGrouping";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
 import { confirmationLine, notSavedYet, statusLineText, undoName } from "./undoOffer";
@@ -419,6 +420,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // Spec 10.7 AC22: a timed section's grouping, through this screen's regroup, banner and lock.
   const timedGrouping = useTimedGrouping({
     regroup,
+    reread: () => rereadFresh(queryClient, WORKOUT_KEYS.active),
     readDetail: () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active),
     setBanner,
     structureLock,
