@@ -41,6 +41,6 @@ describe("minor 557 — every failed Save is a new failure, even with the same w
     const second = result.current.formError;
     expect(first).not.toBeNull();
     expect(second).not.toBe(first);
-    expect(typeof second === "string" ? second : second?.text).toBe(typeof first === "string" ? first : first?.text);
+    expect(second?.text).toBe(first?.text);
   });
 });
