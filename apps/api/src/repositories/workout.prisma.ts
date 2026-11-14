@@ -157,9 +157,9 @@ export function toWorkoutSectionRecord(r: WorkoutSectionDbRow): WorkoutSectionRe
 }
 
 /** Spec 09.2 §6.3 — a workout's sections as one scalar subquery (the `plannedSetsJson` idiom), so a
- * statement that already selects the workout stays one statement. `parentRef` is a SQL column
- * reference (`'w.id'`, `'"workout".id'`), never user input. */
-export function workoutSectionsJson(parentRef: string): Prisma.Sql {
+ * statement that already selects the workout stays one statement. `parentRef` is a literal union of
+ * the two column references, so it can't carry user input (minor 394). */
+export function workoutSectionsJson(parentRef: "w.id" | '"workout".id'): Prisma.Sql {
   return Prisma.raw(`COALESCE((
     SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, 'notes', s.notes,
                                       'added_in_workout', s.added_in_workout, ${timedFieldsJson("s").sql})

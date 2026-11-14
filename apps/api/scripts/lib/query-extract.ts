@@ -71,35 +71,35 @@ export interface AuditRow {
 export const UNSAFE_ALLOWLIST: Record<string, string> = {
   "src/db/rls.ts#setRls": "Table names come only from the constant RLS_LOCK_ORDER / RLS_TABLES, through quoteIdent; DDL cannot take bound parameters.",
   "src/repositories/exercise.prisma.ts#exerciseColumns":
-    "Joins the constant EXERCISE_DB_COLUMNS list, optionally prefixed by a table alias every caller passes as a literal (`e`).",
+    "Joins the constant EXERCISE_DB_COLUMNS list, optionally prefixed by the table alias, whose type is the literal `\"e\"`.",
   "src/repositories/planned-sets.ts#plannedSetsJson":
     "Table and column are literal-union parameters; the parent reference is a column literal at both call sites.",
   "src/repositories/section-timer-columns.ts#timedFieldsJson": "The section alias is the literal type `\"s\"`; the rest is constant text.",
-  "src/repositories/section-timer-columns.ts#roundTimesJson": "The section reference is a column literal at every call site (`s.id`, `\"workout_section\".id`).",
+  "src/repositories/section-timer-columns.ts#roundTimesJson": "The section reference is the literal type `\"s.id\" | '\"workout_section\".id'`; the rest is constant text.",
   "src/repositories/workout-section.prisma.ts#SECTION_COLUMNS": "A constant column list plus roundTimesJson of a column literal.",
-  "src/repositories/workout.prisma.ts#workoutSectionsJson": "The parent reference is a column literal at both call sites (`w.id`, `\"workout\".id`).",
+  "src/repositories/workout.prisma.ts#workoutSectionsJson": "The parent reference is the literal type `\"w.id\" | '\"workout\".id'`; the rest is constant text.",
   "src/repositories/workout.prisma.ts#routineIsOneOffSql": "The workout alias is the literal union `w` | `\"workout\"`.",
   "src/seed/catalog.ts#upsertReference": "The table name is the literal union `muscle_group` | `equipment`; every value stays a bound parameter.",
 };
 
-const QUERY_TAGS = new Set(["$queryRaw", "$executeRaw"]);
-const UNSAFE_CALLS = new Set(["$queryRawUnsafe", "$executeRawUnsafe"]);
+export const QUERY_TAGS = new Set(["$queryRaw", "$executeRaw"]);
+export const UNSAFE_CALLS = new Set(["$queryRawUnsafe", "$executeRawUnsafe"]);
 export const WRITE_COMMAND = "pnpm --filter @sin/api run audit:queries --write";
 
 const collapse = (s: string) => s.replace(/\s+/g, " ").trim();
 
 /** `x.$queryRaw`, a destructured `$queryRaw`, … → `$queryRaw`. */
-function calleeName(expr: ts.Expression): string | undefined {
+export function calleeName(expr: ts.Expression): string | undefined {
   if (ts.isPropertyAccessExpression(expr)) return expr.name.text;
   if (ts.isIdentifier(expr)) return expr.text;
   return undefined;
 }
 
-const isPrismaMember = (expr: ts.Expression, member: string) =>
+export const isPrismaMember = (expr: ts.Expression, member: string) =>
   ts.isPropertyAccessExpression(expr) && expr.name.text === member && ts.isIdentifier(expr.expression) && expr.expression.text === "Prisma";
 
 /** Prisma's model-delegate operations: `prisma.user.findUnique(…)` runs SQL too (final review #3). */
-const MODEL_OPS = new Set([
+export const MODEL_OPS = new Set([
   "findUnique", "findUniqueOrThrow", "findFirst", "findFirstOrThrow", "findMany", "create", "createMany",
   "createManyAndReturn", "update", "updateMany", "upsert", "delete", "deleteMany", "count", "aggregate", "groupBy",
 ]);
@@ -108,7 +108,7 @@ const MODEL_OPS = new Set([
 export const MODEL_DELEGATES = new Set(["user", "exercise", "muscleGroup", "equipment", "workout", "workoutExercise", "routine", "routineItem", "routineItemSet", "workoutPlannedSet", "setEntry", "personalRecord", "routineSection", "workoutSection", "workoutSectionRound", "hevyExercisePair", "hevySectionRule", "hevyLink", "hevyAccount"]);
 
 /** `<client>.<model>.<op>(…)` on a model delegate (`prisma.user.update`, `tx.workout.findMany`). */
-function isModelCall(node: ts.CallExpression): boolean {
+export function isModelCall(node: ts.CallExpression): boolean {
   const callee = node.expression;
   if (!ts.isPropertyAccessExpression(callee) || !MODEL_OPS.has(callee.name.text)) return false;
   const model = callee.expression;

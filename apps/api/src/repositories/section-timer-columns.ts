@@ -80,9 +80,9 @@ export function timedFieldsJson(sectionAlias: "s"): Prisma.Sql {
 /**
  * A section's round times as one scalar subquery, ordered by round, `[]` when none. Shared by every
  * read and `RETURNING`, so a read never shows sections of one moment and rounds of another.
- * `sectionRef` is a SQL column reference (`'s.id'`, `'"workout_section".id'`), never user input.
+ * `sectionRef` is a literal union of the two column references, so it can't carry user input (minor 394).
  */
-export function roundTimesJson(sectionRef: string): Prisma.Sql {
+export function roundTimesJson(sectionRef: "s.id" | '"workout_section".id'): Prisma.Sql {
   return Prisma.raw(`COALESCE((
       SELECT json_agg(json_build_object('round', r.round_no, 'seconds', r.seconds) ORDER BY r.round_no)
       FROM "workout_section_round" r WHERE r.workout_section_id = ${sectionRef}
