@@ -4,7 +4,8 @@ import { MODEL_DELEGATES, QUERY_TAGS, UNSAFE_CALLS, isModelCall, isPrismaMember 
 /**
  * Minor 393 — the query audit's tripwire. `extractStatements` finds statements by syntax, so a statement spelled in a
  * way it doesn't list (a string-indexed or destructured raw method, a renamed `Prisma`, `Prisma.sql` passed around,
- * `$queryRawTyped`, a destructured table delegate, a computed `Prisma.join` separator) would run with no audit row.
+ * `$queryRawTyped`, a destructured table delegate, a computed `Prisma.join` separator, prefix or suffix, `new Prisma.Sql`,
+ * the Prisma runtime's own `sqltag` / `raw`) would run with no audit row.
  * This scan refuses those spellings by type, so a renamed client or namespace is caught as well. Each issue reads
  * `<file>:<line> rule <n>: <what> — write <accepted spelling> (<file>#<function>)`.
  *
@@ -14,7 +15,10 @@ import { MODEL_DELEGATES, QUERY_TAGS, UNSAFE_CALLS, isModelCall, isPrismaMember 
 
 const RAW_METHODS = new Set([...QUERY_TAGS, ...UNSAFE_CALLS]);
 const TYPED_SQL = "$queryRawTyped";
-const NAMESPACE_MEMBERS = new Set(["sql", "raw", "join"]);
+/** `Sql` is the class behind `Prisma.raw`: `new Prisma.Sql([text], [])` is raw SQL, so it is never accepted. */
+const NAMESPACE_MEMBERS = new Set(["sql", "raw", "join", "Sql"]);
+/** The runtime module that exports `sqltag`, `raw`, `join` and `Sql` under their own names (final review I-2). */
+const PRISMA_RUNTIME = /^@prisma\/client\/runtime(\/|$)/;
 
 /**
  * The functions that may pass a raw method around, keyed `<file>#<function>`, each with its reason. Only the scoped
@@ -93,11 +97,13 @@ export function rawSqlSpellingIssues(
           if (name === "sql" && isTag(node)) return false;
           if (name === "raw" && isCallee(node)) return false;
           if (name === "join" && isCallee(node)) {
-            const separator = (node.parent as ts.CallExpression).arguments[1];
-            if (separator === undefined || ts.isStringLiteral(separator) || ts.isNoSubstitutionTemplateLiteral(separator)) return false;
-            return report(node, 3, "a Prisma.join separator that isn't a string literal (it is raw SQL text)", 'Prisma.join(values, ", ")');
+            // The separator, prefix and suffix are raw SQL text (final review I-1).
+            const rawArgs = (node.parent as ts.CallExpression).arguments.slice(1);
+            if (rawArgs.every((a) => ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a))) return false;
+            return report(node, 3, "a Prisma.join separator, prefix or suffix that isn't a string literal (it is raw SQL text)", 'Prisma.join(values, ", ")');
           }
         }
+        if (name === "Sql") return report(node, 3, "Prisma.Sql used as a value (new Prisma.Sql([text], []) is raw SQL)", "Prisma.sql`…`, or Prisma.raw(…) on UNSAFE_ALLOWLIST");
         return report(node, 3, `Prisma.${name} used other than as Prisma.sql\`…\`, Prisma.raw(…) or Prisma.join(…)`, `Prisma.${name === "sql" ? "sql`…`" : `${name}(…)`} spelled with Prisma`);
       }
       if (MODEL_DELEGATES.has(name) && isClient(receiver)) {
@@ -114,7 +120,15 @@ export function rawSqlSpellingIssues(
       return (t.isUnion() ? t.types : [t]).filter((m) => m.isStringLiteral()).map((m) => (m as ts.StringLiteralType).value);
     };
 
+    /** Rule 5: the runtime module imported, re-exported or required directly, except as types only. */
+    const runtimeSpecifier = (spec: ts.Expression | undefined) => spec !== undefined && ts.isStringLiteralLike(spec) && PRISMA_RUNTIME.test(spec.text);
     const visit = (node: ts.Node): void => {
+      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && runtimeSpecifier(node.moduleSpecifier)) {
+        const typeOnly = ts.isImportDeclaration(node) ? node.importClause?.isTypeOnly === true : node.isTypeOnly;
+        if (!typeOnly) report(node, 5, "the Prisma runtime imported directly (its sqltag / raw / join / Sql build SQL the audit can't see)", 'import { Prisma } from "@prisma/client"');
+      } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === "require")) && runtimeSpecifier(node.arguments[0])) {
+        report(node, 5, "the Prisma runtime loaded directly (its sqltag / raw / join / Sql build SQL the audit can't see)", 'import { Prisma } from "@prisma/client"');
+      }
       if (ts.isPropertyAccessExpression(node) && !inTypePosition(node)) {
         check(node, node.expression, node.name.text, "property");
       } else if (ts.isElementAccessExpression(node) && !inTypePosition(node)) {

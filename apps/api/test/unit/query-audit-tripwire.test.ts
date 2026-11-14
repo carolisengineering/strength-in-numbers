@@ -33,7 +33,17 @@ describe("minor 393 — raw SQL only in spellings the audit lists", () => {
     ["$queryRawTyped", "// @ts-ignore the audit doesn't support typed SQL, whatever the client's version\nexport const a = tx.$queryRawTyped({});\n", 2],
     ["a delegate destructured from a client", "const { workout } = tx;\nexport const a = workout.findMany();\n", 4],
     ["a Prisma.join separator that isn't a string literal", "export const a = Prisma.join(values, sep);\n", 3],
-  ] as [string, string, number, string?][])("%s fails with rule %i", (_name, body, rule, head) => {
+    ["a Prisma.join prefix that isn't a string literal (final review I-1)", 'export const a = Prisma.join(values, ", ", sep);\n', 3],
+    ["a Prisma.join suffix that isn't a string literal (final review I-1)", 'export const a = Prisma.join(values, ", ", "(", sep);\n', 3],
+    ["new Prisma.Sql, which is Prisma.raw by another name (final review I-2)", "export const a = new Prisma.Sql([sep], []);\n", 3],
+    ["Prisma.Sql copied to a variable (final review I-2)", "const S = Prisma.Sql;\nexport const a = new S([sep], []);\n", 3],
+    [
+      "the Prisma runtime's sqltag / raw imported directly (final review I-2)",
+      "export const a = sqltag`SELECT 1`;\nexport const b = raw(sep);\n",
+      5,
+      HEAD + 'import { sqltag, raw } from "@prisma/client/runtime/library";\n',
+    ],
+  ] as [string, string, number, string?][])("%s fails with its rule", (_name, body, rule, head) => {
     const issues = issuesFor(body, head ?? HEAD);
     expect(issues).toHaveLength(1);
     expect(issues[0]).toContain(`rule ${rule}:`);
@@ -73,6 +83,8 @@ describe("minor 393 — raw SQL only in spellings the audit lists", () => {
   const b = Prisma.raw("x");
   const c = Prisma.join(values);
   const d = Prisma.join(parts, " ");
+  const e = Prisma.join(parts, ", ", "(", ")");
+  void e;
   await tx.workout.findMany();
   return [a, b, c, d];
 }
