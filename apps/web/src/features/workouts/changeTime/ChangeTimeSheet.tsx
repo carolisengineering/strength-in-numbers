@@ -1,11 +1,11 @@
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
 import type { UpdatedWorkout, WorkoutDetail } from "@sin/core";
 
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { Sheet } from "../../../ui/Sheet";
-import { SheetActions } from "../../../ui/SheetActions";
+import { SheetActions, sheetError } from "../../../ui/SheetActions";
 import { EDIT_COPY } from "../edit/editCopy";
 import { reportUnexpected } from "../reportUnexpected";
 import {
@@ -48,6 +48,8 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
   const formId = useId();
   const [errors, setErrors] = useState<ChangeTimeErrors>({});
   const [requestId, setRequestId] = useState<string | null>(null);
+  // Minor 558: every stored errors object is one Save's or check's answer, so its form line is a new failure.
+  const formError = useMemo(() => (errors.form ? sheetError(errors.form, requestId) : null), [errors, requestId]);
   const inFlight = useRef(false);
   // Took inputs the browser cannot read as a number (`badInput`) report "", which must not count as blank.
   const [unreadable, setUnreadable] = useState({ hours: false, minutes: false });
@@ -171,8 +173,7 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
         </fieldset>
       </form>
       <SheetActions
-        error={errors.form}
-        errorRequestId={requestId}
+        error={formError}
         primary={
           <Button type="submit" form={formId} busy={mutation.isPending}>
             Save time

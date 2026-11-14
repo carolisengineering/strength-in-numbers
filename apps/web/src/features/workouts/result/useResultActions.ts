@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SectionTimer, WorkoutDetail, WorkoutSection } from "@sin/core";
 import { RESULT_COPY } from "./resultCopy";
 import { diffDraft, type ResultDraft, type ResultWrite, type TimedSection } from "./resultDraft";
+import { sheetError, type SheetError } from "../../../ui/SheetActions";
 
 /**
  * What decides the sheet's fields: the format; for Time Cap whether there is a cap (Finished / Hit the cap only show
@@ -37,7 +38,7 @@ export interface ResultActions {
   close(): void;
   save(draft: ResultDraft): Promise<void>;
   busy: boolean;
-  formError: string | null;
+  formError: SheetError | null;
   logResultRefFor(sectionId: string): (node: HTMLButtonElement | null) => void;
 }
 
@@ -50,7 +51,7 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
   // `shape`: the timer's shape when the sheet opened; its fields belong to that shape (minor 333, final review #4).
   const [view, setView] = useState<{ sectionId: string; openCount: number; shape: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<SheetError | null>(null);
   const counter = useRef(0);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const callbacks = useRef(new Map<string, (node: HTMLButtonElement | null) => void>());
@@ -123,7 +124,7 @@ export function useResultActions({ workout, writer, announce, failureText }: Res
         }
         const text = failureText ? failureText(result) : RESULT_COPY.partial;
         if (text === null) close();
-        else setFormError(text);
+        else setFormError(sheetError(text));
       } finally {
         setBusy(false);
       }

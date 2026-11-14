@@ -6,6 +6,7 @@ import { chooseSegmentValue } from "../../../test/controls";
 import { sheetBody, sheetRow } from "../../../test/sheetHelpers";
 import { SECTION_COPY } from "./sectionCopy";
 import { SectionSheet, type SectionSheetProps } from "./SectionSheet";
+import { sheetError } from "../../../ui/SheetActions";
 
 const NO_ERRORS = { name: null, notes: null, form: null };
 const stored = { id: "00000000-0000-4000-8000-000000000001", position: 0, name: "Warm-up", notes: "5 min", addedInWorkout: true, timer: null, result: null, roundTimes: [] as WorkoutSection["roundTimes"] } as WorkoutSection;
@@ -103,7 +104,7 @@ describe("10.6 AC5 — the sheet", () => {
   });
 
   it("a name error shows under Name and is linked; a form error shows as a notice", () => {
-    renderSheet({ errors: { name: SECTION_COPY.nameRequired, notes: SECTION_COPY.noteTooLong, form: SECTION_COPY.fieldsGeneric } });
+    renderSheet({ errors: { name: SECTION_COPY.nameRequired, notes: SECTION_COPY.noteTooLong, form: sheetError(SECTION_COPY.fieldsGeneric) } });
     const d = dialog("New section");
     expect(d.getByLabelText("Name")).toHaveAccessibleDescription("Enter a name.");
     expect(d.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
@@ -170,7 +171,7 @@ describe("17.10 AC15 — the workout section sheet uses the action row", () => {
   });
 
   it("a form error is the row's notice", () => {
-    renderSheet({ errors: { ...NO_ERRORS, form: SECTION_COPY.fieldsGeneric } });
+    renderSheet({ errors: { ...NO_ERRORS, form: sheetError(SECTION_COPY.fieldsGeneric) } });
     expect(sheetRow().getByText(SECTION_COPY.fieldsGeneric)).toBeInTheDocument();
     expect(within(sheetBody()).queryByText(SECTION_COPY.fieldsGeneric)).toBeNull();
   });

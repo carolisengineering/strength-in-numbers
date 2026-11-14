@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 
 import { Button } from "../../ui/Button";
-import { SheetActions } from "../../ui/SheetActions";
+import { SheetActions, type SheetError } from "../../ui/SheetActions";
 import styles from "./SetEditSheet.module.css";
 import type { DeleteConfirm } from "./useDeleteConfirm";
 
@@ -18,7 +18,7 @@ export interface SetSheetActionsProps {
   /** The draft parses. */
   canSave: boolean;
   onDelete(): void;
-  formError: string | null;
+  formError: SheetError | null;
 }
 
 /**

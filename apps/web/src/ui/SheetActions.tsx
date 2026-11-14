@@ -27,12 +27,9 @@ export interface SheetActionsProps {
    * A save failure, shown above `status` so it stays in view however far the body is scrolled. It fills the sheet's
    * always-mounted live region in `InlineNotice`'s error look (minors 496, 502, 503); `null` is none. A new object is a
    * new failure: the region empties for one commit and fills again, so the same words are announced again (minor 558).
-   * Build it with `sheetError` when the failure happens, never during render. (A string is the pre-558 form, kept only
-   * until every sheet passes a `SheetError`.)
+   * Build it with `sheetError` when the failure happens, never during render.
    */
-  error?: SheetError | string | null;
-  /** A request ID shown under the failure, for support (Spec 04.1's pattern). */
-  errorRequestId?: string | null;
+  error?: SheetError | null;
 }
 
 /**
@@ -40,12 +37,12 @@ export interface SheetActionsProps {
  * so handlers, refs and `aria-*` stay on the caller's own buttons; a portal moves them into the row. Renders
  * nothing until the row's slots exist (they appear in the same commit, before paint).
  */
-export function SheetActions({ primary, danger, status, error, errorRequestId }: SheetActionsProps) {
+export function SheetActions({ primary, danger, status, error }: SheetActionsProps) {
   const slots = useContext(SheetSlotsContext);
   if (!slots) throw new Error("SheetActions must be inside a Sheet");
   const shown = useShownFailure(error);
-  const text = typeof shown === "string" ? shown : shown?.text;
-  const requestId = typeof shown === "string" ? errorRequestId : shown?.requestId;
+  const text = shown?.text;
+  const requestId = shown?.requestId;
   return (
     <>
       {portal(
@@ -74,7 +71,7 @@ function portal(slots: SheetSlots, slot: keyof SheetSlots, content: ReactNode) {
  * after that empty commit is painted, then shows it, so a screen reader hears the same words again. The same value on a
  * re-render changes nothing. Exported for its test.
  */
-export function useShownFailure(error: SheetError | string | null | undefined): SheetError | string | null {
+export function useShownFailure(error: SheetError | null | undefined): SheetError | null {
   const value = error ? error : null;
   const [shown, setShown] = useState(value);
   useEffect(() => setShown(value), [value]);

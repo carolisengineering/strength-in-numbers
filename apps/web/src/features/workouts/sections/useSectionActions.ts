@@ -10,6 +10,7 @@ import type { GroupCause } from "./useTimedGrouping";
 import type { SectionMutations } from "./sectionMutations";
 import type { SectionSheetErrors } from "./SectionSheet";
 import { resolveSectionFailure, type SectionOp } from "./resolveSectionFailure";
+import { sheetError } from "../../../ui/SheetActions";
 
 export interface SectionBanner {
   tone: "warning" | "error";
@@ -220,7 +221,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
     const failure = resolveSectionFailure(op, error, { offlineText });
     if (failure.report) reportUnexpected(op, error);
     const formOrBanner = (text: string) => {
-      if (ui.inSheet) setErrors({ ...NO_ERRORS, form: text });
+      if (ui.inSheet) setErrors({ ...NO_ERRORS, form: sheetError(text) });
       else setBanner({ tone: "error", text });
     };
     switch (failure.type) {
@@ -236,13 +237,13 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
         // Spec 10.7 AC18: another device logged times. Re-read, keep the sheet and what was typed; the next Save
         // decides again from the fresh section, so it asks first.
         await refetch();
-        setErrors({ ...NO_ERRORS, form: failure.text });
+        setErrors({ ...NO_ERRORS, form: sheetError(failure.text) });
         return;
       case "fields":
         if (ui.inSheet) {
           const timer = failure.timer ?? null;
           const unmatched = failure.name === null && failure.notes === null && timer === null;
-          setErrors({ name: failure.name, notes: failure.notes, form: unmatched ? SECTION_COPY.fieldsGeneric : null, timer });
+          setErrors({ name: failure.name, notes: failure.notes, form: unmatched ? sheetError(SECTION_COPY.fieldsGeneric) : null, timer });
         } else {
           setBanner({ tone: "error", text: SECTION_COPY.fieldsGeneric });
         }
@@ -278,7 +279,7 @@ export function useSectionActions(deps: SectionActionDeps): SectionActions {
         return;
       case "retry":
         if (op === "update-section") {
-          setErrors({ ...NO_ERRORS, form: failure.text }); // Save is the retry
+          setErrors({ ...NO_ERRORS, form: sheetError(failure.text) }); // Save is the retry
           return;
         }
         closeAll(ui.focus);

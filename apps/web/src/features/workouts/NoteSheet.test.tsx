@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { sheetBody, sheetError, sheetErrorRegion, sheetRow } from "../../test/sheetHelpers";
 import { EXERCISE_NOTE_MAX } from "./exerciseNote";
 import { NoteSheet } from "./NoteSheet";
+import { sheetError as failure } from "../../ui/SheetActions";
 
 function setup(props: Partial<Parameters<typeof NoteSheet>[0]> = {}) {
   const onSave = vi.fn();
@@ -40,13 +41,13 @@ describe("17.10 AC14, AC7 — the note sheet uses the action row", () => {
   });
 
   it("a failed save shows in the row, so it stays in view (Review Focus 1, final review #1)", () => {
-    setup({ saveError: "Couldn't save the note — try again" });
+    setup({ saveError: failure("Couldn't save the note — try again") });
     expect(sheetErrorRegion()).toHaveTextContent("Couldn't save the note — try again");
     expect(within(sheetBody()).queryByRole("alert")).toBeNull();
   });
 
   it("a note that doesn't parse shows its error under the field, and the save error waits", async () => {
-    const { user } = setup({ saveError: "Couldn't save the note — try again" });
+    const { user } = setup({ saveError: failure("Couldn't save the note — try again") });
     await user.click(screen.getByLabelText("Note"));
     await user.paste("x".repeat(EXERCISE_NOTE_MAX + 1));
     await user.click(sheetRow().getByRole("button", { name: "Save" }));

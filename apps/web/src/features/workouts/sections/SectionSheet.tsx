@@ -3,7 +3,7 @@ import type { WorkoutSection } from "@sin/core";
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { Sheet } from "../../../ui/Sheet";
-import { SheetActions } from "../../../ui/SheetActions";
+import { SheetActions, type SheetError } from "../../../ui/SheetActions";
 import { useClearOnEdit } from "../../../ui/useClearOnEdit";
 import { TimerFields } from "../../sectionTimer/TimerFieldGroup";
 import { fieldsFromTimer, timerFromFields, type TimerFieldErrors } from "../../sectionTimer/timerFields";
@@ -25,7 +25,7 @@ interface OwnErrors {
 export interface SectionSheetErrors {
   readonly name: string | null;
   readonly notes: string | null;
-  readonly form: string | null;
+  readonly form: SheetError | null;
   /** Spec 10.7 AC25: the server's timer field errors (absent = none). */
   readonly timer?: TimerFieldErrors | null;
 }

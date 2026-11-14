@@ -7,6 +7,7 @@ import type { EditScreenMode } from "../screenMode";
 import { EDIT_COPY } from "./editCopy";
 import { resolveEditFailure } from "./editFailure";
 import { useEditSetNote } from "./useEditMutations";
+import { sheetError, type SheetError } from "../../../ui/SheetActions";
 
 /**
  * Spec 18.0 AC12: the exercise-note sheet on the edit screen. Unlike live (optimistic, queued), Save waits for the
@@ -14,7 +15,7 @@ import { useEditSetNote } from "./useEditMutations";
  */
 export function EditNoteSheet({ open, exercise, onClose, mode }: { open: boolean; exercise: WorkoutExerciseDetail; onClose: () => void; mode: EditScreenMode }) {
   const save = useEditSetNote();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SheetError | null>(null);
   const inFlight = useRef(false);
 
   async function onSave(notes: string | null) {
@@ -38,14 +39,14 @@ export function EditNoteSheet({ open, exercise, onClose, mode }: { open: boolean
           mode.report(failure);
           return;
         case "message":
-          setError(failure.text);
+          setError(sheetError(failure.text));
           return;
         case "fields":
           // The server's messages are static (#57); show the first, else the row's copy.
-          setError(failure.fieldErrors[0]?.message ?? failure.fallback);
+          setError(sheetError(failure.fieldErrors[0]?.message ?? failure.fallback));
           return;
         default:
-          setError(EDIT_COPY.retry["update-note"]);
+          setError(sheetError(EDIT_COPY.retry["update-note"]));
       }
     } finally {
       inFlight.current = false;

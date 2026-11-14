@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { act, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { sheetBody, sheetError, sheetRow } from "../test/sheetHelpers";
@@ -179,7 +179,7 @@ describe("17.10 AC4 — status line and notice", () => {
   it("a save failure shows above status (a failed save stays in view)", () => {
     render(
       <Sheet open title="Edit set" onClose={vi.fn()}>
-        <SheetActions error="Couldn't save. Try again." status={<span>status text</span>} primary={<Button>Save</Button>} />
+        <SheetActions error={failure("Couldn't save. Try again.")} status={<span>status text</span>} primary={<Button>Save</Button>} />
       </Sheet>,
     );
     expect(sheetError()).toBe("Couldn't save. Try again.");
@@ -191,7 +191,7 @@ describe("17.10 AC4 — status line and notice", () => {
   describe("minor 558 — a new failure object is announced, even with the same words", () => {
     /** Every value the two-step renders, in order: what the region shows on each commit. */
     function track(first: SheetError | null) {
-      const seen: (SheetError | string | null)[] = [];
+      const seen: (SheetError | null)[] = [];
       const hook = renderHook(({ error }: { error: SheetError | null }) => {
         const shown = useShownFailure(error);
         seen.push(shown);
@@ -205,7 +205,7 @@ describe("17.10 AC4 — status line and notice", () => {
       const { seen, rerender } = track(one);
       seen.length = 0;
       rerender({ error: failure("Couldn't save.") });
-      expect(seen.map((s) => (s === null ? null : typeof s === "string" ? s : s.text))).toEqual([null, "Couldn't save."]);
+      expect(seen.map((s) => s?.text ?? null)).toEqual([null, "Couldn't save."]);
     });
 
     it("a re-render with the same object never renders empty (Review Focus 1)", () => {
@@ -324,7 +324,7 @@ describe("17.10 AC5, AC8, AC9, AC11, AC12 — the row's CSS", () => {
     expect(css).toMatch(/\.messages:has\(> :not\(:empty\)\)\s*\{[^}]*margin-bottom:\s*var\(--space-2\)/);
     render(
       <Sheet open title="Edit set" onClose={vi.fn()}>
-        <SheetActions error="Couldn't save." status={<span>Delete set 2?</span>} primary={<Button>Save</Button>} />
+        <SheetActions error={failure("Couldn't save.")} status={<span>Delete set 2?</span>} primary={<Button>Save</Button>} />
       </Sheet>,
     );
     const box = document.querySelector("dialog[open] [data-sheet-messages]") as HTMLElement;
@@ -488,10 +488,12 @@ describe("17.10 AC15, AC7 — every sheet uses the row", () => {
 });
 
 describe("minors 496, 502, 503 — one save-failure notice", () => {
+  /** Text in, one failure object per distinct text (a caller's stored state), so a rerender is not a new failure. */
   function ErrorSheet({ error, requestId }: { error: string | null; requestId?: string | null }) {
+    const stored = useMemo(() => (error === null ? null : failure(error, requestId)), [error, requestId]);
     return (
       <Sheet open title="Edit set" onClose={vi.fn()}>
-        <SheetActions error={error} errorRequestId={requestId ?? null} primary={<Button>Save</Button>} />
+        <SheetActions error={stored} primary={<Button>Save</Button>} />
       </Sheet>
     );
   }
