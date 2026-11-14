@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SetEntrySchema, type SetEntry, type WorkoutExerciseDetail } from "@sin/core";
 
 import type { OutboxOp } from "./outbox/ops";
-import { confirmationLine, notSavedYet, offeredRow, statusLineText, undoAnnouncement, undoLine, undoName, undoPhase, type UndoOffer } from "./undoOffer";
+import { confirmationLine, notSavedYet, offeredRow, setListed, statusLineText, undoAnnouncement, undoLine, undoName, undoPhase, type UndoOffer } from "./undoOffer";
 
 const SERVER_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_ID = "00000000-0000-4000-8000-000000000009";
@@ -140,5 +140,22 @@ describe("17.5 AC8 — the offer needs its set", () => {
   });
   it("a null client key never matches another null client key", () => {
     expect(offeredRow(offer(set({ clientGeneratedId: null })), listOf(set({ id: OTHER_ID, clientGeneratedId: null })))).toBeNull();
+  });
+});
+
+describe("minor 428 (code review) — setListed: is the undone row still on screen?", () => {
+  const queued = set({ id: CLIENT_KEY, clientGeneratedId: CLIENT_KEY });
+
+  it("a row that took its server id since the Undo still counts as listed", () => {
+    expect(setListed([set({ id: SERVER_ID, clientGeneratedId: CLIENT_KEY })], queued)).toBe(true);
+  });
+
+  it("the same row under its own id counts; another row doesn't", () => {
+    expect(setListed([queued], queued)).toBe(true);
+    expect(setListed([set({ id: OTHER_ID })], set())).toBe(false);
+  });
+
+  it("a synced set with no client key matches by id alone", () => {
+    expect(setListed([set({ id: OTHER_ID, clientGeneratedId: null })], set({ clientGeneratedId: null }))).toBe(false);
   });
 });

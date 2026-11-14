@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
-import { canLinkRule, ROUTINE_SECTIONS_MAX, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
+import { canLinkRule, ROUTINE_SECTIONS_MAX, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type SetEntry, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { useSession } from "../../auth/useSession";
 import { track } from "../../observability/track";
@@ -63,7 +63,7 @@ import { useRegroup } from "./useRegroup";
 import { rereadFresh } from "./readGuard";
 import { useTimedGrouping } from "./sections/useTimedGrouping";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
-import { confirmationLine, notSavedYet, statusLineText, undoName } from "./undoOffer";
+import { confirmationLine, notSavedYet, setListed, statusLineText, undoName } from "./undoOffer";
 import { useUndoLastLog } from "./useUndoLastLog";
 import { useToday } from "./useToday";
 import { WorkoutMenu } from "./WorkoutMenu";
@@ -109,7 +109,7 @@ const SYNC_TAG = { pending: RESULT_COPY.notSaved, failed: RESULT_COPY.notSavedFa
 type RegroupRequest = { type: "move"; id: string; direction: "up" | "down" } | { type: "toggleLink"; upperId: string };
 
 /** When the current panel may be shown again: a log's set count is listed, or the row an Undo deleted is gone. */
-type RevealGate = { kind: "count"; sets: number } | { kind: "gone"; setId: string };
+type RevealGate = { kind: "count"; sets: number } | { kind: "gone"; set: SetEntry };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -293,7 +293,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // element drags the list to its place in the flow.
   const revealReady =
     revealGate !== null &&
-    (revealGate.kind === "count" ? totalSets >= revealGate.sets : !exercises.some((e) => e.sets.some((s) => s.id === revealGate.setId)));
+    (revealGate.kind === "count" ? totalSets >= revealGate.sets : !exercises.some((e) => setListed(e.sets, revealGate.set)));
   useEffect(() => {
     if (!revealReady) return;
     setRevealGate(null);
@@ -371,7 +371,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       const leaving = current.currentId;
       return leaving !== null && leaving !== id && (headingRefs.current.get(leaving)?.closest("article")?.contains(document.activeElement) ?? false);
     },
-    revealPanel: (setId) => setRevealGate({ kind: "gone", setId }),
+    revealPanel: (set) => setRevealGate({ kind: "gone", set }),
     onFailure: (error) => void handleFailure("delete-set", error),
     announce: setAnnouncement,
   });

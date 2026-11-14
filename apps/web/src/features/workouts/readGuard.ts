@@ -56,10 +56,13 @@ export async function rereadUntilLanded(queryClient: QueryClient, queryKey: Quer
 /**
  * Minor 321: re-read the workout before planning from it (a timed section's Try again), and say whether the answer
  * can be trusted. Offline it answers false at once: the live workout's read waits for the network (`networkMode`
- * "online"), so it would never settle and the structure lock would stay held. A failed read is false too.
+ * "online"), so it would never settle and the structure lock would stay held. A failed read is false too, and so is
+ * one that never landed (every attempt canceled, or no screen observing it): the cache is still the old answer.
  */
 export async function rereadFresh(queryClient: QueryClient, queryKey: QueryKey): Promise<boolean> {
   if (!onlineManager.isOnline()) return false;
+  const before = queryClient.getQueryState(queryKey)?.dataUpdateCount;
   await rereadUntilLanded(queryClient, queryKey);
-  return queryClient.getQueryState(queryKey)?.status !== "error";
+  const after = queryClient.getQueryState(queryKey);
+  return before !== undefined && after?.status === "success" && after.dataUpdateCount !== before;
 }

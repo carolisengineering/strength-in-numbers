@@ -158,4 +158,22 @@ describe("minor 321 — rereadFresh: a re-read whose answer can be planned from"
     await expect(rereadFresh(queryClient, KEY)).resolves.toBe(false);
     expect(fn.mock.calls.length).toBe(before);
   });
+
+  it("every re-read canceled (set writes meanwhile): false, so nothing is planned from the old cache (code review)", async () => {
+    let calls = 0;
+    const holder: { client?: QueryClient } = {};
+    const { queryClient } = setup(async () => {
+      calls += 1;
+      if (calls > 1) {
+        // Each re-read meets a set write's guardReads, which cancels it.
+        void holder.client!.cancelQueries({ queryKey: KEY });
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      return `answer ${calls}`;
+    });
+    holder.client = queryClient;
+    await settle();
+    await expect(rereadFresh(queryClient, KEY)).resolves.toBe(false);
+    expect(queryClient.getQueryData(KEY)).toBe("answer 1");
+  });
 });

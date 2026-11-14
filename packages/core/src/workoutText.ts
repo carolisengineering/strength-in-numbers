@@ -888,13 +888,13 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     // after them, "For Time:" heads a new block and closes the run, as before (final review).
     const bare = line.replace(LEADING_BULLETS, "").trim();
     const runId = s.run.id;
-    const noMovementYet = !s.items.some((it) => it.run === runId);
-    if (BARE_FOR_TIME.test(bare) && (!bare.endsWith(":") || noMovementYet)) return "note";
+    const noMovementYet = () => !s.items.some((it) => it.run === runId);
+    if (BARE_FOR_TIME.test(bare) && (!bare.endsWith(":") || noMovementYet())) return "note";
     // #262, #279: 10.4's "20 Minute Cap stays a note" also holds inside a run: every recognized Time Cap or AMRAP line
     // ("15 Minute Cap", "15 Min.Cap", "Time Cap 12:00") is the section's note and the run stays open. A label
     // ("Time cap: 12:00", "AMRAP 12:") closes the run, as "For Time:" does after the movements (owner ruling 2026-11-05).
     // AC69 (minor 370, owner decision 2026-11-13): before the run's first movement a label is a note too, and keeps it.
-    if (isCapOrAmrapLine(bare) && (!isCapOrAmrapLabel(bare) || noMovementYet)) return "note";
+    if (isCapOrAmrapLine(bare) && (!isCapOrAmrapLabel(bare) || noMovementYet())) return "note";
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
     const { text: raw, load, forTime } = splitMovement(line.replace(LEADING_BULLETS, "").replace(TRAILING_PLUS, ""));
