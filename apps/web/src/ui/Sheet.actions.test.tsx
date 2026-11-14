@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { render, screen, within } from "@testing-library/react";
+import { act, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useId, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -11,7 +11,7 @@ import { sheetBody, sheetError, sheetRow } from "../test/sheetHelpers";
 
 import { Button } from "./Button";
 import { Sheet } from "./Sheet";
-import { SheetActions } from "./SheetActions";
+import { SheetActions, sheetError as failure, useShownFailure, type SheetError } from "./SheetActions";
 
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "Sheet.module.css"), "utf8");
 const tokens = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "tokens.css"), "utf8");
@@ -186,6 +186,86 @@ describe("17.10 AC4 — status line and notice", () => {
     const region = document.querySelector("dialog[open] [data-sheet-error]") as HTMLElement;
     const status = sheetRow().getByText("status text");
     expect(region.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  describe("minor 558 — a new failure object is announced, even with the same words", () => {
+    /** Every value the two-step renders, in order: what the region shows on each commit. */
+    function track(first: SheetError | null) {
+      const seen: (SheetError | string | null)[] = [];
+      const hook = renderHook(({ error }: { error: SheetError | null }) => {
+        const shown = useShownFailure(error);
+        seen.push(shown);
+        return shown;
+      }, { initialProps: { error: first } });
+      return { seen, ...hook };
+    }
+
+    it("the same failure twice, with no clear in between, renders empty and then the failure again", () => {
+      const one = failure("Couldn't save.");
+      const { seen, rerender } = track(one);
+      seen.length = 0;
+      rerender({ error: failure("Couldn't save.") });
+      expect(seen.map((s) => (s === null ? null : typeof s === "string" ? s : s.text))).toEqual([null, "Couldn't save."]);
+    });
+
+    it("a re-render with the same object never renders empty (Review Focus 1)", () => {
+      const one = failure("Couldn't save.");
+      const { seen, rerender } = track(one);
+      rerender({ error: one });
+      rerender({ error: one });
+      expect(seen.every((s) => s === one)).toBe(true);
+    });
+
+    it("in the sheet: the same words twice end with the failure shown", () => {
+      const view = (error: SheetError | null) => (
+        <Sheet open title="Edit set" onClose={vi.fn()}>
+          <SheetActions error={error} primary={<Button>Save</Button>} />
+        </Sheet>
+      );
+      const { rerender } = render(view(failure("Couldn't save.")));
+      expect(sheetError()).toBe("Couldn't save.");
+      rerender(view(failure("Couldn't save.")));
+      expect(sheetError()).toBe("Couldn't save.");
+    });
+
+    it("a failure, a success, then the same words show again (Review Focus 2)", () => {
+      const view = (error: SheetError | null) => (
+        <Sheet open title="Edit set" onClose={vi.fn()}>
+          <SheetActions error={error} primary={<Button>Save</Button>} />
+        </Sheet>
+      );
+      const { rerender } = render(view(failure("Couldn't save.")));
+      rerender(view(null));
+      expect(sheetError()).toBe("");
+      rerender(view(failure("Couldn't save.")));
+      expect(sheetError()).toBe("Couldn't save.");
+    });
+
+    it("closing the sheet mid-way neither warns nor throws (Review Focus 3)", () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const view = (error: SheetError | null) => (
+        <Sheet open title="Edit set" onClose={vi.fn()}>
+          <SheetActions error={error} primary={<Button>Save</Button>} />
+        </Sheet>
+      );
+      const { rerender, unmount } = render(view(failure("Couldn't save.")));
+      act(() => {
+        rerender(view(failure("Couldn't save.")));
+        unmount();
+      });
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
+    it("the request ID shows under the failure", () => {
+      render(
+        <Sheet open title="Edit set" onClose={vi.fn()}>
+          <SheetActions error={failure("Couldn't save.", "req-123")} primary={<Button>Save</Button>} />
+        </Sheet>,
+      );
+      const region = document.querySelector("dialog[open] [data-sheet-error]") as HTMLElement;
+      expect(region.textContent).toContain("req-123");
+    });
   });
 
   it("the status box takes no room while empty; the error region stays rendered (a hidden live region isn't watched)", () => {
