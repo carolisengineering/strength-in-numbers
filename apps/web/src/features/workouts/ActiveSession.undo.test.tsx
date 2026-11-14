@@ -469,6 +469,33 @@ describe("17.5 AC10 — back to the exercise", () => {
   });
 });
 
+describe("minor 428 — after an auto-advance Undo, the panel is revealed only once the undone row has left", () => {
+  it.each<["online" | "offline, unsent" | "offline, synced"]>([["online"], ["offline, unsent"], ["offline, synced"]])(
+    "%s: no scroll of A's panel while the undone row is still listed",
+    async (mode) => {
+      const { fake, user } = await setup([ex("A", { supersetGroup: 1, plannedSets: planned(3) }), ex("B", { supersetGroup: 1, plannedSets: planned(3) })]);
+      if (mode === "offline, unsent") goOffline(fake);
+      await user.click(logButton("A"));
+      await waitFor(() => expect(logButton("B")).toBeInTheDocument());
+      await waitFor(() => expect(undoButton()).toBeInTheDocument());
+      if (mode !== "offline, unsent") await waitFor(() => expect(setsOf(fake)).toHaveLength(1));
+      if (mode === "offline, synced") goOffline(fake);
+      // Each scroll of A's panel notes how many logged rows A showed at that moment.
+      const aRows = () => within(card(/^A,/)).queryAllByRole("button", { name: /^\d+ ?\d* kg × / });
+      const listedAtScroll: number[] = [];
+      scroll.mockImplementation(function (this: Element) {
+        const a = card(/^A,/);
+        if (a.contains(this) && this.matches("form")) listedAtScroll.push(aRows().length);
+      });
+      await user.click(undoButton()!);
+      await waitFor(() => expect(logButton("A")).toBeInTheDocument());
+      await waitFor(() => expect(aRows()).toHaveLength(0));
+      await waitFor(() => expect(listedAtScroll.length).toBeGreaterThan(0));
+      expect(listedAtScroll.every((n) => n === 0)).toBe(true);
+    },
+  );
+});
+
 describe("17.5 AC11 — the values come back", () => {
   it("a warm-up's weight, reps and type return, and one tap re-logs them as a prefill under a new key", async () => {
     const warm: PlannedSet[] = [{ setType: "warmup", repsLow: 5, repsHigh: 5, weight: 50, weightUnit: "kg" }, ...planned(2)];
