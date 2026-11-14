@@ -103,6 +103,8 @@ try {
   const t0 = performance.now();
   const finish = await repo.finishImport(user);
   const finishMs = performance.now() - t0;
+  // Spec 21.1: RLS hides rows rather than failing, and a finish that rebuilt nothing would be fast and measure nothing (minor 436).
+  if (finish.rootCount === 0) throw new Error("the finish rebuilt no records: the recompute was not measured");
 
   batches.sort((a, b) => a - b);
   const pct = (p: number) => batches[Math.min(batches.length - 1, Math.ceil((p / 100) * batches.length) - 1)]!;

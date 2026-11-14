@@ -96,6 +96,8 @@ try {
     rows = await once();
     t.push(performance.now() - t0);
   }
+  // Spec 21.1: RLS hides rows rather than failing, and an empty usage list would be fast and measure nothing (minor 436).
+  if (rows !== EXERCISES) throw new Error(`expected ${EXERCISES} usage entries, got ${rows}`);
   t.sort((a, b) => a - b);
   const pct = (p: number) => t[Math.min(t.length - 1, Math.ceil((p / 100) * t.length) - 1)]!;
   process.stdout.write(
