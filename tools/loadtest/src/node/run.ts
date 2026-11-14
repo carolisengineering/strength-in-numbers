@@ -40,20 +40,26 @@ export interface RunDeps {
 export interface GymResult {
   n: number | null;
   status?: string;
-  flags?: { steps: number[] | null; holdScale: number | null };
+  cleanup?: string;
+  flags?: { steps: number[] | null; holdScale: number | null; lifters?: number | null };
 }
 
 /**
- * D9 / minor 366 — a push run may follow only a gym run that finished, wasn't shortened with the local-only
- * `--steps` / `--hold-scale`, and passed at least one step. Returns why not, or `null` when it may.
+ * D9 / minor 366 — a push run may follow only a gym run that finished, cleaned up after itself (leftover live
+ * workouts would skew the push), climbed the full ladder (no `--steps`, `--hold-scale` or `--lifters`: a push
+ * climbs the full ladder, so one tested step is not enough), and passed at least one step. Returns why not, or
+ * `null` when it may.
  */
 export function gymGate(result: GymResult | undefined): string | null {
   if (!result) return "there is no gym run";
   if (result.status !== "complete") return "the newest gym run is incomplete";
+  if (result.cleanup !== "done") return "the newest gym run's cleanup failed";
   if (!result.flags) return "the newest gym run doesn't record how it was run";
   if (result.flags.steps !== null || result.flags.holdScale !== null) {
     return "the newest gym run was shortened with --steps / --hold-scale";
   }
+  // `!== null`, so a file written before `lifters` was recorded doesn't pass either.
+  if (result.flags.lifters !== null) return "the newest gym run used --lifters instead of the full ladder";
   if (result.n === null) return "the newest gym run has no passing step";
   return null;
 }
@@ -181,7 +187,7 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     status: complete ? "complete" : "incomplete",
     cleanup,
     // The push gate (D9) refuses a shortened gym run, so the result records how this one was run.
-    flags: { steps: cmd.steps ?? null, holdScale: cmd.holdScale ?? null },
+    flags: { steps: cmd.steps ?? null, holdScale: cmd.holdScale ?? null, lifters: cmd.lifters ?? null },
   });
   for (const line of table(steps)) deps.log(line);
   deps.log(r.sentence);

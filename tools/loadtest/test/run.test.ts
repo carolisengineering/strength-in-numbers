@@ -153,22 +153,22 @@ describe("result file and sentence", () => {
       n: 3,
       nonMonotonic: false,
       window: { start: "2026-11-06T12:00:00.000Z", end: "2026-11-06T12:00:00.000Z" },
-      flags: { steps: [1, 2, 3], holdScale: 0.05 },
+      flags: { steps: [1, 2, 3], holdScale: 0.05, lifters: 3 },
     });
     expect(lines).toContain("local handles 3 lifters mid-workout at the same time; nothing failed up to the largest step tried");
   });
 
-  it("a run with only --lifters records no flags (minor 366)", async () => {
+  it("a run with only --lifters records it, so the push gate can refuse it (minor 366)", async () => {
     const { d, results } = deps({ readSummary: vi.fn(() => passingSummary(1)) });
     const lifterOnly: RunCommand = { ...gym, lifters: 3 };
     delete lifterOnly.steps;
     delete lifterOnly.holdScale;
     await runLoad(lifterOnly, d);
-    expect(results[0]!.body.flags).toEqual({ steps: null, holdScale: null });
+    expect(results[0]!.body.flags).toEqual({ steps: null, holdScale: null, lifters: 3 });
   });
 });
 
-const ok: GymResult = { n: 25, status: "complete", flags: { steps: null, holdScale: null } };
+const ok: GymResult = { n: 25, status: "complete", cleanup: "done", flags: { steps: null, holdScale: null, lifters: null } };
 
 describe("minor 366 — gymGate", () => {
   it("refuses with no gym run", () => {
@@ -179,14 +179,24 @@ describe("minor 366 — gymGate", () => {
     expect(gymGate({ ...ok, status: "incomplete" })).toBe("the newest gym run is incomplete");
   });
 
+  it("refuses a gym run whose cleanup failed: its live workouts would skew the push", () => {
+    expect(gymGate({ ...ok, cleanup: "failed" })).toBe("the newest gym run's cleanup failed");
+  });
+
   it("refuses a result file that doesn't record its flags", () => {
-    expect(gymGate({ n: 25, status: "complete" })).toBe("the newest gym run doesn't record how it was run");
+    expect(gymGate({ n: 25, status: "complete", cleanup: "done" })).toBe("the newest gym run doesn't record how it was run");
   });
 
   it("refuses a run shortened with --steps or --hold-scale", () => {
     const shortened = "the newest gym run was shortened with --steps / --hold-scale";
-    expect(gymGate({ ...ok, flags: { steps: [1, 2], holdScale: null } })).toBe(shortened);
-    expect(gymGate({ ...ok, flags: { steps: null, holdScale: 0.5 } })).toBe(shortened);
+    expect(gymGate({ ...ok, flags: { steps: [1, 2], holdScale: null, lifters: null } })).toBe(shortened);
+    expect(gymGate({ ...ok, flags: { steps: null, holdScale: 0.5, lifters: null } })).toBe(shortened);
+  });
+
+  it("refuses a run with --lifters N: a push climbs the full ladder, far past one tested step", () => {
+    expect(gymGate({ ...ok, flags: { steps: null, holdScale: null, lifters: 3 } })).toBe(
+      "the newest gym run used --lifters instead of the full ladder",
+    );
   });
 
   it("refuses a run with no passing step", () => {
