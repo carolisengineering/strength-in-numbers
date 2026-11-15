@@ -69,6 +69,20 @@ describe("AC19 — setup-accounts", () => {
     expect(await setupAccounts(2, lagging, s, { dryRun: false, log: () => {} })).toEqual({ created: 1, existing: 1 });
   });
 
+  // /code-review (16B): a connection name pointing at the real users' connection must not get 150 shared-password
+  // accounts. Any account there that isn't a load-test account stops the command, and no address is printed.
+  it("refuses a connection that holds anything but load-test accounts, creating nothing and naming no one", async () => {
+    const { client, created } = fakeClient([...emails(2), "real.person@example.com"]);
+    const lines: string[] = [];
+    const err = await setupAccounts(5, client, s, { dryRun: false, log: (l) => lines.push(l) }).catch((e: Error) => e);
+    expect((err as Error).message).toBe(
+      'connection "loadtest" holds 1 account that isn\'t a load-test account; LOADTEST_AUTH0_CONNECTION must name the dedicated load-test connection (runbook load-testing.md §2.2)',
+    );
+    expect((err as Error).message).not.toContain("real.person");
+    expect(created).toHaveLength(0);
+    await expect(setupAccounts(5, client, s, { dryRun: true, log: () => {} })).rejects.toThrow(/isn't a load-test account/);
+  });
+
   it("refuses to run without its Management credentials, naming the variable", () => {
     const dir = mkdtempSync(join(tmpdir(), "loadtest-setup-"));
     const path = join(dir, ".env.loadtest");

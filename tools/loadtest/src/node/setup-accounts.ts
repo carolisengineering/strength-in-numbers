@@ -111,6 +111,15 @@ export async function setupAccounts(
 ): Promise<{ created: number; existing: number }> {
   const connection = s.get("LOADTEST_AUTH0_CONNECTION");
   const have = await client.listConnectionEmails(connection);
+  // A wrong connection name (the real users' one) must never get shared-password accounts: anything on it that isn't a
+  // load-test account stops the command. The count is printed, never an address.
+  const strangers = [...have].filter((email) => !/^loadtest\+\d{3,}@example\.test$/.test(email)).length;
+  if (strangers > 0) {
+    throw new Error(
+      `connection "${connection}" holds ${strangers} account${strangers === 1 ? " that isn't a load-test account" : "s that aren't load-test accounts"}; ` +
+        "LOADTEST_AUTH0_CONNECTION must name the dedicated load-test connection (runbook load-testing.md §2.2)",
+    );
+  }
   const wanted = accountIds(count).map(accountEmail);
   const missing = wanted.filter((email) => !have.has(email));
   let existing = wanted.length - missing.length;
