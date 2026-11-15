@@ -33,6 +33,8 @@ export function runNonce(at: Date): number {
  * iteration, so a plan is reproducible (AC2). `payload` (client ids, reps, weights) also mixes in the run's nonce,
  * so a run never resends the last run's client ids, which the API would replay as the old workout (minor 365).
  * Multiplying by an odd constant and XOR-ing one nonce is one-to-one mod 2^32, so lifters in a run never share it.
+ * Minor 578: their generators can still meet on mulberry32's single 2^32 cycle and make the same client id. That's
+ * harmless: client ids are unique per account, not across accounts.
  */
 export function lifterSeeds(index: number, iteration: number, nonce: number): { plan: number; payload: number } {
   const plan = (index + 1) * 100_003 + iteration;
@@ -43,31 +45,38 @@ const WHOLE = /^\d+$/;
 const NONCE = "LOADTEST_RUN_NONCE";
 
 /**
- * The lifters `lifterEnv` wrote. Minor 580: a missing or bad count refuses to start (k6 outside the CLI would
- * otherwise run every iteration into "no account for lifter i"). Minor 577: a missing, unparseable or incomplete
- * variable is named, never quoted: its value holds a token, and a JSON parse error quotes the start of it.
+ * The lifter count `lifterEnv` wrote. Minor 580: a missing or bad count refuses to start (k6 outside the CLI would
+ * otherwise run every iteration into "no account for lifter i").
  */
-export function readLifters(env: Record<string, string | undefined>): LifterInput[] {
+export function readLifterCount(env: Record<string, string | undefined>): number {
   const raw = env[COUNT];
   const count = raw !== undefined && WHOLE.test(raw) ? Number(raw) : 0;
   if (count < 1) throw new Error(`${COUNT} is missing or not a whole number of at least 1`);
-  return Array.from({ length: count }, (_, i) => {
-    const key = lifterKey(i);
-    const where = `(lifter ${i + 1} of ${count})`;
-    const value = env[key];
-    if (value === undefined) throw new Error(`missing ${key} ${where}`);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(value);
-    } catch {
-      throw new Error(`${key} is not valid JSON ${where}`);
-    }
-    const { token, routineId } = (typeof parsed === "object" && parsed !== null ? parsed : {}) as Partial<Record<keyof LifterInput, unknown>>;
-    if (typeof token !== "string" || token === "" || typeof routineId !== "string" || routineId === "") {
-      throw new Error(`${key} has no token or routineId ${where}`);
-    }
-    return { token, routineId };
-  });
+  return count;
+}
+
+/**
+ * Lifter `index`, from its own variable only (minor 581: each k6 VU parses one, not all `count`). Minor 577: a
+ * missing, unparseable or incomplete variable is named, never quoted: its value holds a token, and a JSON parse error
+ * quotes the start of it.
+ */
+export function readLifter(env: Record<string, string | undefined>, index: number, count: number): LifterInput {
+  if (index >= count) throw new Error(`no account for lifter ${index + 1}; the CLI passes ${count}`);
+  const key = lifterKey(index);
+  const where = `(lifter ${index + 1} of ${count})`;
+  const value = env[key];
+  if (value === undefined) throw new Error(`missing ${key} ${where}`);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error(`${key} is not valid JSON ${where}`);
+  }
+  const { token, routineId } = (typeof parsed === "object" && parsed !== null ? parsed : {}) as Partial<Record<keyof LifterInput, unknown>>;
+  if (typeof token !== "string" || token === "" || typeof routineId !== "string" || routineId === "") {
+    throw new Error(`${key} has no token or routineId ${where}`);
+  }
+  return { token, routineId };
 }
 
 /** Minor 580: this run's nonce as the CLI wrote it; missing or not a 32-bit whole number refuses to start. */

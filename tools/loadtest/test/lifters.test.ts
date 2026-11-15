@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lifterEnv, lifterSeeds, readLifters, readNonce, runNonce, type LifterInput } from "../src/plan/lifters.ts";
+import { lifterEnv, lifterSeeds, readLifter, readLifterCount, readNonce, runNonce, type LifterInput } from "../src/plan/lifters.ts";
 import { startBody } from "../src/plan/payloads.ts";
 import { createRng } from "../src/plan/rng.ts";
 import { seededRoutineSets } from "../src/plan/routine.ts";
@@ -12,7 +12,8 @@ const lifters = (n: number, tokenLength = 20): LifterInput[] =>
 describe("minor 367 — one variable per lifter", () => {
   it("round-trips the lifters in order", () => {
     const xs = lifters(3);
-    expect(readLifters(lifterEnv(xs))).toEqual(xs);
+    const env = lifterEnv(xs);
+    expect(xs.map((_, i) => readLifter(env, i, readLifterCount(env)))).toEqual(xs);
   });
 
   it("keeps every variable small at 150 Auth0-length tokens", () => {
@@ -37,7 +38,7 @@ describe("minor 367 — one variable per lifter", () => {
     const env = { LOADTEST_LIFTER_COUNT: "2", LOADTEST_LIFTER_0: JSON.stringify(first) };
     let message = "";
     try {
-      readLifters(env);
+      readLifter(env, 1, 2);
     } catch (err) {
       message = (err as Error).message;
     }
@@ -46,7 +47,7 @@ describe("minor 367 — one variable per lifter", () => {
   });
 
   it("minor 580 (replaces 'reads no lifters from an empty environment'): a missing count refuses to start", () => {
-    expect(() => readLifters({})).toThrow("LOADTEST_LIFTER_COUNT is missing or not a whole number of at least 1");
+    expect(() => readLifterCount({})).toThrow("LOADTEST_LIFTER_COUNT is missing or not a whole number of at least 1");
   });
 });
 
@@ -103,14 +104,14 @@ const thrown = (f: () => unknown): string => {
 
 describe("minor 577 — a bad lifter variable is named, never quoted", () => {
   it("invalid JSON names the variable and holds none of the value", () => {
-    const message = thrown(() => readLifters({ LOADTEST_LIFTER_COUNT: "1", LOADTEST_LIFTER_0: "eyJsecret-not-json" }));
+    const message = thrown(() => readLifter({ LOADTEST_LIFTER_COUNT: "1", LOADTEST_LIFTER_0: "eyJsecret-not-json" }, 0, 1));
     expect(message).toBe("LOADTEST_LIFTER_0 is not valid JSON (lifter 1 of 1)");
     expect(message).not.toContain("eyJsecret");
   });
 
   it("a lifter with no token or routineId is named the same way", () => {
     for (const value of ['{"token":"","routineId":"r"}', '{"token":"t"}', "[]", "null"]) {
-      expect(thrown(() => readLifters({ LOADTEST_LIFTER_COUNT: "1", LOADTEST_LIFTER_0: value })), value).toBe("LOADTEST_LIFTER_0 has no token or routineId (lifter 1 of 1)");
+      expect(thrown(() => readLifter({ LOADTEST_LIFTER_COUNT: "1", LOADTEST_LIFTER_0: value }, 0, 1)), value).toBe("LOADTEST_LIFTER_0 has no token or routineId (lifter 1 of 1)");
     }
   });
 });
@@ -118,7 +119,7 @@ describe("minor 577 — a bad lifter variable is named, never quoted", () => {
 describe("minor 580 — k6 refuses to start without the CLI's variables", () => {
   it("Review Focus 5: a count of 0, 3.5 or abc refuses, naming the variable", () => {
     for (const count of ["0", "3.5", "abc", "-1", ""]) {
-      expect(thrown(() => readLifters({ LOADTEST_LIFTER_COUNT: count })), count).toBe("LOADTEST_LIFTER_COUNT is missing or not a whole number of at least 1");
+      expect(thrown(() => readLifterCount({ LOADTEST_LIFTER_COUNT: count })), count).toBe("LOADTEST_LIFTER_COUNT is missing or not a whole number of at least 1");
     }
   });
 
@@ -133,5 +134,27 @@ describe("minor 580 — k6 refuses to start without the CLI's variables", () => 
     expect(readNonce({ LOADTEST_RUN_NONCE: String(nonce) })).toBe(nonce);
     expect(readNonce({ LOADTEST_RUN_NONCE: "0" })).toBe(0);
     expect(readNonce({ LOADTEST_RUN_NONCE: "4294967295" })).toBe(4294967295);
+  });
+});
+
+describe("minor 581 — a VU reads only its own lifter", () => {
+  it("reads lifter i from LOADTEST_LIFTER_i alone, so another lifter's bad variable doesn't stop it", () => {
+    const [first] = lifters(1);
+    const env = { LOADTEST_LIFTER_COUNT: "2", LOADTEST_LIFTER_0: JSON.stringify(first), LOADTEST_LIFTER_1: "eyJother-secret-not-json" };
+    expect(readLifter(env, 0, 2)).toEqual(first);
+    const message = thrown(() => readLifter(env, 1, 2));
+    expect(message).toBe("LOADTEST_LIFTER_1 is not valid JSON (lifter 2 of 2)");
+    expect(message).not.toContain("eyJother");
+  });
+
+  it("a lifter past the count names the count the CLI passed", () => {
+    const env = lifterEnv(lifters(2));
+    expect(thrown(() => readLifter(env, 2, 2))).toBe("no account for lifter 3; the CLI passes 2");
+  });
+
+  it("round-trips every lifter by index", () => {
+    const xs = lifters(5);
+    const env = lifterEnv(xs);
+    for (let i = 0; i < xs.length; i += 1) expect(readLifter(env, i, xs.length)).toEqual(xs[i]);
   });
 });
