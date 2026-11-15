@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lifterEnv, lifterSeeds, readLifters, runNonce, type LifterInput } from "../src/plan/lifters.ts";
+import { lifterEnv, lifterSeeds, readLifters, readNonce, runNonce, type LifterInput } from "../src/plan/lifters.ts";
 import { startBody } from "../src/plan/payloads.ts";
 import { createRng } from "../src/plan/rng.ts";
 import { seededRoutineSets } from "../src/plan/routine.ts";
@@ -45,8 +45,8 @@ describe("minor 367 — one variable per lifter", () => {
     expect(message).not.toContain(first!.token);
   });
 
-  it("reads no lifters from an empty environment", () => {
-    expect(readLifters({})).toEqual([]);
+  it("minor 580 (replaces 'reads no lifters from an empty environment'): a missing count refuses to start", () => {
+    expect(() => readLifters({})).toThrow("LOADTEST_LIFTER_COUNT is missing or not a whole number of at least 1");
   });
 });
 
@@ -88,5 +88,50 @@ describe("minor 365 — a run nonce in the payload seed", () => {
         expect(payload).toBeLessThan(2 ** 32);
       }
     }
+  });
+});
+
+/** The message a call throws, or "" when it doesn't. */
+const thrown = (f: () => unknown): string => {
+  try {
+    f();
+    return "";
+  } catch (err) {
+    return (err as Error).message;
+  }
+};
+
+describe("minor 577 — a bad lifter variable is named, never quoted", () => {
+  it("invalid JSON names the variable and holds none of the value", () => {
+    const message = thrown(() => readLifters({ LOADTEST_LIFTER_COUNT: "1", LOADTEST_LIFTER_0: "eyJsecret-not-json" }));
+    expect(message).toBe("LOADTEST_LIFTER_0 is not valid JSON (lifter 1 of 1)");
+    expect(message).not.toContain("eyJsecret");
+  });
+
+  it("a lifter with no token or routineId is named the same way", () => {
+    for (const value of ['{"token":"","routineId":"r"}', '{"token":"t"}', "[]", "null"]) {
+      expect(thrown(() => readLifters({ LOADTEST_LIFTER_COUNT: "1", LOADTEST_LIFTER_0: value })), value).toBe("LOADTEST_LIFTER_0 has no token or routineId (lifter 1 of 1)");
+    }
+  });
+});
+
+describe("minor 580 — k6 refuses to start without the CLI's variables", () => {
+  it("Review Focus 5: a count of 0, 3.5 or abc refuses, naming the variable", () => {
+    for (const count of ["0", "3.5", "abc", "-1", ""]) {
+      expect(thrown(() => readLifters({ LOADTEST_LIFTER_COUNT: count })), count).toBe("LOADTEST_LIFTER_COUNT is missing or not a whole number of at least 1");
+    }
+  });
+
+  it("a missing or bad nonce refuses", () => {
+    for (const env of [{}, { LOADTEST_RUN_NONCE: "-1" }, { LOADTEST_RUN_NONCE: "4294967296" }, { LOADTEST_RUN_NONCE: "1.5" }, { LOADTEST_RUN_NONCE: "x" }, { LOADTEST_RUN_NONCE: "" }]) {
+      expect(thrown(() => readNonce(env)), JSON.stringify(env)).toBe("LOADTEST_RUN_NONCE is missing or not a 32-bit whole number");
+    }
+  });
+
+  it("the CLI's own nonce round-trips", () => {
+    const nonce = runNonce(new Date("2026-11-14T12:00:00Z"));
+    expect(readNonce({ LOADTEST_RUN_NONCE: String(nonce) })).toBe(nonce);
+    expect(readNonce({ LOADTEST_RUN_NONCE: "0" })).toBe(0);
+    expect(readNonce({ LOADTEST_RUN_NONCE: "4294967295" })).toBe(4294967295);
   });
 });
