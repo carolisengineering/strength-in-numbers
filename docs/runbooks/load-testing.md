@@ -124,11 +124,24 @@ command only creates, and it skips accounts that already exist.
 
 ### 2.6 The two manual checks
 
-- **AC18, isolation.**
-  - Open the real web app and try to sign in as `loadtest+001@example.test`. It must fail, because the SPA has no
-    `loadtest` connection.
-  - In Auth0, go to **Applications → `si-loadtest` → Connections** and confirm that `loadtest` is the only connection.
-    A real user's password can't be used with the password grant, because no real user exists on that connection.
+- **AC18, isolation.** Two checks; both must fail to sign in.
+  1. Open the real web app and try to sign in as `loadtest+001@example.test` with the shared password. It must fail,
+     because the SPA has no `loadtest` connection.
+  2. Ask the load-test application for a token with **your own real account**, on the connection real users sign in
+     with (`Username-Password-Authentication` unless you changed it). The values come from the env file and the
+     prompts, are never put on a command line, and only the HTTP status is printed. Expect `403` (or `401`), never
+     `200`:
+
+     ```bash
+     ( set -a; . tools/loadtest/.env.loadtest; set +a
+       read -r -p "your real email: " EMAIL; read -r -s -p "its password: " PW; echo
+       printf '{"grant_type":"http://auth0.com/oauth/grant-type/password-realm","username":"%s","password":"%s","realm":"Username-Password-Authentication","audience":"%s","client_id":"%s","client_secret":"%s","scope":"openid"}' \
+         "$EMAIL" "$PW" "$AUTH0_AUDIENCE" "$LOADTEST_AUTH0_CLIENT_ID" "$LOADTEST_AUTH0_CLIENT_SECRET" |
+         curl -s -o /dev/null -w '%{http_code}\n' -H 'content-type: application/json' --data @- "https://$AUTH0_DOMAIN/oauth/token" )
+     ```
+
+     `printf` is a shell builtin and `curl` reads the body from stdin, so neither the password nor the client secret
+     shows up in the process list.
 - **AC20, the tokens.**
   - Run `… seed --target staging --lifters 1`.
   - It succeeding proves the API accepted a test account's token: right audience and issuer, and the namespaced
@@ -163,12 +176,20 @@ A full gym run holds each step long enough to collect 200 set saves at real pace
 
 - Run it under `caffeinate -i` with the laptop on power and the lid open, on a network you trust to stay up.
 - A sleeping laptop or a dropped network shows up as an incomplete run, not as an API failure.
-- Ctrl-C stops k6, still cleans up, and writes the result as incomplete.
+- Press Ctrl-C **once** to stop. k6 stops at the next safe point and writes its summary. The tool cleans up and
+  writes the result, marked incomplete, with N from the steps that finished.
+- A second Ctrl-C more than 2 s later aborts k6 at once, without a summary, so every step reads as unmeasured. Use it
+  only if k6 hangs.
 
 ## 4. Production
 
-Today `infra/prod.tfvars` still holds `REPLACE_ME_*` values, so every prod command refuses with a pointer to
-`first-deploy.md` Part F. Once production exists:
+Today `infra/prod.tfvars` still holds `REPLACE_ME_*` values, so every prod command refuses:
+
+- A prod run without `--confirm-prod` stops at `prod runs need --confirm-prod`.
+- With the flag, it stops at the Part F pointer (`infra/prod.tfvars still has placeholders …`).
+- `cleanup` and `seed` stop at the Part F pointer.
+
+Once production exists:
 
 - Run at a quiet hour for real lifters, and only the gym run or a burst.
 - A push run on prod needs `--confirm-prod-push` as well as `--confirm-prod`, and only when the owner asks.
@@ -228,7 +249,8 @@ the point.
 load-testing.md)` means the run is longer than the tokens last. The tool fetches tokens once and never refreshes them
 mid-run.
 
-Prefer a shorter run, for example with fewer steps through `--lifters`, or a push with a smaller ladder. Raising the
+Prefer a shorter run: one step at a time with `--lifters N` (about an hour each). `--steps` and `--hold-scale` are
+local only, so on staging and prod the full ladder or one step are the only shapes. Raising the
 API's **Token Expiration** (§2.2 step 4) also lengthens every real user's access token, so do it only knowingly, and put
 it back afterwards.
 
@@ -252,7 +274,8 @@ Spec 21.1 AC38 compares a staging gym run with row-level security off (S0) with 
 set-save p95 under 2,000 ms at 150 lifters, and N dropping by no more than one step. Both runs use the same code and
 the same `sin_app` login, so the difference is what the policies cost (owner, 2026-11-14; spec §6.9).
 
-1. `… run gym --target staging --dry-run`, and check the estimate and that the token check passes.
+1. `… run gym --target staging --dry-run`, and check the estimate. A dry run fetches no tokens. The token-lifetime check
+   runs when the real run starts, before any load is sent.
 2. **S0 (RLS off).**
    - With `OWNER_DATABASE_URL` set: `pnpm --filter @sin/api run db:rls -- disable`.
    - Then `unset OWNER_DATABASE_URL`.
