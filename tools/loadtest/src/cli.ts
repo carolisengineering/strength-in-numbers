@@ -139,7 +139,7 @@ function realDeps(target: Target): RunDeps {
       }),
     tokens: tokensFor(target),
     // Read lazily, so a prod dry run prints its guards before prod.tfvars is checked.
-    apisFor: (tokens) => politeFor(target.baseUrl ?? readProdBaseUrl(), tokens),
+    apisFor: (baseUrl, tokens) => politeFor(baseUrl, tokens),
     cleanupAll: (apis) => cleanupAll(apis, { pace: noPace }),
     writeResult: (name, body) => {
       writeFileSync(join(RESULTS_DIR, name), `${redactor.apply(JSON.stringify(body, null, 2))}\n`);

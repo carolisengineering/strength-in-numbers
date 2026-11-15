@@ -64,3 +64,13 @@ describe("minor 593 — a secret is redacted in its JSON-escaped form too", () =
     expect(r.apply("a plain b")).toBe("a [redacted] b");
   });
 });
+
+describe("minor 594 — the Redactor sorts once, and still sees a value learned after an apply", () => {
+  it("a longer value learned later still wins over a shorter one it contains", () => {
+    const r = new Redactor();
+    r.learnValues(["abc"]);
+    expect(r.apply("x abc y")).toBe("x [redacted] y");
+    r.learnValues(["abcdef"]);
+    expect(r.apply("x abcdef y")).toBe("x [redacted] y");
+  });
+});

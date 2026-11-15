@@ -3,6 +3,7 @@ import type { RunCommand } from "../src/node/args.ts";
 import { METRICS_SECRETS, secretsFrom } from "../src/node/env.ts";
 import { gymGate, parseGymResult, remoteWriteFor, runLoad, type GymResult, type RunDeps, type StopSignal } from "../src/node/run.ts";
 import type { Api } from "../src/node/api.ts";
+import { runNonce } from "../src/plan/lifters.ts";
 import { summary } from "./k6-summary.ts";
 
 const TOKEN = "eyJ-secret-token";
@@ -27,7 +28,7 @@ function deps(overrides: Partial<RunDeps> = {}) {
     spawnK6: vi.fn(() => ({ exited: Promise.resolve({ code: 0, signal: null }), kill: vi.fn() })),
     checkK6: vi.fn(async () => true),
     tokens: vi.fn(async (ids: string[]) => ids.map(() => TOKEN)),
-    apisFor: vi.fn((tokens: string[]) => tokens.map(() => api)),
+    apisFor: vi.fn((_baseUrl: string, tokens: string[]) => tokens.map(() => api)),
     cleanupAll: vi.fn(async () => ({ removed: 7 })),
     writeResult: vi.fn((name: string, body: Record<string, unknown>) => void results.push({ name, body })),
     readSummary: vi.fn(() => passingSummary(3)),
@@ -370,7 +371,7 @@ describe("secrets stay out of argv and logs", () => {
     const { d, results } = deps();
     await runLoad(gym, d);
     const [, env] = (d.spawnK6 as ReturnType<typeof vi.fn>).mock.calls[0]! as [string[], Record<string, string>];
-    const nonce = new Date("2026-11-06T12:00:00.000Z").getTime() >>> 0;
+    const nonce = runNonce(new Date("2026-11-06T12:00:00.000Z"));
     expect(env.LOADTEST_RUN_NONCE).toBe(String(nonce));
     expect(results[0]!.body.runNonce).toBe(nonce);
   });
@@ -621,5 +622,34 @@ describe("minor 591 (final review) — a stop signal is handled until the result
     });
     await runLoad(gym, h.d);
     expect(order).toEqual(["write", "close", "release"]);
+  });
+});
+
+describe("minor 579 — --hold-scale 1 is a full run", () => {
+  it("records holdScale null for 1, so the push gate accepts the run", async () => {
+    const { d, results } = deps();
+    const full: RunCommand = { ...gym, holdScale: 1 };
+    delete full.steps;
+    delete full.lifters;
+    await runLoad(full, d);
+    const body = results[0]!.body as unknown as GymResult;
+    expect(body.flags).toEqual({ steps: null, holdScale: null, lifters: null });
+    // The fake summary has 3 steps, not the full ladder, so gate a passing result that carries these flags.
+    expect(gymGate({ ...ok, flags: body.flags })).toBeNull();
+  });
+
+  it("guard: --hold-scale 0.5 is still recorded, so it still blocks a push", async () => {
+    const { d, results } = deps();
+    await runLoad({ ...gym, holdScale: 0.5 }, d);
+    expect((results[0]!.body.flags as { holdScale: number | null }).holdScale).toBe(0.5);
+  });
+});
+
+describe("minor 594 — the API clients use runLoad's base URL", () => {
+  it("apisFor gets the same base URL k6 does, and the tokens", async () => {
+    const { d } = deps();
+    await runLoad({ ...gym, target: "staging" }, d);
+    const [, env] = (d.spawnK6 as ReturnType<typeof vi.fn>).mock.calls[0]! as [string[], Record<string, string>];
+    expect(d.apisFor).toHaveBeenCalledWith(env.LOADTEST_BASE_URL, [TOKEN, TOKEN, TOKEN]);
   });
 });
