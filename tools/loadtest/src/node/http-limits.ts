@@ -10,3 +10,22 @@ export const CALL_TIMEOUT_MS = 10_000;
 export function callSignal(): AbortSignal {
   return AbortSignal.timeout(CALL_TIMEOUT_MS);
 }
+
+/** Minor 587: the longest Auth0 `Retry-After` the tools honor; a larger one waits this long, and says so. */
+export const RETRY_AFTER_CAP_S = 60;
+
+/**
+ * How long to wait before a retry: a positive whole-or-decimal `Retry-After` in seconds, capped at
+ * `RETRY_AFTER_CAP_S`, with one line saying how long Auth0 asked for; anything else (missing, `0`, negative, an
+ * HTTP-date) is `fallbackS`, with no line.
+ */
+export function retryAfterWaitMs(header: string | null, fallbackS: number, log: (line: string) => void): number {
+  const asked = Number(header);
+  if (header === null || !Number.isFinite(asked) || asked <= 0) return fallbackS * 1000;
+  if (asked > RETRY_AFTER_CAP_S) {
+    log(`Auth0 asked to wait ${asked} s; waiting ${RETRY_AFTER_CAP_S} s`);
+    return RETRY_AFTER_CAP_S * 1000;
+  }
+  log(`Auth0 asked to wait ${asked} s`);
+  return asked * 1000;
+}

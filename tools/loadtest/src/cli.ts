@@ -69,7 +69,7 @@ function tokensFor(target: Target): RunDeps["tokens"] {
   return async (ids, expiresInS) => {
     const secrets = loadKnown(RUN_SECRETS);
     log(`fetching ${ids.length} Auth0 tokens, 2 a second`);
-    const deps = { fetchFn: fetch, sleep: pause, now: Date.now };
+    const deps = { fetchFn: fetch, sleep: pause, now: Date.now, log };
     return learnTokens(await auth0Tokens(ids.map(accountEmail), secrets, deps, { needS: expiresInS }));
   };
 }

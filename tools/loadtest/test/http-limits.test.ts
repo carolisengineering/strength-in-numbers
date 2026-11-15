@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { closeAnnotation, openAnnotation } from "../src/node/annotate.ts";
 import { ANNOTATION_SECRETS, RUN_SECRETS, SETUP_SECRETS, secretsFrom } from "../src/node/env.ts";
-import { CALL_TIMEOUT_MS, callSignal } from "../src/node/http-limits.ts";
+import { CALL_TIMEOUT_MS, RETRY_AFTER_CAP_S, callSignal, retryAfterWaitMs } from "../src/node/http-limits.ts";
 import { mgmtClient } from "../src/node/setup-accounts.ts";
 import { auth0Tokens } from "../src/node/tokens-auth0.ts";
 
@@ -73,5 +73,25 @@ describe("minor 585 — every Grafana and Auth0 call times out after 10 s", () =
     const client = mgmtClient(s, { fetchFn, sleep: async () => {}, now: () => 0 });
     await expect(client.listConnectionEmails("loadtest")).rejects.toThrow("Auth0 Management API: no answer from /api/v2/users (timeout or network error)");
     expect(signals.every((sig) => sig instanceof AbortSignal)).toBe(true);
+  });
+});
+
+describe("minor 587 — Retry-After is capped at 60 s and logged", () => {
+  const run = (header: string | null) => {
+    const log: string[] = [];
+    return { ms: retryAfterWaitMs(header, 2, (l) => void log.push(l)), log };
+  };
+
+  it("a long wait is cut to the cap, with one line saying so", () => {
+    expect(RETRY_AFTER_CAP_S).toBe(60);
+    expect(run("600")).toEqual({ ms: 60_000, log: ["Auth0 asked to wait 600 s; waiting 60 s"] });
+  });
+
+  it("a short wait is kept, and still logged", () => {
+    expect(run("3")).toEqual({ ms: 3_000, log: ["Auth0 asked to wait 3 s"] });
+  });
+
+  it("Review Focus 1: an HTTP-date, 0, a negative or a missing header falls back, with no line", () => {
+    for (const header of ["Wed, 21 Oct 2026 07:28:00 GMT", "0", "-5", null]) expect(run(header), String(header)).toEqual({ ms: 2_000, log: [] });
   });
 });

@@ -26,6 +26,7 @@ function harness(script: (call: number, body: Record<string, unknown>) => Reply)
   let nowMs = START_MS;
   const calls: { at: number; url: string; body: Record<string, unknown> }[] = [];
   const sleeps: number[] = [];
+  const logs: string[] = [];
   const fetchFn = (async (url: string, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     calls.push({ at: nowMs, url, body });
@@ -40,8 +41,9 @@ function harness(script: (call: number, body: Record<string, unknown>) => Reply)
       nowMs += ms;
     },
     now: () => nowMs,
+    log: (line: string) => void logs.push(line),
   };
-  return { deps, calls, sleeps };
+  return { deps, calls, sleeps, logs };
 }
 
 const emails = (n: number) => Array.from({ length: n }, (_, i) => `loadtest+${String(i + 1).padStart(3, "0")}@example.test`);
@@ -112,12 +114,17 @@ describe("AC21 — tokens are fetched politely", () => {
     expect(h.calls).toHaveLength(1);
   });
 
-  it("Review Focus 2 — a 200 without an access_token is a failure, retried, then aborts", async () => {
+  it("minor 590 — a 2xx with no token isn't retried: one attempt, then the error", async () => {
     const h = harness(() => ({ status: 200, body: { error: "access_denied" } }));
-    await expect(auth0Tokens(emails(1), s, h.deps, { needS: 3600 })).rejects.toThrow(
-      "token fetch failed for account #1 after 5 attempts (HTTP 200, no access_token)",
-    );
-    expect(h.calls).toHaveLength(5);
+    await expect(auth0Tokens(emails(1), s, h.deps, { needS: 3600 })).rejects.toThrow(/^token fetch failed for account #1 \(HTTP 200, no access_token\)$/);
+    expect(h.calls).toHaveLength(1);
+  });
+
+  it("minor 587 — a Retry-After of 600 s waits 60 s and says so once", async () => {
+    const h = harness((i) => (i === 0 ? { status: 429, headers: { "retry-after": "600" } } : ok(0)));
+    await auth0Tokens(emails(1), s, h.deps, { needS: 3600 });
+    expect(h.sleeps).toEqual([60_000]);
+    expect(h.logs).toEqual(["Auth0 asked to wait 600 s; waiting 60 s"]);
   });
 });
 
