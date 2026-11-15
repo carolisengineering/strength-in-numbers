@@ -1,21 +1,23 @@
 /**
  * Spec 16 — `pnpm --filter @sin/loadtest run loadtest <run|cleanup|seed> …`. Wires the real side effects (k6 as a
- * child process, dev-idp tokens, the API, result files, Ctrl-C) into `runLoad`. Tokens never leave memory except as
- * the k6 child's `LOADTEST_LIFTER_<i>` environment variables, one per lifter.
+ * child process, tokens from dev-idp or Auth0 by target, the API, result files, Ctrl-C) into `runLoad`. Tokens never
+ * leave memory except as the k6 child's `LOADTEST_LIFTER_<i>` environment variables, one per lifter.
  */
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GYM_STEPS } from "./plan/constants.ts";
-import { resolveTarget } from "./plan/targets.ts";
-import { accountIds } from "./node/accounts.ts";
+import { resolveTarget, type Target } from "./plan/targets.ts";
+import { accountEmail, accountIds } from "./node/accounts.ts";
 import { apiFor } from "./node/api.ts";
 import { parseArgs } from "./node/args.ts";
 import { cleanupAll } from "./node/cleanup.ts";
+import { ENV_FILE, RUN_SECRETS, loadSecrets } from "./node/env.ts";
 import { politeApis } from "./node/polite.ts";
 import { runLoad, type GymResult, type RunDeps } from "./node/run.ts";
 import { ensureSeeded } from "./node/seed.ts";
+import { auth0Tokens } from "./node/tokens-auth0.ts";
 import { localTokens } from "./node/tokens-local.ts";
 
 const RESULTS_DIR = fileURLToPath(new URL("../results/", import.meta.url));
@@ -35,7 +37,21 @@ const politeFor = (baseUrl: string, tokens: string[]) =>
 const noPace = () => Promise.resolve();
 const log = (line: string) => process.stdout.write(`${line}\n`);
 
-function realDeps(baseUrl: string): RunDeps {
+/**
+ * The target's token source (AC6): dev-idp for `local`, Auth0's password-realm grant for `staging` / `prod`. The env
+ * file is read only when tokens are needed, so a `--dry-run` works without it.
+ */
+function tokensFor(target: Target): RunDeps["tokens"] {
+  if (target.tokenSource === "dev-idp") return (ids, expiresInS) => localTokens(ids, { idpUrl: IDP_URL, expiresInS });
+  return (ids, expiresInS) => {
+    const secrets = loadSecrets(ENV_FILE, RUN_SECRETS);
+    log(`fetching ${ids.length} Auth0 tokens, 2 a second`);
+    return auth0Tokens(ids.map(accountEmail), secrets, { fetchFn: fetch, sleep: pause, now: Date.now }, { needS: expiresInS });
+  };
+}
+
+function realDeps(target: Target): RunDeps {
+  const baseUrl = target.baseUrl!;
   return {
     spawnK6: (args, env) => {
       const child = spawn("k6", args, { cwd: RESULTS_DIR, env: { ...process.env, ...env }, stdio: "inherit" });
@@ -47,7 +63,7 @@ function realDeps(baseUrl: string): RunDeps {
         kill: (signal) => void child.kill(signal),
       };
     },
-    tokens: (ids, expiresInS) => localTokens(ids, { idpUrl: IDP_URL, expiresInS }),
+    tokens: tokensFor(target),
     apisFor: (tokens) => politeFor(baseUrl, tokens),
     cleanupAll: (apis) => cleanupAll(apis, { pace: noPace }),
     writeResult: (name, body) => {
@@ -92,12 +108,13 @@ function realDeps(baseUrl: string): RunDeps {
 
 async function main(argv: string[]): Promise<number> {
   const cmd = parseArgs(argv);
-  const baseUrl = resolveTarget(cmd.target).baseUrl!;
+  const target = resolveTarget(cmd.target);
+  const baseUrl = target.baseUrl!;
   mkdirSync(RESULTS_DIR, { recursive: true });
-  if (cmd.cmd === "run") return runLoad(cmd, realDeps(baseUrl));
+  if (cmd.cmd === "run") return runLoad(cmd, realDeps(target));
 
   const ids = accountIds(cmd.lifters ?? Math.max(...GYM_STEPS));
-  const tokens = await localTokens(ids, { idpUrl: IDP_URL, expiresInS: 3600 });
+  const tokens = await tokensFor(target)(ids, 3600);
   const apis = politeFor(baseUrl, tokens);
   if (cmd.cmd === "cleanup") {
     const { removed } = await cleanupAll(apis, { pace: noPace });

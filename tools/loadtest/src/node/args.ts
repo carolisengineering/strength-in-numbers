@@ -77,7 +77,7 @@ export function parseArgs(argv: string[]): Command {
 
   if (target === undefined) throw new Error(`--target is required\n${USAGE}`);
   const resolved = resolveTarget(target);
-  if (resolved.name !== "local") throw new Error(`${resolved.name} is not wired yet (Spec 16 Phase B)`);
+  if (resolved.name === "prod") throw new Error(`${resolved.name} is not wired yet (Spec 16 Phase B)`);
 
   if (cmd !== "run") return lifters === undefined ? { cmd, target: resolved.name } : { cmd, target: resolved.name, lifters };
 
