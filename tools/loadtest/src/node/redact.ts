@@ -39,10 +39,11 @@ export class Redactor {
   learnValues(values: Iterable<string>): void {
     for (const v of values) {
       if (v === "") continue;
+      const before = this.#values.size;
       this.#values.add(v);
       const escaped = JSON.stringify(v).slice(1, -1);
       if (escaped !== v) this.#values.add(escaped);
-      this.#sorted = null;
+      if (this.#values.size !== before) this.#sorted = null;
     }
   }
 

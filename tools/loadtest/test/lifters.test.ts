@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lifterEnv, lifterSeeds, readLifter, readLifterCount, readNonce, runNonce, type LifterInput } from "../src/plan/lifters.ts";
+import { lifterEnv, lifterOrAbort, lifterSeeds, readLifter, readLifterCount, readNonce, runNonce, type LifterInput } from "../src/plan/lifters.ts";
 import { startBody } from "../src/plan/payloads.ts";
 import { createRng } from "../src/plan/rng.ts";
 import { seededRoutineSets } from "../src/plan/routine.ts";
@@ -156,5 +156,24 @@ describe("minor 581 — a VU reads only its own lifter", () => {
     const xs = lifters(5);
     const env = lifterEnv(xs);
     for (let i = 0; i < xs.length; i += 1) expect(readLifter(env, i, xs.length)).toEqual(xs[i]);
+  });
+});
+
+describe("code review — a bad lifter variable aborts the whole k6 run, not one VU", () => {
+  it("calls abort once with the named error, then throws, so no VU loops and no under-loaded run is reported", () => {
+    const [first] = lifters(1);
+    const env = { LOADTEST_LIFTER_COUNT: "2", LOADTEST_LIFTER_0: JSON.stringify(first), LOADTEST_LIFTER_1: "eyJother-secret-not-json" };
+    const reasons: string[] = [];
+    const message = thrown(() => lifterOrAbort(env, 1, 2, (r) => void reasons.push(r)));
+    expect(reasons).toEqual(["LOADTEST_LIFTER_1 is not valid JSON (lifter 2 of 2)"]);
+    expect(message).toBe("LOADTEST_LIFTER_1 is not valid JSON (lifter 2 of 2)");
+    expect(reasons.join()).not.toContain("eyJother");
+  });
+
+  it("a good variable never aborts", () => {
+    const xs = lifters(2);
+    const reasons: string[] = [];
+    expect(lifterOrAbort(lifterEnv(xs), 1, 2, (r) => void reasons.push(r))).toEqual(xs[1]);
+    expect(reasons).toEqual([]);
   });
 });

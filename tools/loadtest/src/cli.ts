@@ -138,8 +138,8 @@ function realDeps(target: Target): RunDeps {
         probe.once("exit", (code) => resolve(code === 0));
       }),
     tokens: tokensFor(target),
-    // Read lazily, so a prod dry run prints its guards before prod.tfvars is checked.
-    apisFor: (baseUrl, tokens) => politeFor(baseUrl, tokens),
+    // Minor 594: runLoad passes the base URL it already resolved, so prod.tfvars isn't read here.
+    apisFor: politeFor,
     cleanupAll: (apis) => cleanupAll(apis, { pace: noPace }),
     writeResult: (name, body) => {
       writeFileSync(join(RESULTS_DIR, name), `${redactor.apply(JSON.stringify(body, null, 2))}\n`);

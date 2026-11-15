@@ -79,6 +79,25 @@ export function readLifter(env: Record<string, string | undefined>, index: numbe
   return { token, routineId };
 }
 
+/**
+ * Code review (PR J): a bad lifter variable stops the whole k6 run, as minor 580's init refusal did. Without this,
+ * that VU would throw on every iteration with no pause while the rest ran on, and the run could report N lifters for
+ * load that never ran. `abort` is k6's `exec.test.abort`; the error is rethrown in case it returns.
+ */
+export function lifterOrAbort(
+  env: Record<string, string | undefined>,
+  index: number,
+  count: number,
+  abort: (reason: string) => void,
+): LifterInput {
+  try {
+    return readLifter(env, index, count);
+  } catch (err) {
+    abort((err as Error).message);
+    throw err;
+  }
+}
+
 /** Minor 580: this run's nonce as the CLI wrote it; missing or not a 32-bit whole number refuses to start. */
 export function readNonce(env: Record<string, string | undefined>): number {
   const raw = env[NONCE];
