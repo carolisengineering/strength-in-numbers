@@ -45,6 +45,8 @@ export const options = {
   // "count" lets the reporter tell a step with no set saves from one with p95 0 (k6 lists zero-sample submetrics).
   summaryTrendStats: ["avg", "p(95)", "max", "count"],
   setupTimeout: `${WARMUP_MAX_S + 60}s`,
+  // Minor 592: every metric, `vus` included (it has no request tags), carries the target the dashboard filters by.
+  tags: { target: TARGET },
   // Every request is tagged by its template (AC11); never let k6 add the raw URL as a tag value.
   systemTags: ["status", "method", "name", "group", "check", "error_code", "scenario"],
 };

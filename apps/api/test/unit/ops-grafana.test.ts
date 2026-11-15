@@ -55,7 +55,7 @@ describe("Spec 16 AC26 — the Load test dashboard", () => {
   const text = readFileSync(join(root, LOAD_TEST), "utf8");
   const dashboard = JSON.parse(text) as {
     uid: string;
-    templating: { list: { name: string; type: string; query?: string }[] };
+    templating: { list: { name: string; type: string; query?: string; includeAll?: boolean }[] };
     panels: { type: string; title: string; targets?: { expr: string }[] }[];
   };
   const exprs = dashboard.panels.flatMap((p) => (p.targets ?? []).map((t) => t.expr));
@@ -72,7 +72,7 @@ describe("Spec 16 AC26 — the Load test dashboard", () => {
   });
 
   it("draws set-save p95 against a 2 s line, from answered saves in the measured part of each step", () => {
-    expect(exprs).toContain('max by (step) (k6_http_req_duration_p95{name="set_save", phase="measure", status=~"2.."})');
+    expect(exprs).toContain('max by (step) (k6_http_req_duration_p95{name="set_save", phase="measure", status=~"2..", target="$target"})');
     expect(exprs).toContain("vector(2)");
   });
 
@@ -81,7 +81,7 @@ describe("Spec 16 AC26 — the Load test dashboard", () => {
   // /code-review (16B): with no 5xx series the numerator is empty, so a clean step must still draw 0, not "No data".
   it("draws each step's 5xx share pooled over every request, as the tool judges it, and 0 for a clean step", () => {
     expect(exprs).toContain(
-      '(sum by (step) (k6_http_reqs_total{phase="measure", status=~"5..|0"}) or 0 * sum by (step) (k6_http_reqs_total{phase="measure"})) / sum by (step) (k6_http_reqs_total{phase="measure"})',
+      '(sum by (step) (k6_http_reqs_total{phase="measure", status=~"5..|0", target="$target"}) or 0 * sum by (step) (k6_http_reqs_total{phase="measure", target="$target"})) / sum by (step) (k6_http_reqs_total{phase="measure", target="$target"})',
     );
     expect(exprs.join("\n")).not.toContain("k6_server_errors_rate");
   });
@@ -90,8 +90,20 @@ describe("Spec 16 AC26 — the Load test dashboard", () => {
     const windows = [...text.matchAll(/(?:rate|increase)\([^[]*\[([^\]]+)\]/g)].map((m) => m[1]);
     expect(windows.length).toBeGreaterThan(0);
     for (const w of windows) expect(w).toBe("$__rate_interval");
-    expect(dashboard.templating.list.map((v) => v.name)).toEqual(["datasource", "cpu_limit"]);
+    expect(dashboard.templating.list.map((v) => v.name)).toEqual(["datasource", "cpu_limit", "target"]);
     expect(dashboard.uid).toBe("sin-load-test");
+  });
+
+  it("minor 592 — has a target variable defaulting to staging", () => {
+    const target = dashboard.templating.list.find((v) => v.name === "target");
+    expect(target).toMatchObject({ type: "custom", query: "staging,prod,local", current: { value: "staging" } });
+    expect(target?.includeAll).toBeFalsy();
+  });
+
+  it("minor 592 — every k6 query is filtered by the chosen target", () => {
+    const selectors = exprs.flatMap((e) => [...e.matchAll(/k6_\w+(\{[^}]*\})?/g)].map((m) => m[0]));
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const sel of selectors) expect(sel).toContain('target="$target"');
   });
 });
 
