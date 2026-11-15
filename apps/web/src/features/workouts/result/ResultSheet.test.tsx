@@ -219,6 +219,18 @@ describe("17.10 AC13 — the clock hint is said once per group", () => {
     expect(document.getElementById(ids[1]!)).toHaveAttribute("role", "alert");
   });
 
+  it.each<[string, SectionTimer]>([
+    ["with a cap", { format: "time_cap", capSeconds: 900 }],
+    ["For Time", { format: "time_cap", capSeconds: null }],
+  ])("10.7 AC13 — minor 497 (owner decision 2026-11-14): Time Cap %s, Finished says the clock sentence once", (_l, timer) => {
+    const { dialog } = renderSheet(section(timer, rt([[1, 250]])));
+    expect(dialog.getByLabelText("Finish time")).toBeInTheDocument();
+    expect(dialog.getAllByText((_, el) => el?.tagName === "P" && (el.textContent ?? "").includes(HINT))).toHaveLength(1);
+    // The round-ends group keeps its own first sentence, and its rounds still point at it.
+    const roundEnds = dialog.getByText("Type the gym clock when each round ended.");
+    for (const round of dialog.getAllByLabelText(/^Round \d$/)) expect(round.getAttribute("aria-describedby")?.split(" ")).toContain(roundEnds.id);
+  });
+
   it("Time Cap's lone Finish time keeps its own hint", () => {
     const { dialog } = renderSheet(section({ format: "time_cap", capSeconds: 900 }));
     expect(dialog.getByLabelText("Finish time").getAttribute("aria-describedby")).toBe("result-finish-hint");

@@ -201,6 +201,16 @@ describe("exercise-structure writes", () => {
     expect(reread.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(WORKOUT_KEYS.active))).toHaveLength(3);
   });
 
+  it("minor 539 — Remove exercise asks again when its re-read is canceled, up to three times", async () => {
+    const { qc, detail } = seeded();
+    const client = fakeClient({ getActive: () => Promise.resolve(detail), removeExercise: async () => undefined });
+    const { result } = renderHook(() => ({ active: useActiveWorkout(), remove: useRemoveExercise() }), { wrapper: wrapperWith(qc, client) });
+    await waitFor(() => expect(result.current.active.isSuccess).toBe(true));
+    const reread = vi.spyOn(qc, "invalidateQueries").mockResolvedValue(undefined);
+    await act(() => result.current.remove.mutateAsync({ id: "we", setCount: 0 }));
+    expect(reread.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(WORKOUT_KEYS.active))).toHaveLength(3);
+  });
+
   it("a remove answering 404 counts as success", async () => {
     const { qc } = seeded();
     const { result } = renderHook(() => useRemoveExercise(), {

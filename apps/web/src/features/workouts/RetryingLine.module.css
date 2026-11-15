@@ -1,0 +1,10 @@
+/* Minor 564: muted, in the banner's place. The Screen column has a gap, so the always-mounted region leaves the flow
+   while empty (absolute, like a hidden title): it takes no room, yet stays in the tree, so its words are announced. */
+.line {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.line:empty {
+  position: absolute;
+}

@@ -61,6 +61,7 @@ import { finishEndedAt } from "./timestamps";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { rereadFresh } from "./readGuard";
+import { RetryingLine } from "./RetryingLine";
 import { useTimedGrouping } from "./sections/useTimedGrouping";
 import { useKeepScreenAwake } from "./useKeepScreenAwake";
 import { confirmationLine, notSavedYet, setListed, statusLineText, undoName } from "./undoOffer";
@@ -877,6 +878,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
           {shown.text}
         </InlineNotice>
       ) : null}
+      <RetryingLine retrying={timedGrouping.retrying} />
 
       {outboxState.conflict ? (
         <InlineNotice tone="warning" actionLabel="Reload" onAction={() => window.location.reload()}>

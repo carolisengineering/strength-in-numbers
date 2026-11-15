@@ -156,3 +156,50 @@ describe("minor 321 — Try again re-reads the workout before it plans", () => {
     expect(locked).toBe(true);
   });
 });
+
+describe("minor 564 — Try again says it's working", () => {
+  /** A re-read the test settles by hand. */
+  function heldRead() {
+    let settle: (ok: boolean) => void = () => {};
+    const reread = () => new Promise<boolean>((resolve) => (settle = resolve));
+    return { reread, settle: (ok: boolean) => settle(ok) };
+  }
+
+  it("a held re-read shows retrying and no banner; a success clears both", async () => {
+    const d = loose3();
+    const held = heldRead();
+    const t = setup(d, [{ status: "failed", error: new Error("x"), retry: null }], { reread: held.reread });
+    await act(() => t.result.current.couple(d.sections[1]!.id, "fill", "timer"));
+    expect(t.result.current.retrying).toBe(false);
+    let done: Promise<void> = Promise.resolve();
+    act(() => {
+      done = Promise.resolve(t.banners[0]!.retry!());
+    });
+    expect(t.result.current.retrying).toBe(true);
+    expect(t.banners.at(-1)).toBeNull();
+    await act(async () => {
+      held.settle(true);
+      await done;
+    });
+    expect(t.result.current.retrying).toBe(false);
+    expect(t.banners.at(-1)).toBeNull();
+  });
+
+  it("Review Focus 4: a failed re-read ends retrying and brings the banner back", async () => {
+    const d = loose3();
+    const held = heldRead();
+    const t = setup(d, [{ status: "failed", error: new Error("x"), retry: null }], { reread: held.reread });
+    await act(() => t.result.current.couple(d.sections[1]!.id, "fill", "timer"));
+    let done: Promise<void> = Promise.resolve();
+    act(() => {
+      done = Promise.resolve(t.banners[0]!.retry!());
+    });
+    expect(t.result.current.retrying).toBe(true);
+    await act(async () => {
+      held.settle(false);
+      await done;
+    });
+    expect(t.result.current.retrying).toBe(false);
+    expect(t.banners.at(-1)).toMatchObject({ tone: "error" });
+  });
+});

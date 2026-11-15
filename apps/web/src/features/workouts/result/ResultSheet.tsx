@@ -156,10 +156,13 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
     </div>
   );
   const highest = draft.rows.reduce((m, r) => Math.max(m, r.round), 0);
+  // Minor 497 (owner decision 2026-11-14): on Time Cap, Finished, Finish time's own hint already says the clock
+  // sentence a few lines up, so the round-ends hint keeps only its first sentence.
+  const finishTimeShown = timer.format === "time_cap" && draft.mode === "finished";
   const roundEnds = (
     <fieldset className={styles.group}>
       <legend className={styles.legend}>{RESULT_COPY.roundEnds}</legend>
-      <p className={styles.hint} id={CLOCK_HINT_ID}>{`${RESULT_COPY.roundEndsHint} ${CLOCK_HINT}`}</p>
+      <p className={styles.hint} id={CLOCK_HINT_ID}>{finishTimeShown ? RESULT_COPY.roundEndsHint : `${RESULT_COPY.roundEndsHint} ${CLOCK_HINT}`}</p>
       {draft.rows.map((r) => roundRow(r.round, r.digits))}
       {highest < TIMER_ROUNDS_MAX ? (
         <Button variant="secondary" className={styles.addRound} onClick={() => setDraft(addRoundRow)}>

@@ -189,6 +189,30 @@ describe("10.7 AC23 — when grouping fails (live)", () => {
     expect(notice).not.toBeInTheDocument();
   });
 
+  it("minor 564 — while Try again re-reads, Trying again… shows in the banner's place, then goes", async () => {
+    const { user, fake } = await setup({ sections: [{ name: "Main" }], exercises: [ex("A", 0), ex("B", 0)] }, { failRegroup: { times: 1 } });
+    await setTimer(user, "Main", "amrap");
+    await screen.findByText("Timer saved, but the exercises couldn't be grouped — try again");
+    const gate = deferred<void>();
+    server.use(
+      http.get(
+        `${API_BASE_URL}/v1/workouts/active`,
+        async () => {
+          await gate.promise;
+          return HttpResponse.json(fake.state.active);
+        },
+        { once: true },
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Trying again…")).toHaveAttribute("aria-live", "polite");
+    expect(screen.queryByText(/couldn't be grouped/)).toBeNull();
+    gate.resolve();
+    await waitFor(() => expect(oneRun("Main")).toBe(true));
+    await waitFor(() => expect(screen.queryByText("Trying again…")).toBeNull());
+    expect(screen.queryByText(/couldn't be grouped/)).toBeNull();
+  });
+
   it("Try again after the group landed elsewhere sends no PATCH (Review Focus 3)", async () => {
     const { user, fake, queryClient } = await setup({ sections: [{ name: "Main" }], exercises: [ex("A", 0), ex("B", 0)] }, { failRegroup: { times: 1 } });
     await setTimer(user, "Main", "amrap");

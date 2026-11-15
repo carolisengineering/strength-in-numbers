@@ -36,6 +36,7 @@ import { supersetRows, type SupersetRow } from "../supersetRows";
 import type { SectionSegment } from "../sectionSegments";
 import { useRegroup } from "../useRegroup";
 import { rereadFresh } from "../readGuard";
+import { RetryingLine } from "../RetryingLine";
 import { useTimedGrouping } from "../sections/useTimedGrouping";
 import { useDeleteWorkout } from "../useWorkoutMutations";
 import { WorkoutText } from "../WorkoutText";
@@ -529,6 +530,7 @@ function EditBody({
             {banner.text}
           </InlineNotice>
         ) : null}
+        <RetryingLine retrying={timedGrouping.retrying} />
 
         <div className={styles.cards} aria-busy={regroup.busy || undefined}>
           {workout.exercises.length === 0 && pending === null ? <p className={styles.hint}>{EDIT_COPY.firstExercise}</p> : null}
