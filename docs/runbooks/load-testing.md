@@ -15,7 +15,9 @@ Every command below runs from the repository root. `…` stands for `pnpm --filt
    - A push run needs a passing gym run first (§6).
 3. **Tokens.** One per account, held in memory only. `local` gets them from dev-idp. `staging` and `prod` use Auth0's
    password-realm grant, 2 a second, so 150 accounts take about 75 s. A token that would expire before the run ends
-   refuses the run (§7).
+   refuses the run (§7). Every Grafana and Auth0 call gives up after 10 s. An Auth0 `Retry-After` is honored up to
+   60 s, and each wait prints one line ("Auth0 asked to wait 120 s; waiting 60 s"). Before any token, the tool checks
+   that `k6 version` runs.
 4. **Seed.** Each account gets its one routine if it doesn't have it yet.
 5. **k6** runs the steps, sending its metrics to Grafana Cloud (`staging`, `prod`) or local Prometheus (`local`). On
    `staging` and `prod` a Grafana annotation marks the run.
@@ -182,6 +184,9 @@ A full gym run holds each step long enough to collect 200 set saves at real pace
   only if k6 hangs.
 - Once k6 has stopped, Ctrl-C no longer interrupts anything. Cleanup always runs to the end and the result is written,
   however many times you press it.
+- Closing the terminal or `kill <pid>` (SIGHUP / SIGTERM) does what one Ctrl-C does: k6 stops at the next safe point,
+  cleanup runs and the result is written. The CLI then exits 129 (closed terminal) or 143 (`kill`). After a closed
+  terminal, the result file is the only record.
 
 ## 4. Production
 

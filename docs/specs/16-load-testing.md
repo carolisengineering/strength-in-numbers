@@ -355,3 +355,18 @@ Calls made while building Phase B; none changes an acceptance criterion.
 - **The 21.1 S0 baseline** is taken with `db:rls -- disable` on the same code (owner, 2026-11-14); runbook `load-testing.md` §9 and Spec 21.1 §6.9.
 - **Ctrl-C** forwards one SIGINT to k6; SIGINTs within 2 s of it are ignored, because one Ctrl-C reaches the CLI several times and a second SIGINT makes k6 abort without its summary (checked against k6 2.3.0). k6 runs in its own process group, and the CLI kills it if the CLI exits, is hung up on or is terminated. A Ctrl-C more than 2 s later aborts k6.
 - **Redaction.** Everything the CLI prints, its error output and the result file pass through one redactor that learns each secret and token as they are loaded.
+
+### Minors PR I build notes (2026-11-15)
+
+Twelve deferred minors that could spoil, stall or leak a secret in a staging run (design `design-minors-pr-i-load-test-runs.md`, approved 2026-11-14):
+
+- **591** A `kill` (SIGTERM) or a closed terminal (SIGHUP) takes the first Ctrl-C's path: one SIGINT to k6, cleanup, the result file and the annotation's end, then exit 143 / 129. Neither ever sends k6 a second SIGINT. After a hang-up the CLI stops writing to the terminal (`node/terminal.ts`).
+- **585** Every Grafana and Auth0 call times out after 10 s (`node/http-limits.ts`); the `/healthz` commit read keeps none, because a Render cold start can take longer.
+- **587, 590** Auth0's `Retry-After` is honored up to 60 s and logged, in the token fetch and the Management client; `x-ratelimit-reset` stays ignored. A `2xx` with no token isn't retried.
+- **589** Management API errors carry Auth0's fixed error code (`errorCode`, then `error`), never its message.
+- **588** `k6 version` must run before any token is fetched (exit 2 with "k6 isn't installed or isn't on PATH").
+- **586** k6 gets only `PATH`, `HOME`, `TMPDIR` and the tool's own variables (`node/k6-env.ts`).
+- **577, 580** k6 refuses at init when `LOADTEST_LIFTER_COUNT`, a lifter variable or `LOADTEST_RUN_NONCE` is missing or bad, naming the variable and never quoting its value.
+- **593** The redactor also learns each value's JSON-escaped form, and the Management token.
+- **364** Cleanup stops with an error, naming the account by number, when a workout it deleted is still listed; the run records `cleanup: failed` and prints the hand-cleanup command as before.
+- **583** A gym result file that can't be read, or whose `flags` lack `steps` / `holdScale`, is a push-gate refusal, not a crash.
