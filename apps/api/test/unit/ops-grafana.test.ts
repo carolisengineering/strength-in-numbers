@@ -24,7 +24,8 @@ const base = (n: string) => n.replace(/_(bucket|count|sum|total)$/, "");
  */
 const K6_NAMES = ["k6_vus", "k6_http_reqs_total", "k6_http_req_duration_p95", "k6_server_errors_rate", "k6_rate_limited_total"];
 const LOAD_TEST = "grafana/dashboards/load-test.json";
-const allowed = (file: string, n: string) => KNOWN.includes(base(n)) || (file.endsWith(LOAD_TEST) && K6_NAMES.includes(n));
+const allowed = (file: string, n: string) =>
+  (KNOWN as readonly string[]).includes(base(n)) || (file.endsWith(LOAD_TEST) && K6_NAMES.includes(n));
 
 describe("AC14 — ops/ config parses", () => {
   it.each(files.filter((f) => f.endsWith(".json")))("%s is valid JSON", (f) => {
