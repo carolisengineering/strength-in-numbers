@@ -39,7 +39,7 @@ import { rereadFresh } from "../readGuard";
 import { RetryingLine } from "../RetryingLine";
 import { useTimedGrouping } from "../sections/useTimedGrouping";
 import { useDeleteWorkout } from "../useWorkoutMutations";
-import { WorkoutText } from "../WorkoutText";
+import { hasOwnTitle, WorkoutText } from "../WorkoutText";
 import { ChangeTimeSheet } from "../changeTime/ChangeTimeSheet";
 import { useChangeTime } from "../changeTime/useChangeTime";
 import { DetailsSheet } from "./DetailsSheet";
@@ -511,7 +511,7 @@ function EditBody({
           <h2 className={styles.detailsHeading} id={detailsHeadingId}>
             {EDIT_COPY.details.heading}
           </h2>
-          {workout.title === null ? <p className={styles.empty}>{EDIT_COPY.details.noTitle}</p> : <WorkoutText text={workout.title} variant="title" />}
+          {workout.title !== null && hasOwnTitle(workout) ? <WorkoutText text={workout.title} variant="title" /> : <p className={styles.empty}>{EDIT_COPY.details.noTitle}</p>}
           {workout.notes === null ? <p className={styles.empty}>{EDIT_COPY.details.noNotes}</p> : <WorkoutText text={workout.notes} variant="notes" />}
           <div>
             <Button variant="secondary" onClick={() => setDetails((d) => ({ session: (d?.session ?? 0) + 1, open: true }))}>

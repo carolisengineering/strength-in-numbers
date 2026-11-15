@@ -289,16 +289,17 @@ function regroupSection(
   sections: readonly DraftSection[],
   sectionKey: string,
   trigger: "fill" | { readonly join: string },
-): { items: DraftItem[]; capped: boolean } {
+): { items: DraftItem[]; capped: boolean | null } {
   const settled = settle(items, sections);
   const start = settled.findIndex((i) => i.sectionKey === sectionKey);
-  if (start < 0) return { items: settled, capped: false };
+  if (start < 0) return { items: settled, capped: null };
   let end = start;
   while (end < settled.length && settled[end]!.sectionKey === sectionKey) end += 1;
   const part = settled.slice(start, end);
   const slots = slotsOf(part);
   const range = timedGroupRange(slots, trigger);
-  if (range === null) return { items: settled, capped: false };
+  // Minor 314 (code review): nothing grouped, so the section's grouping, and whether it was capped, is unchanged.
+  if (range === null) return { items: settled, capped: null };
   const grouped = groupRangeRule(slots, range.from, range.to);
   return { items: [...settled.slice(0, start), ...fromSlots(part, grouped.slots), ...settled.slice(end)], capped: grouped.capped };
 }
@@ -311,9 +312,12 @@ export function groupCapShown(draft: Pick<Draft, "cappedSections">, section: Dra
   return section.timer !== null && (draft.cappedSections?.has(section.key) ?? false);
 }
 
-/** Minor 314: record whether the last grouping change in `sectionKey` capped. A null section is never timed. */
-function withCap(state: Draft, sectionKey: string | null, capped: boolean): Draft {
-  if (sectionKey === null) return state;
+/**
+ * Minor 314: record whether the last grouping change in `sectionKey` capped. `null` means the grouping didn't change
+ * (a fill or join that grouped nothing), so the flag stays. A null section is never timed.
+ */
+function withCap(state: Draft, sectionKey: string | null, capped: boolean | null): Draft {
+  if (sectionKey === null || capped === null) return state;
   const now = state.cappedSections ?? NO_CAPPED;
   if (now.has(sectionKey) === capped) return state;
   const next = new Set(now);
@@ -360,7 +364,7 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const last = state.sections[state.sections.length - 1];
       const appended = [...state.items, item];
       // Spec 10.7 AC13: an exercise added to a timed last section joins its one superset (§6.4 join).
-      const joined = last?.timer ? regroupSection(appended, state.sections, last.key, { join: item.key }) : { items: appended, capped: false };
+      const joined = last?.timer ? regroupSection(appended, state.sections, last.key, { join: item.key }) : { items: appended, capped: null };
       return withCap(withItems(state, joined.items), item.sectionKey, joined.capped);
     }
     case "remove":
@@ -428,7 +432,8 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const sections = state.sections.map((s) => (s.key === action.key ? { ...s, timer: action.timer } : s));
       // Spec 10.7 AC13: becoming timed, or changing format, fills in the grouping; numbers, None, rename and notes never do.
       const fills = action.timer !== null && (section.timer === null || section.timer.format !== action.timer.format);
-      if (!fills) return withCap(withSections(state, sections, state.items), action.key, action.timer === null ? false : groupCapShown(state, section));
+      // None clears the line; numbers alone change no grouping.
+      if (!fills) return withCap(withSections(state, sections, state.items), action.key, action.timer === null ? false : null);
       const filled = regroupSection(state.items, sections, action.key, "fill");
       return withCap(withSections(state, sections, filled.items), action.key, filled.capped);
     }
@@ -456,7 +461,7 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const rest = [...state.items.filter((i) => i.key !== item.key), moved];
       const target = action.sectionKey === null ? undefined : state.sections.find((s) => s.key === action.sectionKey);
       // Spec 10.7 AC13: moved into a timed section, it joins that section's one superset (§6.4 join).
-      const joined = target?.timer ? regroupSection(rest, state.sections, target.key, { join: item.key }) : { items: rest, capped: false };
+      const joined = target?.timer ? regroupSection(rest, state.sections, target.key, { join: item.key }) : { items: rest, capped: null };
       const next = withCap(withCap(withItems(state, joined.items), item.sectionKey, false), action.sectionKey, joined.capped);
       // The notice says the exercise was unlinked: only true when it left a superset and didn't join one there.
       const regrouped = next.items.find((i) => i.key === item.key)!.supersetGroup !== null;

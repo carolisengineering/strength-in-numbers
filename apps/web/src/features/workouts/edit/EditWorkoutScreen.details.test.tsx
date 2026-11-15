@@ -67,6 +67,11 @@ describe("18.0 AC52 — the Details panel", () => {
     expect(panel().getByRole("button", { name: "Edit details" }).className).toMatch(/_secondary_/);
   });
 
+  it("minor 543 (code review) — a whitespace title reads as No title here too", async () => {
+    await open({ title: "   " });
+    expect(panel().getByText("No title")).toBeInTheDocument();
+  });
+
   it("set: the values, the notes pre-wrapped", async () => {
     await open({ title: TITLE, notes: NOTES });
     expect(panel().getByText(TITLE)).toBeInTheDocument();

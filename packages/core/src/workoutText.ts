@@ -175,7 +175,9 @@ const AMRAP_TAIL = new RegExp(String.raw`^${N_MINUTES}${TAIL_GAP}amrap${LINE_END
 /** #276: every leading bullet (a bullet, then any mix of bullets and spaces), so `- - 15 Minute Cap` reads as a cap. */
 const LEADING_BULLETS = /^[-•*][-•*\s]*/;
 /** AC71 (minor 563): a bulleted line whose whole text is markdown bold ("* **10 Squats**", "- __10 Squats__"). */
-const BULLETED_BOLD = /^[-•*][-•*\s]*?(\*\*|__)(\S(?:.*\S)?)\1\s*$/;
+// The inside never holds the marker again, so two bold spans on one line ("**10 Squats** then **10 Lunges**") are
+// not one pair (code review).
+const BULLETED_BOLD = /^[-•*][-•*\s]*?(\*\*|__)(\S(?:(?:(?!\1).)*\S)?)\1\s*$/;
 /** A movement line's text: every leading bullet off (AC70), and a whole-text bold pair after them (AC71). */
 const movementTextOf = (line: string): string => BULLETED_BOLD.exec(line)?.[2] ?? line.replace(LEADING_BULLETS, "");
 /** #264, #265, #276: a note line as the timer rules read it: collapsed, with its leading bullets off. The note keeps its text (D10). */

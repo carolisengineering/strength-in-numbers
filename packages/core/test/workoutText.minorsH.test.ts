@@ -71,6 +71,12 @@ describe("10.4 AC71 — minor 563: markdown bold around a bulleted movement come
     expect(r.items.map((i) => i.name)).toEqual(["Bench Press"]);
   });
 
+  it("code review: two bold spans on one line are not one whole-line pair, so the line reads as on main", () => {
+    // Captured from the reader on main (c015a3b3): only the leading bullets come off.
+    const r = read(["Main", "3 Sets", "* **10 Squats** then **10 Lunges**"]);
+    expect(r.items.map((i) => i.name)).toEqual(["Squats** then **10 Lunges**"]);
+  });
+
   it("Review Focus 1: a bold line that isn't a bulleted movement reads as on main", () => {
     // Captured from the reader on main (c015a3b3): both lines are the section's note, and nothing is an item.
     const r = read(["Main", "**Warm-up**", "**Note:** rest 2 min"]);

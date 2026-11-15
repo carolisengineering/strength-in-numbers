@@ -30,6 +30,17 @@ describe("minor 314 — the cap line shows only when a fill or join stopped at 8
     expect(capLine(run(filled, actions.toggleLink(0)))).toBe(false);
   });
 
+  it("code review: a grouping trigger that groups nothing keeps the line (still only the first 8 are grouped)", () => {
+    const filled = run(sectioned("", ["M", "a b c d e f g h i j"]), actions.setSectionTimer("M", SET_TIMER));
+    expect(capLine(filled)).toBe(true);
+    // A new format fills only an ungrouped section, so this one is left alone, and still capped.
+    const reformatted = run(filled, actions.setSectionTimer("M", { format: "amrap", capSeconds: 720 }));
+    expect(reformatted.items.map((i) => i.supersetGroup)).toEqual(filled.items.map((i) => i.supersetGroup));
+    expect(capLine(reformatted)).toBe(true);
+    // An 11th joins nothing (the others are not one run), so the line stays too.
+    expect(capLine(run(filled, actions.add(exerciseId(40))))).toBe(true);
+  });
+
   it("a join that capped shows it; a later move in the section clears it", () => {
     const joined = run(timedM("a1 b1 c1 d1 e1 f1 g1 h1"), actions.add(exerciseId(20)));
     expect(capLine(joined)).toBe(true);
