@@ -180,6 +180,8 @@ A full gym run holds each step long enough to collect 200 set saves at real pace
   writes the result, marked incomplete, with N from the steps that finished.
 - A second Ctrl-C more than 2 s later aborts k6 at once, without a summary, so every step reads as unmeasured. Use it
   only if k6 hangs.
+- Once k6 has stopped, Ctrl-C no longer interrupts anything. Cleanup always runs to the end and the result is written,
+  however many times you press it.
 
 ## 4. Production
 

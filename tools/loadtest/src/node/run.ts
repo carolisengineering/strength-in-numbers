@@ -184,38 +184,49 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   try {
     let summary: unknown;
     let cleanup: "done" | "failed" = "done";
+    // One Ctrl-C can reach the CLI several times (the terminal's process group, tsx's relay), and a second SIGINT
+    // makes k6 abort without writing its summary. Forward one; a deliberate Ctrl-C after SIGINT_REPEAT_MS aborts.
+    // The handler stays through cleanup, where a Ctrl-C only says to wait: Node's default would leave accounts
+    // half cleaned and no result.
+    let child: ReturnType<RunDeps["spawnK6"]> | undefined;
+    let k6Done = false;
+    let forwardedAt: number | undefined;
+    let toldToWait = false;
+    const release = deps.onSigint(() => {
+      if (k6Done || !child) {
+        if (!toldToWait) deps.log("cleanup is running and finishes on its own; wait for the result");
+        toldToWait = true;
+        return;
+      }
+      const t = deps.now().getTime();
+      if (forwardedAt !== undefined && t - forwardedAt < SIGINT_REPEAT_MS) return;
+      if (forwardedAt === undefined) {
+        deps.log("stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary");
+      }
+      forwardedAt = t;
+      child.kill("SIGINT");
+    });
     try {
-      const child = deps.spawnK6(args, env);
-      // One Ctrl-C can reach the CLI several times (the terminal's process group, tsx's relay), and a second SIGINT
-      // makes k6 abort without writing its summary. Forward one; a deliberate Ctrl-C after SIGINT_REPEAT_MS aborts.
-      let forwardedAt: number | undefined;
-      const release = deps.onSigint(() => {
-        const t = deps.now().getTime();
-        if (forwardedAt !== undefined && t - forwardedAt < SIGINT_REPEAT_MS) return;
-        if (forwardedAt === undefined) {
-          deps.log("stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary");
-        }
-        forwardedAt = t;
-        child.kill("SIGINT");
-      });
       try {
+        child = deps.spawnK6(args, env);
         const exit = await child.exited;
         deps.log(`k6 exited (code ${exit.code ?? "none"}${exit.signal ? `, signal ${exit.signal}` : ""})`);
       } finally {
-        release();
+        k6Done = true;
+        deps.log("cleaning up the load-test accounts…");
+        try {
+          const { removed } = await deps.cleanupAll(apis);
+          deps.log(`cleanup removed ${removed} workouts`);
+        } catch (err) {
+          // Never lose the run's result to a cleanup problem; say how to finish it by hand.
+          cleanup = "failed";
+          deps.log(`cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+          deps.log(`finish it with: pnpm --filter @sin/loadtest run loadtest cleanup --target ${target.name} --lifters ${accounts}`);
+        }
+        summary = deps.readSummary(summaryPath);
       }
     } finally {
-      deps.log("cleaning up the load-test accounts…");
-      try {
-        const { removed } = await deps.cleanupAll(apis);
-        deps.log(`cleanup removed ${removed} workouts`);
-      } catch (err) {
-        // Never lose the run's result to a cleanup problem; say how to finish it by hand.
-        cleanup = "failed";
-        deps.log(`cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
-        deps.log(`finish it with: pnpm --filter @sin/loadtest run loadtest cleanup --target ${target.name} --lifters ${accounts}`);
-      }
-      summary = deps.readSummary(summaryPath);
+      release();
     }
 
     const steps = stepResults(summary, schedule.stages.map((s) => s.lifters), cmd.type);

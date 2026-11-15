@@ -98,6 +98,27 @@ describe("AC16 — cleanup runs even when the run does not finish", () => {
     expect(h.d.cleanupAll).toHaveBeenCalledTimes(1);
   });
 
+  // /code-review (16B): without a handler during cleanup, a Ctrl-C there takes Node's default and kills the CLI with
+  // up to 150 accounts half cleaned. The handler stays until cleanup ends and only says to wait.
+  it("a Ctrl-C during cleanup doesn't stop it: cleanup finishes and the result is written", async () => {
+    const kill = vi.fn();
+    const h: ReturnType<typeof deps> = deps({
+      spawnK6: vi.fn(() => ({ exited: Promise.resolve({ code: 0, signal: null }), kill })),
+      cleanupAll: vi.fn(async () => {
+        h.fireSigint();
+        h.fireSigint();
+        return { removed: 3 };
+      }),
+    });
+    expect(await runLoad(gym, h.d)).toBe(0);
+    expect(kill).not.toHaveBeenCalled();
+    expect(h.lines.filter((l) => l.startsWith("cleanup is running"))).toEqual([
+      "cleanup is running and finishes on its own; wait for the result",
+    ]);
+    expect(h.lines).toContain("cleanup removed 3 workouts");
+    expect(h.results).toHaveLength(1);
+  });
+
   // Final review (16B): one Ctrl-C reaches the CLI several times (the terminal's process group, tsx's relay), and a
   // second SIGINT makes k6 abort without its summary. Forward one; a deliberate second Ctrl-C after 2 s still aborts.
   it("forwards one SIGINT for a burst of them, and a later one again", async () => {
