@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RunCommand } from "../src/node/args.ts";
-import { gymGate, runLoad, type GymResult, type RunDeps } from "../src/node/run.ts";
+import { METRICS_SECRETS, secretsFrom } from "../src/node/env.ts";
+import { gymGate, remoteWriteFor, runLoad, type GymResult, type RunDeps } from "../src/node/run.ts";
 import type { Api } from "../src/node/api.ts";
 import { summary } from "./k6-summary.ts";
 
@@ -40,6 +41,9 @@ function deps(overrides: Partial<RunDeps> = {}) {
     now: () => new Date("2026-11-06T12:00:00.000Z"),
     log: (line: string) => void lines.push(line),
     prodBaseUrl: () => "https://si-api-1.us-central1.run.app",
+    remoteWrite: vi.fn(() => ({ url: "http://localhost:9090/api/v1/write" })),
+    openAnnotation: vi.fn(async () => 42),
+    closeAnnotation: vi.fn(async () => {}),
     ...overrides,
   };
   return { d, lines, results, fireSigint: () => sigint?.() };
@@ -319,5 +323,114 @@ describe("secrets stay out of argv and logs", () => {
     const off = deps();
     await runLoad({ ...gym, metricsOutput: false }, off.d);
     expect((off.d.spawnK6 as ReturnType<typeof vi.fn>).mock.calls[0]![0]).not.toContain("experimental-prometheus-rw");
+  });
+});
+
+const RW = { url: "https://prom.grafana.example.test/api/prom/push", username: "1888173", password: "glc_rw_secret" };
+
+describe("AC24 — metrics go to Grafana Cloud on staging and prod", () => {
+  const metrics = secretsFrom(
+    { GRAFANA_PROM_RW_URL: RW.url, GRAFANA_PROM_RW_USER: RW.username, GRAFANA_PROM_RW_TOKEN: RW.password },
+    METRICS_SECRETS,
+  );
+
+  it("remoteWriteFor: local uses the local receiver and reads no secret; staging and prod use the env file", () => {
+    const never = () => {
+      throw new Error("read the metrics secrets");
+    };
+    expect(remoteWriteFor("local", never)).toEqual({ url: "http://localhost:9090/api/v1/write" });
+    expect(remoteWriteFor("staging", () => metrics)).toEqual(RW);
+    expect(remoteWriteFor("prod", () => metrics)).toEqual(RW);
+  });
+
+  it("a staging run hands k6 the three K6_PROMETHEUS_RW_* keys in its environment, never in argv", async () => {
+    const { d } = deps({ remoteWrite: vi.fn(() => RW) });
+    await runLoad({ ...gym, target: "staging" }, d);
+    const [args, env] = (d.spawnK6 as ReturnType<typeof vi.fn>).mock.calls[0]! as [string[], Record<string, string>];
+    expect(env).toMatchObject({
+      K6_PROMETHEUS_RW_SERVER_URL: RW.url,
+      K6_PROMETHEUS_RW_USERNAME: RW.username,
+      K6_PROMETHEUS_RW_PASSWORD: RW.password,
+      K6_PROMETHEUS_RW_TREND_STATS: "p(95),max",
+    });
+    expect(args).toContain("experimental-prometheus-rw");
+    for (const a of args) for (const v of Object.values(RW)) expect(a).not.toContain(v);
+  });
+
+  it("a local run has no username or password", async () => {
+    const { d } = deps();
+    await runLoad(gym, d);
+    const [, env] = (d.spawnK6 as ReturnType<typeof vi.fn>).mock.calls[0]! as [string[], Record<string, string>];
+    expect(env.K6_PROMETHEUS_RW_USERNAME).toBeUndefined();
+    expect(env.K6_PROMETHEUS_RW_PASSWORD).toBeUndefined();
+  });
+
+  it("--no-metrics-output reads no metrics secret", async () => {
+    const { d } = deps();
+    await runLoad({ ...gym, target: "staging", metricsOutput: false }, d);
+    expect(d.remoteWrite).not.toHaveBeenCalled();
+  });
+});
+
+describe("AC25 — the run annotation", () => {
+  it("opens at the run's start and closes after cleanup with the sentence and N", async () => {
+    const order: string[] = [];
+    const { d } = deps({
+      openAnnotation: vi.fn(async () => {
+        order.push("open");
+        return 42;
+      }),
+      spawnK6: vi.fn(() => {
+        order.push("k6");
+        return { exited: Promise.resolve({ code: 0, signal: null }), kill: vi.fn() };
+      }),
+      cleanupAll: vi.fn(async () => {
+        order.push("cleanup");
+        return { removed: 1 };
+      }),
+      closeAnnotation: vi.fn(async () => void order.push("close")),
+    });
+    await runLoad({ ...gym, target: "staging" }, d);
+    expect(order).toEqual(["open", "k6", "cleanup", "close"]);
+    expect(d.openAnnotation).toHaveBeenCalledWith({ target: "staging", type: "gym", startMs: new Date("2026-11-06T12:00:00.000Z").getTime() });
+    const [id, end] = (d.closeAnnotation as ReturnType<typeof vi.fn>).mock.calls[0]! as [number, { endMs: number; text: string }];
+    expect(id).toBe(42);
+    expect(end.text).toContain("staging handles 3 lifters");
+    expect(end.text).toMatch(/\(N = 3\)$/);
+  });
+
+  it("still closes when k6 can't start", async () => {
+    const { d } = deps({
+      spawnK6: vi.fn(() => {
+        throw new Error("spawn k6 ENOENT");
+      }),
+    });
+    await expect(runLoad(gym, d)).rejects.toThrow("spawn k6 ENOENT");
+    expect(d.closeAnnotation).toHaveBeenCalledWith(42, expect.objectContaining({ text: "load test: gym run on local did not finish" }));
+  });
+
+  it("Review Focus 4 — a failed close (a warning) leaves the run's own exit code", async () => {
+    const { d, lines } = deps({
+      closeAnnotation: vi.fn(async () => void lines.push("Grafana annotation: closing the run annotation failed (HTTP 500); the run goes on")),
+    });
+    expect(await runLoad(gym, d)).toBe(0);
+    expect(lines.at(-1)).toBe("Grafana annotation: closing the run annotation failed (HTTP 500); the run goes on");
+  });
+
+  it("a dry run leaves no annotation", async () => {
+    const { d } = deps();
+    await runLoad({ ...gym, dryRun: true }, d);
+    expect(d.openAnnotation).not.toHaveBeenCalled();
+  });
+});
+
+describe("AC22 — a whole fake staging run prints no secret", () => {
+  it("logs, the result file, the annotation text and k6's argv hold no token or Grafana secret", async () => {
+    const { d, lines, results } = deps({ remoteWrite: vi.fn(() => RW) });
+    await runLoad({ ...gym, target: "staging" }, d);
+    const [args] = (d.spawnK6 as ReturnType<typeof vi.fn>).mock.calls[0]! as [string[], Record<string, string>];
+    const closeText = JSON.stringify((d.closeAnnotation as ReturnType<typeof vi.fn>).mock.calls);
+    const everything = [...lines, JSON.stringify(results), JSON.stringify(args), closeText].join("\n");
+    for (const secret of [TOKEN, RW.password]) expect(everything).not.toContain(secret);
   });
 });

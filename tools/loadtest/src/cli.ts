@@ -14,10 +14,11 @@ import { accountEmail, accountIds } from "./node/accounts.ts";
 import { apiFor } from "./node/api.ts";
 import { parseArgs } from "./node/args.ts";
 import { cleanupAll } from "./node/cleanup.ts";
-import { ENV_FILE, RUN_SECRETS, SETUP_SECRETS, loadSecrets } from "./node/env.ts";
+import { closeAnnotation, openAnnotation } from "./node/annotate.ts";
+import { ANNOTATION_SECRETS, ENV_FILE, METRICS_SECRETS, RUN_SECRETS, SETUP_SECRETS, loadSecrets, type Secrets } from "./node/env.ts";
 import { politeApis } from "./node/polite.ts";
 import { prodBaseUrl } from "./node/prod.ts";
-import { runLoad, type GymResult, type RunDeps } from "./node/run.ts";
+import { remoteWriteFor, runLoad, type GymResult, type RunDeps } from "./node/run.ts";
 import { ensureSeeded } from "./node/seed.ts";
 import { mgmtClient, setupAccounts } from "./node/setup-accounts.ts";
 import { auth0Tokens } from "./node/tokens-auth0.ts";
@@ -55,8 +56,31 @@ function tokensFor(target: Target): RunDeps["tokens"] {
   };
 }
 
+/**
+ * AC25 — staging and prod runs are annotated in Grafana; local runs aren't. A missing annotation variable is a warning,
+ * not a refusal: an annotation failure never fails a run.
+ */
+function annotationsFor(target: Target): Pick<RunDeps, "openAnnotation" | "closeAnnotation"> {
+  if (target.name === "local") return { openAnnotation: async () => undefined, closeAnnotation: async () => {} };
+  let secrets: Secrets | undefined;
+  return {
+    openAnnotation: async (a) => {
+      try {
+        secrets = loadSecrets(ENV_FILE, ANNOTATION_SECRETS);
+      } catch (err) {
+        log(`Grafana annotation skipped: ${err instanceof Error ? err.message : String(err)}`);
+        return undefined;
+      }
+      return openAnnotation(secrets, a, fetch, log);
+    },
+    closeAnnotation: async (id, a) => (secrets ? closeAnnotation(secrets, id, a, fetch, log) : undefined),
+  };
+}
+
 function realDeps(target: Target): RunDeps {
   return {
+    remoteWrite: () => remoteWriteFor(target.name, () => loadSecrets(ENV_FILE, METRICS_SECRETS)),
+    ...annotationsFor(target),
     spawnK6: (args, env) => {
       const child = spawn("k6", args, { cwd: RESULTS_DIR, env: { ...process.env, ...env }, stdio: "inherit" });
       return {
