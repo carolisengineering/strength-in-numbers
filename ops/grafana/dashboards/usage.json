@@ -6,6 +6,17 @@
   "templating": {
     "list": [{ "name": "datasource", "type": "datasource", "query": "prometheus", "current": {} }]
   },
+  "annotations": {
+    "list": [
+      {
+        "name": "Load test runs",
+        "enable": true,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "target": { "type": "tags", "tags": ["loadtest"], "matchAny": false, "limit": 100 },
+        "iconColor": "purple"
+      }
+    ]
+  },
   "panels": [
     {
       "type": "timeseries", "title": "Workouts started / finished (per hour)", "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
