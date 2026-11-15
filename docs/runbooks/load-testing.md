@@ -86,6 +86,8 @@ In the Auth0 dashboard of tenant `dev-gncuqvfir0wv0t4l` (shared by staging and p
    - **Add service account token.**
 3. Import `ops/grafana/dashboards/load-test.json`, and re-import `api-overview.json` and `usage.json`
    (`observability.md` §4). All three show the "Load test runs" annotations.
+   - The Load test dashboard has a **Target** picker (default staging). Its k6 panels show only that target's runs.
+   - A copy imported before minors PR J (2026-11-15) has no picker: re-import `load-test.json` before the next run.
 
 ### 2.4 The env file
 
