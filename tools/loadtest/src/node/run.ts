@@ -25,6 +25,8 @@ export interface K6Child {
 
 export interface RunDeps {
   spawnK6(args: string[], env: Record<string, string>): K6Child;
+  /** Minor 588: whether `k6 version` runs, checked before any token is fetched. */
+  checkK6(): Promise<boolean>;
   tokens(ids: string[], expiresInS: number): Promise<string[]>;
   apisFor(tokens: string[]): Api[];
   cleanupAll(apis: Api[]): Promise<{ removed: number }>;
@@ -137,6 +139,11 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   const baseUrl = target.baseUrl ?? deps.prodBaseUrl();
   if (target.name === "prod") deps.log(`prod guards: pass (${baseUrl})`);
   if (cmd.dryRun) return 0;
+  // Minor 588: a missing k6 would otherwise show up as an ENOENT after the token fetches and the seeding.
+  if (!(await deps.checkK6())) {
+    deps.log("k6 isn't installed or isn't on PATH (brew install k6)");
+    return 2;
+  }
 
   if (cmd.type === "push" && !cmd.allowUnpassedPush) {
     const reason = gymGate(deps.latestGymResult(target.name));

@@ -24,6 +24,7 @@ import { ensureSeeded } from "./node/seed.ts";
 import { mgmtClient, setupAccounts } from "./node/setup-accounts.ts";
 import { auth0Tokens } from "./node/tokens-auth0.ts";
 import { localTokens } from "./node/tokens-local.ts";
+import { k6Env } from "./node/k6-env.ts";
 
 const RESULTS_DIR = fileURLToPath(new URL("../results/", import.meta.url));
 const PROD_TFVARS = fileURLToPath(new URL("../../../infra/prod.tfvars", import.meta.url));
@@ -103,7 +104,8 @@ function realDeps(target: Target): RunDeps {
       // Its own process group, so the terminal's Ctrl-C reaches k6 only as the one SIGINT `runLoad` forwards (a second
       // SIGINT makes k6 abort without its summary). Detached, k6 would outlive a closed terminal, so the CLI stops it
       // when it exits or is hung up on or terminated.
-      const child = spawn("k6", args, { cwd: RESULTS_DIR, env: { ...process.env, ...env }, stdio: "inherit", detached: true });
+      // Minor 586: only PATH, HOME, TMPDIR and the tool's own variables, never the whole shell environment.
+      const child = spawn("k6", args, { cwd: RESULTS_DIR, env: k6Env(process.env, env), stdio: "inherit", detached: true });
       const stopK6 = () => void child.kill("SIGKILL");
       const hangUp = (signal: NodeJS.Signals) => {
         stopK6();
@@ -131,6 +133,12 @@ function realDeps(target: Target): RunDeps {
         kill: (signal) => void child.kill(signal),
       };
     },
+    checkK6: () =>
+      new Promise((resolve) => {
+        const probe = spawn("k6", ["version"], { env: k6Env(process.env, {}), stdio: "ignore" });
+        probe.once("error", () => resolve(false));
+        probe.once("exit", (code) => resolve(code === 0));
+      }),
     tokens: tokensFor(target),
     // Read lazily, so a prod dry run prints its guards before prod.tfvars is checked.
     apisFor: (tokens) => politeFor(target.baseUrl ?? readProdBaseUrl(), tokens),

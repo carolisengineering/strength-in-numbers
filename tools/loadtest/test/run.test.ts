@@ -25,6 +25,7 @@ function deps(overrides: Partial<RunDeps> = {}) {
   };
   const d: RunDeps = {
     spawnK6: vi.fn(() => ({ exited: Promise.resolve({ code: 0, signal: null }), kill: vi.fn() })),
+    checkK6: vi.fn(async () => true),
     tokens: vi.fn(async (ids: string[]) => ids.map(() => TOKEN)),
     apisFor: vi.fn((tokens: string[]) => tokens.map(() => api)),
     cleanupAll: vi.fn(async () => ({ removed: 7 })),
@@ -297,6 +298,18 @@ describe("--dry-run", () => {
     expect(d.tokens).not.toHaveBeenCalled();
     expect(d.spawnK6).not.toHaveBeenCalled();
     expect(d.cleanupAll).not.toHaveBeenCalled();
+    expect(d.checkK6).not.toHaveBeenCalled();
+  });
+});
+
+describe("minor 588 — a missing k6 is found before any token", () => {
+  it("refuses with 2 and a fixed message, before tokens, seeding, the annotation and k6", async () => {
+    const { d, lines } = deps({ checkK6: vi.fn(async () => false) });
+    expect(await runLoad(gym, d)).toBe(2);
+    expect(lines).toContain("k6 isn't installed or isn't on PATH (brew install k6)");
+    expect(d.tokens).not.toHaveBeenCalled();
+    expect(d.openAnnotation).not.toHaveBeenCalled();
+    expect(d.spawnK6).not.toHaveBeenCalled();
   });
 });
 
