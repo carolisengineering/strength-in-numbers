@@ -5,6 +5,7 @@
  */
 import { accountEmail, accountIds } from "./accounts.ts";
 import type { Secrets } from "./env.ts";
+import { callSignal } from "./http-limits.ts";
 
 export interface NewUser {
   connection: string;
@@ -41,7 +42,13 @@ export function mgmtClient(s: Secrets, deps: MgmtDeps): MgmtClient {
         if (wait > 0) await deps.sleep(wait);
       }
       lastStart = deps.now();
-      const res = await deps.fetchFn(url, init);
+      let res: Response;
+      try {
+        res = await deps.fetchFn(url, { ...init, signal: callSignal() });
+      } catch {
+        // Minor 585: a timeout or a dropped connection names the path (never a header, a body or the token).
+        throw new Error(`Auth0 Management API: no answer from ${new URL(url).pathname} (timeout or network error)`);
+      }
       if (res.status !== 429 || n >= MAX_429_RETRIES) return res;
       const after = Number(res.headers.get("retry-after"));
       await deps.sleep((Number.isFinite(after) && after > 0 ? after : 1) * 1000);

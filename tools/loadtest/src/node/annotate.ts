@@ -4,6 +4,7 @@
  * one warning line naming the step (never the token) and the run goes on.
  */
 import type { Secrets } from "./env.ts";
+import { callSignal } from "./http-limits.ts";
 
 export interface AnnotationStart {
   target: string;
@@ -31,6 +32,7 @@ async function call(
       method,
       headers: { "content-type": "application/json", authorization: `Bearer ${s.get("GRAFANA_ANNOTATION_TOKEN")}` },
       body: JSON.stringify(body),
+      signal: callSignal(),
     });
     if (res.ok) return res;
     why = `HTTP ${res.status}`;

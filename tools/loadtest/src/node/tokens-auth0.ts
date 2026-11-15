@@ -4,6 +4,7 @@
  * the account's number, never its password, a secret or a token (AC22).
  */
 import type { Secrets } from "./env.ts";
+import { callSignal } from "./http-limits.ts";
 
 export interface Auth0Deps {
   fetchFn: typeof fetch;
@@ -50,6 +51,7 @@ async function attempt(email: string, s: Secrets, fetchFn: typeof fetch): Promis
         client_secret: s.get("LOADTEST_AUTH0_CLIENT_SECRET"),
         scope: "openid",
       }),
+      signal: callSignal(),
     });
   } catch {
     return { retry: true, why: "network error" };
