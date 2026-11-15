@@ -576,7 +576,10 @@ interface MutableItem {
 }
 /** `strict`: an AC48 run ("N Sets, 1 Set Every M:SS"), where a movement needs reps, a distance or a Max form. */
 /** `list`: AC62, counted lines with no lead-in; its items are rowless. */
-/** `sets`: the lead-in is a sets line ("4 Sets", "3-4 Sets", AC48's), not a rounds line: a label closes it (AC69, minor 562). */
+/**
+ * `sets`: the lead-in is a plain sets line ("4 Sets", "3-4 Sets"), not a rounds or timer line: a label closes it (AC69,
+ * minor 562). A sets line scored "for time" and AC48's "N Sets, 1 Set Every M:SS" are timer lines and keep it unset.
+ */
 type Run =
   | { id: number; kind: "scheme"; reps: number[]; text: string }
   | { id: number; kind: "lead-in"; n: number; strict?: boolean; line?: string; noteAt?: number; sets?: true }
@@ -864,19 +867,19 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   // AC48 reads the line as written: "3 Sets, for time" is "N Sets, …" and keeps coaching text out of the exercises.
   const every = LEAD_IN_SETS_EVERY.exec(line);
   if (every && Number(every[1]) >= 1) {
-    s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]), strict: true, sets: true };
+    s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]), strict: true };
     return "note";
   }
   // AC61: "3-4 Sets" opens a run of the low end and stays in the note, so the range is not lost.
   const range = LEAD_IN_RANGE.exec(head);
   if (range && Number(range[1]) >= 1 && Number(range[1]) <= Number(range[2])) {
-    s.run = { id: ++s.runs, kind: "lead-in", n: Number(range[1]), ...(/sets?:?$/i.test(head) ? { sets: true as const } : {}) };
+    s.run = { id: ++s.runs, kind: "lead-in", n: Number(range[1]), ...(!scored && /sets?:?$/i.test(head) ? { sets: true as const } : {}) };
     return "note";
   }
   const n = leadInCount(head);
   if (n !== null) {
     // `line` only when it is placed as a lead-in: a scored one is already in the note (AC68 must not add it twice).
-    const sets = LEAD_IN_SETS.test(head) ? { sets: true as const } : {};
+    const sets = !scored && LEAD_IN_SETS.test(head) ? { sets: true as const } : {};
     s.run = scored ? { id: ++s.runs, kind: "lead-in", n, ...sets } : { id: ++s.runs, kind: "lead-in", n, line, ...sets };
     return scored ? "note" : "lead-in";
   }

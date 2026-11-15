@@ -14,12 +14,16 @@ function schemaMessage(timer: unknown, field: string): string | undefined {
 }
 
 /**
- * Minor 316: the only server message the "or less" copy fits, per length field. Rounds' copy states the whole range,
- * so it fits any rounds failure.
+ * Minor 316: the only messages the "or less" copy fits, per length field: the API's over-maximum phrase (its
+ * `normalizeError` rewrites every Zod issue, so `too_big` reads "must be at most N", `apps/api/src/errors/problem.ts`)
+ * and Zod's own text, which the web's local check sees. Rounds' copy states the whole range, so it fits any rounds
+ * failure.
  */
-const KNOWN_MAX: Readonly<Record<"roundSeconds" | "capSeconds", string | undefined>> = {
-  roundSeconds: schemaMessage({ format: "set_timer", roundSeconds: TIMER_ROUND_SECONDS_MAX + 1, rounds: 1 }, "roundSeconds"),
-  capSeconds: schemaMessage({ format: "amrap", capSeconds: TIMER_CAP_SECONDS_MAX + 1 }, "capSeconds"),
+const knownMax = (max: number, local: unknown, field: string): ReadonlySet<string | undefined> =>
+  new Set([`must be at most ${max}`, schemaMessage(local, field)]);
+const KNOWN_MAX: Readonly<Record<"roundSeconds" | "capSeconds", ReadonlySet<string | undefined>>> = {
+  roundSeconds: knownMax(TIMER_ROUND_SECONDS_MAX, { format: "set_timer", roundSeconds: TIMER_ROUND_SECONDS_MAX + 1, rounds: 1 }, "roundSeconds"),
+  capSeconds: knownMax(TIMER_CAP_SECONDS_MAX, { format: "amrap", capSeconds: TIMER_CAP_SECONDS_MAX + 1 }, "capSeconds"),
 };
 
 /**
@@ -34,7 +38,7 @@ export function timerErrorForPath(path: string, prefix: string, message: string)
   const sub = path.slice(prefix.length + 1);
   const known = sub === "rounds" || sub === "roundSeconds" || sub === "capSeconds" ? sub : null;
   if (known === null) return { field: "group", message: TIMER_CHECK_ERROR };
-  if (known !== "rounds" && message !== KNOWN_MAX[known]) return { field: known, message: TIMER_CHECK_ERROR };
+  if (known !== "rounds" && !KNOWN_MAX[known].has(message)) return { field: known, message: TIMER_CHECK_ERROR };
   return { field: known, message: FIELD_MESSAGES[known] };
 }
 

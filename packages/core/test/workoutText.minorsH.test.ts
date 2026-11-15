@@ -12,11 +12,24 @@ describe("10.4 AC69 — minor 562: a sets line's run closes at a label (owner de
     expect(r.sections[0]!.notes).toBe("4 Sets\nAMRAP 10:");
   });
 
-  it("a range and an AC48 sets lead-in close at a label too", () => {
+  it("a plain sets range closes at a label too", () => {
     const range = read(["Main", "3-4 Sets", "Time cap: 12:00", "10 Burpees", "10 Push-ups"]);
     expect(range.items.map((i) => i.rows)).toEqual([null, null]);
+  });
+
+  // Final review: the decision is about a plain sets line. A scored one ("for time") or AC48's every-line is a timer
+  // line, so it keeps the run open through a label as a rounds line does.
+  it("a sets line scored for time keeps its run through a label", () => {
+    for (const lead of ["3 Sets for time", "3 Sets, for time"]) {
+      const r = read(["Main", lead, "Time cap: 12:00", "10 Burpees", "10 Push-ups"]);
+      expect(r.items.map((i) => i.rows?.length), lead).toEqual([3, 3]);
+      expect(new Set(r.items.map((i) => i.run)).size, lead).toBe(1);
+    }
+  });
+
+  it("AC48's every-line keeps its run through a label", () => {
     const every = read(["Main", "4 Sets, 1 Set Every 2:00", "AMRAP 10:", "10 Burpees"]);
-    expect(every.items.map((i) => i.rows)).toEqual([null]);
+    expect(every.items.map((i) => i.rows?.length)).toEqual([4]);
   });
 
   it("Review Focus 2: a scheme or rounds lead-in still keeps its run open through a label (AC69 as it stands)", () => {

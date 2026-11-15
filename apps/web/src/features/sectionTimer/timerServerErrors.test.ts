@@ -42,6 +42,9 @@ describe("10.7 AC25 — timer 422 paths map to field copy", () => {
     expect(timerErrorsFromServer([{ path: "timer.capSeconds", message: capMin }], "timer")).toEqual({ capSeconds: TIMER_CHECK_ERROR });
     expect(timerErrorsFromServer([{ path: "timer.roundSeconds", message: roundMax }], "timer")).toEqual({ roundSeconds: ROUND_LENGTH_MAX_ERROR });
     expect(timerErrorsFromServer([{ path: "timer.roundSeconds", message: roundOdd }], "timer")).toEqual({ roundSeconds: TIMER_CHECK_ERROR });
+    // The API's own wording (final review): over the maximum keeps the copy, under the minimum says Check the timer.
+    expect(timerErrorsFromServer([{ path: "timer.capSeconds", message: `must be at most ${TIMER_CAP_SECONDS_MAX}` }], "timer")).toEqual({ capSeconds: CAP_MAX_ERROR });
+    expect(timerErrorsFromServer([{ path: "timer.capSeconds", message: "must be at least 1" }], "timer")).toEqual({ capSeconds: TIMER_CHECK_ERROR });
     // Rounds' own copy states the whole range, so it fits any rounds failure.
     expect(timerErrorsFromServer([{ path: "timer.rounds", message: "anything" }], "timer")).toEqual({ rounds: ROUNDS_RANGE_ERROR });
   });
