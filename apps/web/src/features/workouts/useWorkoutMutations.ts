@@ -183,7 +183,8 @@ export function useRemoveExercise(): UseMutationResult<void, Error, { id: string
     mutationFn: ({ id }) => ignoreNotFound(() => client.removeExercise(id)),
     onSuccess: (_void, { setCount }) => {
       track("exercise_removed", { setCount });
-      return queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+      // Minor 539: a set write's guard can cancel one re-read, so ask until it lands, as Add exercise does (minor 323).
+      return rereadUntilLanded(queryClient, WORKOUT_KEYS.active);
     },
   });
 }

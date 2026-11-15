@@ -108,7 +108,12 @@ export function ItemSheet({
       setErrors({ ...shown.visible, sets: parsed.message });
       return;
     }
-    setErrors({});
+    // Minor 538: the quick line's fields leave with it; Rest and Notes keep the messages still shown until the next Done.
+    const kept = { ...shown.visible };
+    delete kept.sets;
+    delete kept.reps;
+    delete kept.weight;
+    setErrors(kept);
     setEnteredFromQuick(true);
     setPlan(enterPlan({ count: parsed.value, reps, weight, weightUnit: unit }, () => crypto.randomUUID()));
   }

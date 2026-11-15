@@ -27,7 +27,7 @@ import { supersetRows, type SupersetRow } from "./supersetRows";
 import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
 import { SetText, WarmupMark } from "./WarmupMark";
-import { WorkoutText } from "./WorkoutText";
+import { hasOwnTitle, WorkoutText } from "./WorkoutText";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -107,7 +107,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   return (
     <Screen
       title="Workout summary"
-      titleSmall={workout.title !== null && workout.title.trim() !== ""}
+      titleSmall={hasOwnTitle(workout)}
       leadFill
       lead={
         <SummaryTop home={home}>
@@ -126,7 +126,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       }
     >
       {/* Spec 18.0 AC50: the workout's own title and notes, only when set (no placeholder here). */}
-      {workout.title === null ? null : <WorkoutText text={workout.title} variant="title" />}
+      {workout.title !== null && hasOwnTitle(workout) ? <WorkoutText text={workout.title} variant="title" /> : null}
       <p className={styles.meta}>{date}</p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
       {/* Spec 17.6 AC21: records, stats, workout notes, exercises, the Hevy block, then the routine note. */}

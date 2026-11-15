@@ -122,7 +122,7 @@ describe("17.6 AC11 / AC13 — long lists collapse", () => {
       expect(button).toHaveFocus();
       cleanup();
       scrolled.length = 0;
-      render(<FirstTimeLines lines={Array.from({ length: 6 }, (_, i) => ({ key: `k${i}`, text: `First time logged: Lift ${i + 1} 20 kg` }))} />);
+      render(<FirstTimeLines lines={Array.from({ length: 6 }, (_, i) => ({ key: `k${i}`, text: `First time logged: Lift ${i + 1} 20 kg`, estimate: false }))} explain={false} />);
       await user.click(toggle());
       await user.click(toggle());
       expect(scrolled).toEqual([toggle()]);
@@ -133,15 +133,15 @@ describe("17.6 AC11 / AC13 — long lists collapse", () => {
 
   it("first times follow the same rule in their own list", async () => {
     const user = userEvent.setup();
-    const lines = (n: number): FirstTimeLine[] => Array.from({ length: n }, (_, i) => ({ key: `k${i}`, text: `First time logged: Lift ${i + 1} 20 kg` }));
-    const { unmount } = render(<FirstTimeLines lines={lines(4)} />);
-    expect(within(screen.getByRole("list", { name: "First time logged" })).getAllByRole("listitem")).toHaveLength(4);
+    const lines = (n: number): FirstTimeLine[] => Array.from({ length: n }, (_, i) => ({ key: `k${i}`, text: `First time logged: Lift ${i + 1} 20 kg`, estimate: false }));
+    const { unmount } = render(<FirstTimeLines lines={lines(4)} explain={false} />);
+    expect(within(screen.getByRole("list")).getAllByRole("listitem")).toHaveLength(4);
     expect(screen.queryByRole("button")).toBeNull();
     unmount();
-    render(<FirstTimeLines lines={lines(6)} />);
-    expect(within(screen.getByRole("list", { name: "First time logged" })).getAllByRole("listitem")).toHaveLength(3);
+    render(<FirstTimeLines lines={lines(6)} explain={false} />);
+    expect(within(screen.getByRole("list")).getAllByRole("listitem")).toHaveLength(3);
     await user.click(screen.getByRole("button", { name: "Show all 6 first times" }));
-    expect(within(screen.getByRole("list", { name: "First time logged" })).getAllByRole("listitem")).toHaveLength(6);
+    expect(within(screen.getByRole("list")).getAllByRole("listitem")).toHaveLength(6);
     expect(screen.getByRole("button", { name: "Show fewer" })).toHaveAttribute("aria-expanded", "true");
   });
 });
@@ -161,5 +161,27 @@ describe("17.6 AC17 — accessible", () => {
     await expectNoAxeViolations(container);
     await user.click(toggle());
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("17.6 AC12 — minor 475: one 'First time logged' per line", () => {
+  it("the list has no accessible name, and each item still reads First time logged: …", () => {
+    render(<FirstTimeLines lines={[{ key: "a", text: "First time logged: Bench Press 20 kg", estimate: false }]} explain={false} />);
+    const list = screen.getByRole("list");
+    expect(list).not.toHaveAttribute("aria-label");
+    expect(list).toHaveAccessibleName("");
+    expect(within(list).getByRole("listitem")).toHaveTextContent("First time logged: Bench Press 20 kg");
+  });
+});
+
+describe("minor 477 — FirstTimeLines explains the estimate when asked", () => {
+  const line: FirstTimeLine = { key: "a", text: "First time logged: Bench Press, est. 1-rep max 94 kg", estimate: true };
+  it("shows the explanation once under the lines", () => {
+    render(<FirstTimeLines lines={[line]} explain />);
+    expect(screen.getAllByText(EST_1RM_EXPLAINED)).toHaveLength(1);
+  });
+  it("shows none when the panel already explains it", () => {
+    render(<FirstTimeLines lines={[line]} explain={false} />);
+    expect(screen.queryByText(EST_1RM_EXPLAINED)).toBeNull();
   });
 });

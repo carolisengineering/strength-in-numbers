@@ -925,7 +925,7 @@ const measureLedger = (page) =>
       liftsWithoutEstimate: lifts.filter((li) => ![...li.querySelectorAll("[aria-hidden='true']")].some((l) => l.textContent.startsWith("Est. 1-rep max"))).length,
       labels: lines.map((l) => l.firstElementChild?.textContent ?? ""),
       toggle: panel?.querySelector(":scope > button")?.textContent ?? null,
-      firsts: [...document.querySelectorAll('ul[aria-label="First time logged"] > li')].map((li) => li.textContent),
+      firsts: [...document.querySelectorAll('ul[data-first-times] > li')].map((li) => li.textContent),
       overflowingRows: lines.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
       hscroll: main ? main.scrollWidth > main.clientWidth : false,
     };
@@ -949,8 +949,6 @@ const ZOOM_KNOWN = [
   { shot: "light/mobile-200pct/z1-workout", item: "clipped input: input[text] \"6\"", bl: "BL-37" },
   { shot: "light/mobile-200pct/z3-edit-sheet", item: "clipped input: input[text] \"24\"", bl: "BL-37" },
   { shot: "light/mobile-200pct/z3-edit-sheet", item: "clipped input: input[text] \"40\"", bl: "BL-37" },
-  { shot: "light/mobile-200pct/z3-edit-sheet", item: "sheet row: row button \"Delete set\" is clipped", bl: "BL-39" },
-  { shot: "light/mobile-200pct/z3-edit-sheet", item: "sheet row: row button \"Cancel\" is clipped", bl: "BL-39" },
   { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Bench Press, 5 × 5–8 @ 40–82.5 kg · 3:00\"", bl: "BL-38" },
   { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Overhead Press, 4 × 5–8 @ 30–47.5 kg · 2:30\"", bl: "BL-38" },
   { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Incline Dumbbell Press, superset 1, 3 × 8–12 @ 26 kg · 1:30\"", bl: "BL-38" },
@@ -1732,6 +1730,32 @@ try {
             await shoot(page, device, "63e-sheet-320-keyboard-messages", "Minor 492: a failure and the Delete question at 320 px on a 232 px frame: the messages scroll, the body keeps room");
             await page.evaluate(() => document.querySelector("dialog[open] [data-sheet-messages] > :first-child").replaceChildren());
             await page.locator("dialog[open] [data-sheet-actions]").getByRole("button", { name: "Keep set" }).click();
+            // Minor 490 (and half of 501): a workout's Edit section sheet has the longest row, Remove section, Cancel and
+            // Save. At 320 × 568, keyboard down and with a 232 px frame, the row wraps instead of squeezing: no button is
+            // clipped or under 44 px, the row rests on the frame's bottom (measureSheetRows), and no label breaks inside
+            // its button.
+            await go(`/app/history/${D.ids.latestPush}/edit`);
+            await page.getByRole("button", { name: "Edit section Main lifts" }).click({ timeout: 4000 });
+            await page.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+            for (const frame of [null, 232]) {
+              if (frame) await setFrame(frame);
+              const where = frame ? `with a ${frame} px frame` : "with the keyboard down";
+              const [row] = await measureSheetRows(page);
+              if ((row?.buttons ?? []).join("|") !== "Remove section|Cancel|Save") violations.push(`minor 490: the section sheet's row reads ${(row?.buttons ?? []).join(", ")}`);
+              for (const v of row?.violations ?? []) violations.push(`minor 490 (${where}): ${v}`);
+              const broken = await page.evaluate(() =>
+                [...document.querySelectorAll("dialog[open] [data-sheet-actions] button")]
+                  .filter((b) => {
+                    const range = document.createRange();
+                    range.selectNodeContents(b);
+                    return new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size > 1;
+                  })
+                  .map((b) => b.textContent),
+              );
+              if (broken.length > 0) violations.push(`minor 490 (${where}): a label breaks inside its button: ${broken.join(", ")}`);
+              await shoot(page, device, frame ? "55c-section-sheet-320-keyboard" : "55b-section-sheet-320", `Minor 490: a workout's Edit section sheet at 320 × 568 ${where}: Remove section, Cancel and Save wrap, none squeezed`);
+            }
+            await page.keyboard.press("Escape");
           } finally {
             await page.setViewportSize(viewport);
           }

@@ -62,6 +62,13 @@ describe("17.13 AC11 — the summary's two titles", () => {
     expect((await screen.findByRole("heading", { level: 1, name: "Workout summary" })).className).not.toMatch(/titleSmall/);
   });
 
+  it("minor 543 — a whitespace title draws no title line, and the h1 keeps the display size", async () => {
+    withTitle("   ");
+    const h1 = await screen.findByRole("heading", { level: 1, name: "Workout summary" });
+    expect(h1.className).not.toMatch(/titleSmall/);
+    expect(document.querySelector("main p[class*='title']")).toBeNull();
+  });
+
   it("review focus 4: the size follows the refreshed title, not the first render", async () => {
     const { workout, queryClient } = withTitle("Heavy bench day");
     const h1 = await screen.findByRole("heading", { level: 1, name: "Workout summary" });

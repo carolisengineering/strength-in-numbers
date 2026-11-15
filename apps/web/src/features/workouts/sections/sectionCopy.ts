@@ -46,6 +46,8 @@ export const SECTION_COPY = Object.freeze({
   groupFailedTimer: "Timer saved, but the exercises couldn't be grouped — try again",
   groupFailedAdded: "Exercise added, but it couldn't be grouped — try again",
   groupFailedMoved: "Exercise moved, but it couldn't be grouped — try again",
+  /** Minor 564: shown in the banner's place while a grouping's Try again re-reads and writes. */
+  tryingAgain: "Trying again…",
 });
 
 export const editLabel = (name: string): string => `Edit section ${name}`;

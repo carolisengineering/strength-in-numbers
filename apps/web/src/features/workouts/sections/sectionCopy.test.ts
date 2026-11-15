@@ -45,6 +45,7 @@ describe("10.6 AC22 — copy is pinned", () => {
       groupFailedTimer: "Timer saved, but the exercises couldn't be grouped — try again",
       groupFailedAdded: "Exercise added, but it couldn't be grouped — try again",
       groupFailedMoved: "Exercise moved, but it couldn't be grouped — try again",
+      tryingAgain: "Trying again…",
     });
     expect(Object.isFrozen(SECTION_COPY)).toBe(true);
   });

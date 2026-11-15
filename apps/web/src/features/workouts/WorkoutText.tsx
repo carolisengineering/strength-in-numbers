@@ -8,3 +8,11 @@ import styles from "./WorkoutText.module.css";
 export function WorkoutText({ text, variant }: { text: string; variant: "title" | "notes" }) {
   return <p className={styles[variant]}>{text}</p>;
 }
+
+/**
+ * Minor 543: whether the workout has a title of its own (not null, not blank). The summary's title line and its
+ * smaller "Workout summary" h1 both read this one predicate, so they never disagree.
+ */
+export function hasOwnTitle(workout: { readonly title: string | null }): boolean {
+  return workout.title !== null && workout.title.trim() !== "";
+}

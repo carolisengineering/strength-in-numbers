@@ -131,8 +131,15 @@
   gap: var(--space-2);
 }
 
+/* Minor 490: with a 0 basis a flex item's automatic minimum is gone, so a long label squeezed inside its button at
+   320 px; never below its whole label's width (unless the label is wider than the row), so the row wraps instead.
+   The labels are centered in equal widths, so the side padding is only a floor: a narrower one keeps a three-button row
+   (Remove section, Cancel, Save; Keep set, Cancel, Delete set) on one line at 320 px, where a wrap would cost the
+   232 px keyboard frame its body (minor 492). */
 .buttons button {
   flex: 1 1 0;
+  min-width: fit-content;
+  padding-inline: var(--space-2);
 }
 
 /* A slot is only a position; the caller's buttons are the flex items. */

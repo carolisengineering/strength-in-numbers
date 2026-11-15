@@ -4,6 +4,7 @@ import { planSessionChange, type SessionOp, type SessionPatch, type SessionSlot 
 
 import { track } from "../../observability/track";
 import { WORKOUT_KEYS } from "./queries";
+import { rereadUntilLanded } from "./readGuard";
 import { useUpdateWorkoutExercise } from "./useWorkoutMutations";
 import type { WorkoutClient, WorkoutExercisePatch } from "./workoutClient";
 
@@ -63,11 +64,12 @@ export function useRegroup({ refresh = WORKOUT_KEYS.active, client, onDone }: Re
         try {
           for (const patch of patches) await mutateAsync({ id: patch.id, body: bodyOf(patch) });
         } catch (error) {
-          await queryClient.invalidateQueries({ queryKey: options.current.refresh });
+          await rereadUntilLanded(queryClient, options.current.refresh);
           const only = patches.length === 1 ? patches[0]! : null;
           return { status: "failed", error, retry: only !== null && "position" in only ? only : null };
         }
-        await queryClient.invalidateQueries({ queryKey: options.current.refresh });
+        // Minor 539: a set write's guard can cancel one re-read; a timed join or couple reads the cache next.
+        await rereadUntilLanded(queryClient, options.current.refresh);
         const done = options.current.onDone;
         if (done) done(op);
         else if (op.type === "move") track("exercise_moved", { direction: op.direction });

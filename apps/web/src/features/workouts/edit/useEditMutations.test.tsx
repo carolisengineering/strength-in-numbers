@@ -12,7 +12,7 @@ import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { HISTORY_KEYS } from "../../history/queries";
 import { WORKOUT_KEYS, useWorkoutDetail } from "../queries";
 import { useIsSetWritePending } from "../useWorkoutMutations";
-import { EDIT_MUTATION_KEY, useEditAddExercise, useEditCreateSet, useEditDeleteSet, useEditDetails, useEditSetNote, useEditUpdateSet, useIsEditWritePending } from "./useEditMutations";
+import { EDIT_MUTATION_KEY, useEditAddExercise, useEditCreateSet, useEditDeleteSet, useEditDetails, useEditRemoveExercise, useEditSetNote, useEditUpdateSet, useIsEditWritePending } from "./useEditMutations";
 
 afterEach(() => observability.track.mockReset());
 
@@ -126,6 +126,19 @@ describe("10.7 AC22 / minor 323 — the edit screen's Add exercise waits for its
     await waitFor(() => expect(result.current.detail.isSuccess).toBe(true));
     const reread = vi.spyOn(qc, "invalidateQueries").mockResolvedValue(undefined);
     await act(() => result.current.add.mutateAsync({ workoutId: detail.id, exerciseId: "e1" }));
+    expect(reread.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(WORKOUT_KEYS.detail(detail.id)))).toHaveLength(3);
+  });
+});
+
+describe("minor 539 — the edit screen's Remove exercise waits for its re-read to land", () => {
+  it("asks again when its re-read is canceled, up to three times", async () => {
+    const { qc, detail } = seeded();
+    const live = fakeClient({ getById: () => Promise.resolve(detail) });
+    const edit = fakeClient({ removeExercise: async () => undefined });
+    const { result } = renderHook(() => ({ detail: useWorkoutDetail(detail.id), remove: useEditRemoveExercise() }), { wrapper: wrapperWith(qc, live, edit) });
+    await waitFor(() => expect(result.current.detail.isSuccess).toBe(true));
+    const reread = vi.spyOn(qc, "invalidateQueries").mockResolvedValue(undefined);
+    await act(() => result.current.remove.mutateAsync({ workoutId: detail.id, id: "we" }));
     expect(reread.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(WORKOUT_KEYS.detail(detail.id)))).toHaveLength(3);
   });
 });

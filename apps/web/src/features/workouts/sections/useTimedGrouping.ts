@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WorkoutDetail } from "@sin/core";
 import type { Regroup } from "../useRegroup";
 import { SECTION_COPY } from "./sectionCopy";
@@ -31,6 +31,11 @@ export interface TimedGroupingDeps {
 export interface TimedGrouping {
   /** Group what §6.4 says to, from the current detail. The caller already holds `structureLock`. */
   couple(sectionId: string, trigger: GroupTrigger, cause: GroupCause): Promise<void>;
+  /**
+   * Minor 564: a Try again holds the structure lock (its re-read, then its group writes). The screen shows
+   * `RetryingLine` in the banner's place meanwhile, so a slow read never looks like nothing happened.
+   */
+  readonly retrying: boolean;
 }
 
 interface Attempt {
@@ -47,6 +52,7 @@ interface Attempt {
  * already grouped sends nothing.
  */
 export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
+  const [retrying, setRetrying] = useState(false);
   // The latest deps, so a Try again tapped later reads the screen as it is then.
   const latest = useRef(deps);
   useEffect(() => {
@@ -54,7 +60,7 @@ export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
   });
 
   // Built once: both functions read `latest` when called, so they never go stale and need no hook dependencies.
-  const api = useRef<TimedGrouping | null>(null);
+  const api = useRef<Pick<TimedGrouping, "couple"> | null>(null);
   if (api.current === null) {
     /** The failure banner, whose Try again resumes `span` (the one place its text and retry are made). */
     const failedBanner = (attempt: Attempt, span: readonly string[]): SectionBanner => ({
@@ -92,6 +98,7 @@ export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
       if (structureLock.current) return;
       structureLock.current = true;
       setBanner(null);
+      setRetrying(true);
       try {
         // Minor 321: plan from the server's workout, not the cache, so a link made on another device stays. A read that
         // fails (or can't start offline) sends nothing: the banner comes back with the same Try again.
@@ -106,10 +113,12 @@ export function useTimedGrouping(deps: TimedGroupingDeps): TimedGrouping {
         await send(attempt, resumed !== null ? [resumed] : timedRegroupTargets(detail, attempt.sectionId, attempt.trigger));
       } finally {
         structureLock.current = false;
+        setRetrying(false);
       }
     };
 
     api.current = { couple };
   }
-  return api.current;
+  const { couple } = api.current;
+  return useMemo(() => ({ couple, retrying }), [couple, retrying]);
 }

@@ -44,6 +44,8 @@ export interface ResultSheetProps {
 
 /** Spec 17.10 AC13: the one hint the round fields share; Set Timer's rows and the round-ends group never both render. */
 const CLOCK_HINT_ID = "result-clock-hint";
+/** Finish time's own hint (`ClockField` names it `${id}-hint`). */
+const FINISH_HINT_ID = "result-finish-hint";
 
 const step = (text: string, by: 1 | -1, max: number): string => {
   const n = text === "" ? 0 : Number(text);
@@ -100,6 +102,11 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
     shown.edit(field);
     setDraft(next);
   };
+  // Minor 497 (owner decision 2026-11-14): on Time Cap, Finished, Finish time's own hint already says the clock
+  // sentence a few lines up, so the round-ends hint keeps only its first sentence, and each round also points at
+  // Finish time's hint, so a screen reader still hears how to type the clock there (code review).
+  const finishTimeShown = timer.format === "time_cap" && draft.mode === "finished";
+  const roundHints = finishTimeShown ? `${CLOCK_HINT_ID} ${FINISH_HINT_ID}` : CLOCK_HINT_ID;
   const roundRow = (round: number, digits: string) => (
     <div key={round} className={styles.round} data-round={round}>
       {/* Minor 331: the round to fill hears its "Next" tag after the shared clock hint; the link moves with the tag. */}
@@ -107,7 +114,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
         id={`result-round-${round}`}
         label={RESULT_COPY.roundLabel(round)}
         hint={null}
-        describedBy={round === next ? `${CLOCK_HINT_ID} result-round-${round}-next` : CLOCK_HINT_ID}
+        describedBy={round === next ? `${roundHints} result-round-${round}-next` : roundHints}
         digits={digits}
         error={shown.of(`row:${round}`)}
         onChange={(d) => setRow(round, d)}
@@ -159,7 +166,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   const roundEnds = (
     <fieldset className={styles.group}>
       <legend className={styles.legend}>{RESULT_COPY.roundEnds}</legend>
-      <p className={styles.hint} id={CLOCK_HINT_ID}>{`${RESULT_COPY.roundEndsHint} ${CLOCK_HINT}`}</p>
+      <p className={styles.hint} id={CLOCK_HINT_ID}>{finishTimeShown ? RESULT_COPY.roundEndsHint : `${RESULT_COPY.roundEndsHint} ${CLOCK_HINT}`}</p>
       {draft.rows.map((r) => roundRow(r.round, r.digits))}
       {highest < TIMER_ROUNDS_MAX ? (
         <Button variant="secondary" className={styles.addRound} onClick={() => setDraft(addRoundRow)}>

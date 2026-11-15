@@ -21,6 +21,7 @@ import { EXERCISES_COPY } from "./messages";
 import { EXERCISES_PATH, exercisePath, FROM_RECORDS, isFromRecords, RECORDS_PATH } from "./paths";
 import { useExerciseUsage } from "./usage";
 import { classifyExerciseError, exerciseErrorMessage } from "./exerciseErrors";
+import { disclosureToggle } from "./disclosureToggle";
 import type { Resolution } from "./resolveExercise";
 import { useDeleteExercise } from "./useExerciseMutations";
 import { useExercisePage } from "./useExercisePage";
@@ -176,9 +177,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
       {/* `open` is the page's until the lifter toggles it; a toggle the page made itself isn't recorded. */}
       <details
         open={disclosureOpen}
-        onToggle={(event) => {
-          if (event.currentTarget.open !== disclosureOpen) setLifterOpen(event.currentTarget.open);
-        }}
+        onToggle={disclosureToggle(disclosureOpen, setLifterOpen)}
       >
         <summary className={styles.disclosureSummary}>{EXERCISES_COPY.detailsLabel}</summary>
         {/* Any tap inside pins it open (minor 506): Edit's sheet and Delete's dialog return focus to a button in here,

@@ -7,7 +7,8 @@ vi.mock("../../observability/track", () => ({ track: tracked.track }));
 
 import { ApiError } from "../../api";
 import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../test/workoutHarness";
-import { WORKOUT_KEYS } from "./queries";
+import { makeWorkoutDetail } from "../../test/workoutFixtures";
+import { WORKOUT_KEYS, useActiveWorkout } from "./queries";
 import { NO_FREE_GROUP_MESSAGE, useRegroup } from "./useRegroup";
 import type { WorkoutClient } from "./workoutClient";
 
@@ -145,5 +146,18 @@ describe("18.0 AC11 — regroup options", () => {
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([WORKOUT_KEYS.detail("w")]);
     expect(onDone).toHaveBeenCalledWith({ type: "move", id: "we0", direction: "down" });
     expect(tracked.track).not.toHaveBeenCalled();
+  });
+});
+
+describe("minor 539 — a regroup waits for its re-read to land", () => {
+  it("asks again when its re-read is canceled, up to three times", async () => {
+    const qc = makeQueryClient();
+    const detail = makeWorkoutDetail({ exercises: [{ modality: "weight_reps" }, { modality: "weight_reps" }] });
+    const client = fakeClient({ getActive: () => Promise.resolve(detail), updateWorkoutExercise: (async () => ({})) as unknown as WorkoutClient["updateWorkoutExercise"] });
+    const { result } = renderHook(() => ({ active: useActiveWorkout(), regroup: useRegroup() }), { wrapper: wrapperWith(qc, client) });
+    await waitFor(() => expect(result.current.active.isSuccess).toBe(true));
+    const reread = vi.spyOn(qc, "invalidateQueries").mockResolvedValue(undefined);
+    await act(async () => expect(await result.current.regroup.run(slots(null, null), { type: "toggleLink", index: 0 })).toEqual({ status: "done" }));
+    expect(reread.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(WORKOUT_KEYS.active))).toHaveLength(3);
   });
 });

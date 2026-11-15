@@ -44,23 +44,56 @@ describe("17.6 AC6 / 17.2 AC22 — a zero-gain estimate", () => {
     const l = ledger([rec(w, 0, heaviest(190, 185)), rec(w, 0, estimate(215.1, 215))], w);
     expect(l.lifts[0]!.rows.map((r) => r.type)).toEqual(["heaviest_weight"]);
   });
-  it("alone, it is one value-only row and the lift counts", () => {
+  it("17.6 AC6 — minor 476: alone, it is one value-only row, which doesn't count, so there is no panel", () => {
     const w = workoutOf([lift("Bench Press")]);
     const l = ledger([rec(w, 0, estimate(94.1, 94))], w);
-    expect(l.heading).toBe("New record");
-    expect(l.lifts[0]!.rows).toEqual([expect.objectContaining({ type: "best_est_1rm", label: "Est. 1-rep max", newText: "94 kg", oldText: null, gainText: null })]);
-  });
-  it("beaten but unchanged beside a first heaviest: the same value-only row, and no first line", () => {
-    const w = workoutOf([lift("Bench Press")]);
-    const l = ledger([rec(w, 0, heaviest(190, null)), rec(w, 0, estimate(94.1, 94))], w);
-    expect(l.lifts[0]!.rows.map((r) => [r.type, r.gainText])).toEqual([["best_est_1rm", null]]);
+    expect(l.heading).toBeNull();
+    expect(l.lifts).toEqual([]);
     expect(l.firsts).toEqual([]);
   });
-  it("Review Focus 3: a lb account where both weights read 220.5 lb gets one value-only row that still counts", () => {
+  it("17.6 AC6 — minor 476: beside a gaining lift, a value-only lift is still drawn, and not counted", () => {
+    const w = workoutOf([lift("Bench Press"), lift("Squat")]);
+    const l = ledger([rec(w, 0, heaviest(190, 185)), rec(w, 1, estimate(94.1, 94))], w);
+    expect(l.heading).toBe("New records on 1 lift");
+    expect(l.lifts.map((x) => x.name)).toEqual(["Bench Press", "Squat"]);
+    expect(l.lifts[1]!.rows).toEqual([expect.objectContaining({ type: "best_est_1rm", label: "Est. 1-rep max", newText: "94 kg", oldText: null, gainText: null })]);
+  });
+  it("17.6 AC6 — minor 476: a lift with one gaining row counts, its value-only row drawn beside it", () => {
+    const w = workoutOf([lift("Bench Press")]);
+    const l = ledger([rec(w, 0, heaviest(190, 185)), rec(w, 0, { recordType: "max_reps", value: 5, previousValue: 5, unit: "reps" })], w);
+    expect(l.heading).toBe("New records on 1 lift");
+  });
+  it("beaten but unchanged beside a first heaviest: with no gain anywhere, the first heaviest is its first line (minor 476)", () => {
+    const w = workoutOf([lift("Bench Press")]);
+    const l = ledger([rec(w, 0, heaviest(190, null)), rec(w, 0, estimate(94.1, 94))], w);
+    expect(l.heading).toBeNull();
+    expect(l.lifts).toEqual([]);
+    expect(l.firsts.map((f) => f.text)).toEqual(["First time logged: Bench Press 190 kg"]);
+  });
+  it("Review Focus 3: a lb account where both weights read 220.5 lb shows no panel (minor 476)", () => {
     const w = workoutOf([lift("Bench Press")]);
     const l = ledger([rec(w, 0, heaviest(100.017, 100))], w, { pref: "lb" });
-    expect(l.heading).toBe("New record");
-    expect(l.lifts[0]!.rows).toEqual([expect.objectContaining({ newText: "220.5 lb", oldText: null, gainText: null })]);
+    expect(l.heading).toBeNull();
+    expect(l.lifts).toEqual([]);
+  });
+});
+
+describe("minor 477 — the estimate is explained under first-time lines when the panel doesn't", () => {
+  it("only first-time lines, one led by an estimate: explain them", () => {
+    const w = workoutOf([lift("Bench Press")]);
+    expect(ledger([rec(w, 0, estimate(94, null))], w).explainFirsts).toBe(true);
+  });
+  it("first lines with no estimate: nothing to explain", () => {
+    const w = workoutOf([lift("Bench Press")]);
+    expect(ledger([rec(w, 0, heaviest(190, null))], w).explainFirsts).toBe(false);
+  });
+  it("a drawn lift with an estimate row explains it in the panel, so never under the lines too", () => {
+    const w = workoutOf([lift("Bench Press"), lift("Squat")]);
+    expect(ledger([rec(w, 0, estimate(221.5, 215)), rec(w, 1, estimate(94, null))], w).explainFirsts).toBe(false);
+  });
+  it("a drawn lift with no estimate row leaves the first line's estimate to be explained under the lines", () => {
+    const w = workoutOf([lift("Bench Press"), lift("Squat")]);
+    expect(ledger([rec(w, 0, heaviest(190, 185)), rec(w, 1, estimate(94, null))], w).explainFirsts).toBe(true);
   });
 });
 
@@ -143,7 +176,7 @@ describe("17.6 AC10 — a lift is named by a row it shows", () => {
 describe("17.6 AC12 — first times are quiet lines", () => {
   it("a first heaviest", () => {
     const w = workoutOf([lift("Triceps Pushdown")]);
-    expect(ledger([rec(w, 0, heaviest(32.5, null))], w).firsts).toEqual([{ key: w.exercises[0]!.exerciseId, text: "First time logged: Triceps Pushdown 32.5 kg" }]);
+    expect(ledger([rec(w, 0, heaviest(32.5, null))], w).firsts).toEqual([{ key: w.exercises[0]!.exerciseId, text: "First time logged: Triceps Pushdown 32.5 kg", estimate: false }]);
   });
   it("an estimate lead says so", () => {
     const w = workoutOf([lift("Bench Press")]);
@@ -182,7 +215,7 @@ describe("17.6 AC13 — mixed lifts", () => {
 describe("17.6 AC14 / 17.2 AC16 / 17.2 AC24 — no set volume or timed rows", () => {
   it("set volume only, or no records, is an empty ledger", () => {
     const w = workoutOf([lift("Bench Press")]);
-    const empty = { heading: null, lifts: [], firsts: [] };
+    const empty = { heading: null, lifts: [], firsts: [], explainFirsts: false };
     expect(ledger([rec(w, 0, { recordType: "best_set_volume", value: 950, previousValue: 900, unit: "kg_reps" })], w)).toEqual(empty);
     expect(ledger([], w)).toEqual(empty);
   });
