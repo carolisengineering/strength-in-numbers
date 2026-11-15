@@ -69,6 +69,11 @@ function noun(type: RunType, pushFactor: number): string {
   return "lifters mid-workout at the same time";
 }
 
+/** Minor 369: "no set saves measured" doesn't read as a cause, so it gets its own phrase. */
+function failedPhrase(x: string): string {
+  return x === X_NO_SET_SAVES ? "measured no set saves" : `failed on ${x}`;
+}
+
 /** N = the highest passing step; X = what the next step broke. A failure below N is reported, not hidden. */
 export function report(input: { target: TargetName; type: RunType; pushFactor: number; steps: StepResult[] }): Report {
   const { target, type, pushFactor } = input;
@@ -85,16 +90,19 @@ export function report(input: { target: TargetName; type: RunType; pushFactor: n
       n: null,
       x,
       nonMonotonic: false,
-      sentence: `${target}: no step passed; the first step (${first.lifters} lifters) failed on ${x}`,
+      sentence: `${target}: no step passed; the first step (${first.lifters} lifters) ${failedPhrase(x)}`,
     };
   }
   const n = steps[best]!.lifters;
   const below = steps.slice(0, best).find((s) => !s.pass);
   const next = steps[best + 1];
   const x = next ? next.failedOn! : X_NOTHING;
-  let sentence = next
-    ? `${target} handles ${n} ${noun(type, pushFactor)} before ${x} goes wrong`
-    : `${target} handles ${n} ${noun(type, pushFactor)}; ${X_NOTHING}`;
-  if (below) sentence += ` (non-monotonic: the ${below.lifters}-lifter step failed on ${below.failedOn} although a larger step passed)`;
+  const handles = `${target} handles ${n} ${noun(type, pushFactor)}`;
+  let sentence = !next
+    ? `${handles}; ${X_NOTHING}`
+    : x === X_NO_SET_SAVES
+      ? `${handles}, but the next step (${next.lifters} lifters) measured no set saves`
+      : `${handles} before ${x} goes wrong`;
+  if (below) sentence += ` (non-monotonic: the ${below.lifters}-lifter step ${failedPhrase(below.failedOn!)} although a larger step passed)`;
   return { n, x, nonMonotonic: below !== undefined, sentence };
 }
