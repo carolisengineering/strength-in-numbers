@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { BURST_STEPS, GYM_STEPS } from "../plan/constants.ts";
 import { lifterEnv, runNonce } from "../plan/lifters.ts";
+import { checkProdGuards } from "./prod.ts";
 import { report, stepResults, type Report, type StepResult } from "../plan/report.ts";
 import { seededRoutineSets } from "../plan/routine.ts";
 import { burstSchedule, estimateRequests, gymSchedule, meanSessionS, type Schedule } from "../plan/schedule.ts";
@@ -30,6 +31,8 @@ export interface RunDeps {
   /** The newest gym result for a target, if any (D9). */
   latestGymResult(target: string): GymResult | undefined;
   commit(baseUrl: string): Promise<string | null>;
+  /** The production API origin from `infra/prod.tfvars`; throws while it holds placeholders (AC27, Review Focus 5). */
+  prodBaseUrl(): string;
   /** Registers a Ctrl-C handler; returns its removal. */
   onSigint(handler: () => void): () => void;
   now(): Date;
@@ -104,6 +107,13 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   const estimate = estimateRequests(schedule, sets, cmd.type);
   deps.log(`estimated requests: ${estimate}`);
   deps.log(`estimated duration: ${Math.ceil(durationS(schedule) / 60)} min, ${accounts} accounts, steps ${schedule.stages.map((s) => s.lifters).join(", ")}`);
+  const refusal = checkProdGuards(cmd, estimate);
+  if (refusal) {
+    deps.log(refusal);
+    return 2;
+  }
+  const baseUrl = target.baseUrl ?? deps.prodBaseUrl();
+  if (target.name === "prod") deps.log(`prod guards: pass (${baseUrl})`);
   if (cmd.dryRun) return 0;
 
   if (cmd.type === "push" && !cmd.allowUnpassedPush) {
@@ -114,7 +124,6 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     }
   }
 
-  const baseUrl = target.baseUrl!;
   const ids = accountIds(accounts);
   const tokens = await deps.tokens(ids, durationS(schedule) + meanSessionS(sets, cmd.push) + TOKEN_MARGIN_S);
   const apis = deps.apisFor(tokens);

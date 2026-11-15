@@ -27,7 +27,7 @@ describe("15 AC24 — one source of production origins", () => {
 });
 
 describe("15 AC24 — the origins are derived in one module (#167)", () => {
-  const scripts = ["apps/api/scripts", "apps/web/scripts"].flatMap((d) =>
+  const scripts = ["apps/api/scripts", "apps/web/scripts", "tools/loadtest/src"].flatMap((d) =>
     readdirSync(`${repoRoot}${d}`, { recursive: true, encoding: "utf8" })
       .filter((f) => !f.split("/").includes("node_modules") && /\.(?:[cm]?[jt]s)$/.test(f) && !f.endsWith(".d.mts"))
       .map((f) => `${d}/${f}`),
@@ -39,6 +39,10 @@ describe("15 AC24 — the origins are derived in one module (#167)", () => {
   it("check-prod-ids.ts and assert-firebase-json.mjs import it", () => {
     expect(read("apps/api/scripts/check-prod-ids.ts")).toContain('from "../../web/scripts/lib/prod-ids.mjs"');
     expect(read("apps/web/scripts/assert-firebase-json.mjs")).toContain('from "./lib/prod-ids.mjs"');
+  });
+  it("the load-test tool's prod target imports it too (Spec 16 AC27)", () => {
+    expect(scripts).toContain("tools/loadtest/src/node/prod.ts");
+    expect(read("tools/loadtest/src/node/prod.ts")).toContain('from "../../../../apps/web/scripts/lib/prod-ids.mjs"');
   });
 });
 

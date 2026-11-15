@@ -16,6 +16,7 @@ import { parseArgs } from "./node/args.ts";
 import { cleanupAll } from "./node/cleanup.ts";
 import { ENV_FILE, RUN_SECRETS, SETUP_SECRETS, loadSecrets } from "./node/env.ts";
 import { politeApis } from "./node/polite.ts";
+import { prodBaseUrl } from "./node/prod.ts";
 import { runLoad, type GymResult, type RunDeps } from "./node/run.ts";
 import { ensureSeeded } from "./node/seed.ts";
 import { mgmtClient, setupAccounts } from "./node/setup-accounts.ts";
@@ -23,6 +24,8 @@ import { auth0Tokens } from "./node/tokens-auth0.ts";
 import { localTokens } from "./node/tokens-local.ts";
 
 const RESULTS_DIR = fileURLToPath(new URL("../results/", import.meta.url));
+const PROD_TFVARS = fileURLToPath(new URL("../../../infra/prod.tfvars", import.meta.url));
+const readProdBaseUrl = () => prodBaseUrl(readFileSync(PROD_TFVARS, "utf8"));
 const IDP_URL = process.env.LOADTEST_IDP_URL ?? "http://localhost:9999";
 /**
  * The CLI's own requests (seed and cleanup) share one spacing across every account: 200 ms apart is 300 a minute,
@@ -53,7 +56,6 @@ function tokensFor(target: Target): RunDeps["tokens"] {
 }
 
 function realDeps(target: Target): RunDeps {
-  const baseUrl = target.baseUrl!;
   return {
     spawnK6: (args, env) => {
       const child = spawn("k6", args, { cwd: RESULTS_DIR, env: { ...process.env, ...env }, stdio: "inherit" });
@@ -66,7 +68,8 @@ function realDeps(target: Target): RunDeps {
       };
     },
     tokens: tokensFor(target),
-    apisFor: (tokens) => politeFor(baseUrl, tokens),
+    // Read lazily, so a prod dry run prints its guards before prod.tfvars is checked.
+    apisFor: (tokens) => politeFor(target.baseUrl ?? readProdBaseUrl(), tokens),
     cleanupAll: (apis) => cleanupAll(apis, { pace: noPace }),
     writeResult: (name, body) => {
       writeFileSync(join(RESULTS_DIR, name), `${JSON.stringify(body, null, 2)}\n`);
@@ -105,6 +108,7 @@ function realDeps(target: Target): RunDeps {
     },
     now: () => new Date(),
     log,
+    prodBaseUrl: readProdBaseUrl,
   };
 }
 
@@ -117,10 +121,10 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   const target = resolveTarget(cmd.target);
-  const baseUrl = target.baseUrl!;
   mkdirSync(RESULTS_DIR, { recursive: true });
   if (cmd.cmd === "run") return runLoad(cmd, realDeps(target));
 
+  const baseUrl = target.baseUrl ?? readProdBaseUrl();
   const ids = accountIds(cmd.lifters ?? Math.max(...GYM_STEPS));
   const tokens = await tokensFor(target)(ids, 3600);
   const apis = politeFor(baseUrl, tokens);

@@ -39,6 +39,7 @@ function deps(overrides: Partial<RunDeps> = {}) {
     }),
     now: () => new Date("2026-11-06T12:00:00.000Z"),
     log: (line: string) => void lines.push(line),
+    prodBaseUrl: () => "https://si-api-1.us-central1.run.app",
     ...overrides,
   };
   return { d, lines, results, fireSigint: () => sigint?.() };
@@ -244,6 +245,45 @@ describe("--dry-run", () => {
     expect(d.tokens).not.toHaveBeenCalled();
     expect(d.spawnK6).not.toHaveBeenCalled();
     expect(d.cleanupAll).not.toHaveBeenCalled();
+  });
+});
+
+describe("AC27 — prod guards in a run", () => {
+  const prod: RunCommand = { ...gym, target: "prod", lifters: 3, steps: undefined, holdScale: undefined };
+  delete prod.steps;
+  delete prod.holdScale;
+
+  it("--dry-run --target prod prints the estimate and the guard result, with no tokens and no k6", async () => {
+    const { d, lines } = deps();
+    expect(await runLoad({ ...prod, dryRun: true }, d)).toBe(2);
+    expect(lines.some((l) => /^estimated requests: \d+$/.test(l))).toBe(true);
+    expect(lines).toContain("prod runs need --confirm-prod");
+    expect(d.tokens).not.toHaveBeenCalled();
+    expect(d.spawnK6).not.toHaveBeenCalled();
+  });
+
+  it("a confirmed prod dry run says the guards pass and resolves the prod URL", async () => {
+    const { d, lines } = deps();
+    expect(await runLoad({ ...prod, dryRun: true, confirmProd: true }, d)).toBe(0);
+    expect(lines).toContain("prod guards: pass (https://si-api-1.us-central1.run.app)");
+    expect(d.tokens).not.toHaveBeenCalled();
+  });
+
+  it("Review Focus 5 — placeholders in prod.tfvars refuse before any token", async () => {
+    const { d } = deps({
+      prodBaseUrl: () => {
+        throw new Error("infra/prod.tfvars still has placeholders (REPLACE_ME_…); production isn't set up yet — runbook first-deploy.md Part F");
+      },
+    });
+    await expect(runLoad({ ...prod, confirmProd: true }, d)).rejects.toThrow(/Part F/);
+    expect(d.tokens).not.toHaveBeenCalled();
+  });
+
+  it("a confirmed prod run sends k6 to the prod URL", async () => {
+    const { d } = deps({ readSummary: vi.fn(() => passingSummary(1)) });
+    expect(await runLoad({ ...prod, confirmProd: true }, d)).toBe(0);
+    const [, env] = (d.spawnK6 as ReturnType<typeof vi.fn>).mock.calls[0]! as [string[], Record<string, string>];
+    expect(env.LOADTEST_BASE_URL).toBe("https://si-api-1.us-central1.run.app");
   });
 });
 
