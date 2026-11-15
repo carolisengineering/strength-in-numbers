@@ -48,3 +48,25 @@ describe("AC15 — cleanup leaves the accounts empty", () => {
     expect(paced).toEqual([0, 1]);
   });
 });
+
+describe("minor 364 — cleanup stops when it makes no progress", () => {
+  it("a workout whose delete never removes it stops the account with an error, not a hang", { timeout: 2000 }, async () => {
+    const api = accountWith(3, false);
+    api.stuckOnDelete.add(id(2));
+    await expect(cleanupAccount(api)).rejects.toThrow("a deleted workout is still listed (its DELETE answered 404, but the list still shows it)");
+    expect(api.calls.filter((c) => c.startsWith("GET /v1/workouts?")).length).toBeLessThanOrEqual(3);
+  });
+
+  it("cleanupAll names the account by number", { timeout: 2000 }, async () => {
+    const stuck = accountWith(1, false);
+    stuck.stuckOnDelete.add(id(1));
+    await expect(cleanupAll([accountWith(2, false), stuck], { pace: async () => {} })).rejects.toThrow(/^account #2: a deleted workout is still listed/);
+  });
+
+  it("Review Focus 4: a 404 for a workout that really is gone doesn't trip the guard", async () => {
+    const api = accountWith(3, false);
+    api.goneOnDelete.add(id(2));
+    await expect(cleanupAccount(api)).resolves.toBe(3);
+    expect(api.workouts).toEqual([]);
+  });
+});

@@ -66,7 +66,8 @@ export function gymGate(result: GymResult | undefined): string | null {
   if (!result) return "there is no gym run";
   if (result.status !== "complete") return "the newest gym run is incomplete";
   if (result.cleanup !== "done") return "the newest gym run's cleanup failed";
-  if (!result.flags) return "the newest gym run doesn't record how it was run";
+  // Minor 583: both keys must be there; `{}` is not a full-ladder run, it just doesn't say.
+  if (!result.flags || !("steps" in result.flags) || !("holdScale" in result.flags)) return "the newest gym run doesn't record how it was run";
   if (result.flags.steps !== null || result.flags.holdScale !== null) {
     return "the newest gym run was shortened with --steps / --hold-scale";
   }
@@ -74,6 +75,23 @@ export function gymGate(result: GymResult | undefined): string | null {
   if (result.flags.lifters !== null) return "the newest gym run used --lifters instead of the full ladder";
   if (result.n === null) return "the newest gym run has no passing step";
   return null;
+}
+
+/**
+ * Minor 583: a gym result file as the push gate reads it. A file that isn't JSON, or isn't an object, is refused by
+ * name rather than crashing `run push` with a raw parse error.
+ */
+export function parseGymResult(fileName: string, text: string): GymResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`the newest gym run's result file can't be read (${fileName})`);
+  }
+  return parsed as GymResult;
 }
 
 const K6_SCRIPT = fileURLToPath(new URL("../../k6/run.ts", import.meta.url));
@@ -146,7 +164,12 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   }
 
   if (cmd.type === "push" && !cmd.allowUnpassedPush) {
-    const reason = gymGate(deps.latestGymResult(target.name));
+    let reason: string | null;
+    try {
+      reason = gymGate(deps.latestGymResult(target.name));
+    } catch (err) {
+      reason = err instanceof Error ? err.message : String(err);
+    }
     if (reason) {
       deps.log(`push needs a passing gym run on ${target.name} first: ${reason} (or --allow-unpassed-push)`);
       return 2;

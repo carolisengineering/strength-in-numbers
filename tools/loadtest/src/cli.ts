@@ -19,7 +19,7 @@ import { ANNOTATION_SECRETS, ENV_FILE, METRICS_SECRETS, RUN_SECRETS, SETUP_SECRE
 import { politeApis } from "./node/polite.ts";
 import { Redactor } from "./node/redact.ts";
 import { prodBaseUrl } from "./node/prod.ts";
-import { remoteWriteFor, runLoad, type GymResult, type RunDeps } from "./node/run.ts";
+import { parseGymResult, remoteWriteFor, runLoad, type RunDeps } from "./node/run.ts";
 import { ensureSeeded } from "./node/seed.ts";
 import { mgmtClient, setupAccounts } from "./node/setup-accounts.ts";
 import { auth0Tokens } from "./node/tokens-auth0.ts";
@@ -164,7 +164,7 @@ function realDeps(target: Target): RunDeps {
         .sort()
         .at(-1);
       if (!newest) return undefined;
-      return JSON.parse(readFileSync(join(RESULTS_DIR, newest), "utf8")) as GymResult;
+      return parseGymResult(newest, readFileSync(join(RESULTS_DIR, newest), "utf8"));
     },
     commit: async (url) => {
       try {

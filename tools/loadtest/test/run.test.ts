@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RunCommand } from "../src/node/args.ts";
 import { METRICS_SECRETS, secretsFrom } from "../src/node/env.ts";
-import { gymGate, remoteWriteFor, runLoad, type GymResult, type RunDeps } from "../src/node/run.ts";
+import { gymGate, parseGymResult, remoteWriteFor, runLoad, type GymResult, type RunDeps } from "../src/node/run.ts";
 import type { Api } from "../src/node/api.ts";
 import { summary } from "./k6-summary.ts";
 
@@ -493,5 +493,32 @@ describe("AC22 — a whole fake staging run prints no secret", () => {
     const closeText = JSON.stringify((d.closeAnnotation as ReturnType<typeof vi.fn>).mock.calls);
     const everything = [...lines, JSON.stringify(results), JSON.stringify(args), closeText].join("\n");
     for (const secret of [TOKEN, RW.password]) expect(everything).not.toContain(secret);
+  });
+});
+
+describe("minor 583 — the push gate refuses a corrupt or flagless gym result", () => {
+  const push: RunCommand = { ...gym, type: "push", push: 2, steps: undefined, holdScale: undefined, lifters: undefined };
+
+  it("a result file that isn't JSON, or isn't an object, is refused by name", () => {
+    for (const text of ["{not json", "null", "42", '"text"']) {
+      expect(() => parseGymResult("2026-x-local-gym.json", text), text).toThrow("the newest gym run's result file can't be read (2026-x-local-gym.json)");
+    }
+    expect(parseGymResult("ok.json", JSON.stringify({ n: 25, status: "complete" }))).toEqual({ n: 25, status: "complete" });
+  });
+
+  it("runLoad turns that into the push gate's refusal, with 2 and no run", async () => {
+    const { d, lines } = deps({
+      latestGymResult: vi.fn(() => {
+        throw new Error("the newest gym run's result file can't be read (x.json)");
+      }),
+    });
+    expect(await runLoad(push, d)).toBe(2);
+    expect(lines.some((l) => l.includes("push needs a passing gym run on local first: the newest gym run's result file can't be read (x.json)"))).toBe(true);
+    expect(d.tokens).not.toHaveBeenCalled();
+  });
+
+  it("flags with no steps or holdScale key read as not recording how it was run", () => {
+    expect(gymGate({ ...ok, flags: {} as GymResult["flags"] })).toBe("the newest gym run doesn't record how it was run");
+    expect(gymGate({ ...ok, flags: { steps: null } as unknown as GymResult["flags"] })).toBe("the newest gym run doesn't record how it was run");
   });
 });
