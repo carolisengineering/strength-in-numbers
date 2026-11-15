@@ -174,6 +174,10 @@ const AMRAP_TAIL = new RegExp(String.raw`^${N_MINUTES}${TAIL_GAP}amrap${LINE_END
 
 /** #276: every leading bullet (a bullet, then any mix of bullets and spaces), so `- - 15 Minute Cap` reads as a cap. */
 const LEADING_BULLETS = /^[-•*][-•*\s]*/;
+/** AC71 (minor 563): a bulleted line whose whole text is markdown bold ("* **10 Squats**", "- __10 Squats__"). */
+const BULLETED_BOLD = /^[-•*][-•*\s]*?(\*\*|__)(\S(?:.*\S)?)\1\s*$/;
+/** A movement line's text: every leading bullet off (AC70), and a whole-text bold pair after them (AC71). */
+const movementTextOf = (line: string): string => BULLETED_BOLD.exec(line)?.[2] ?? line.replace(LEADING_BULLETS, "");
 /** #264, #265, #276: a note line as the timer rules read it: collapsed, with its leading bullets off. The note keeps its text (D10). */
 const timerLine = (line: string) => collapseLine(line).replace(LEADING_BULLETS, "");
 
@@ -572,9 +576,10 @@ interface MutableItem {
 }
 /** `strict`: an AC48 run ("N Sets, 1 Set Every M:SS"), where a movement needs reps, a distance or a Max form. */
 /** `list`: AC62, counted lines with no lead-in; its items are rowless. */
+/** `sets`: the lead-in is a sets line ("4 Sets", "3-4 Sets", AC48's), not a rounds line: a label closes it (AC69, minor 562). */
 type Run =
   | { id: number; kind: "scheme"; reps: number[]; text: string }
-  | { id: number; kind: "lead-in"; n: number; strict?: boolean; line?: string; noteAt?: number }
+  | { id: number; kind: "lead-in"; n: number; strict?: boolean; line?: string; noteAt?: number; sets?: true }
   | { id: number; kind: "list" };
 
 /** AC5 (c): a short title-cased line with no digit or sentence punctuation. */
@@ -859,19 +864,20 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   // AC48 reads the line as written: "3 Sets, for time" is "N Sets, …" and keeps coaching text out of the exercises.
   const every = LEAD_IN_SETS_EVERY.exec(line);
   if (every && Number(every[1]) >= 1) {
-    s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]), strict: true };
+    s.run = { id: ++s.runs, kind: "lead-in", n: Number(every[1]), strict: true, sets: true };
     return "note";
   }
   // AC61: "3-4 Sets" opens a run of the low end and stays in the note, so the range is not lost.
   const range = LEAD_IN_RANGE.exec(head);
   if (range && Number(range[1]) >= 1 && Number(range[1]) <= Number(range[2])) {
-    s.run = { id: ++s.runs, kind: "lead-in", n: Number(range[1]) };
+    s.run = { id: ++s.runs, kind: "lead-in", n: Number(range[1]), ...(/sets?:?$/i.test(head) ? { sets: true as const } : {}) };
     return "note";
   }
   const n = leadInCount(head);
   if (n !== null) {
     // `line` only when it is placed as a lead-in: a scored one is already in the note (AC68 must not add it twice).
-    s.run = scored ? { id: ++s.runs, kind: "lead-in", n } : { id: ++s.runs, kind: "lead-in", n, line };
+    const sets = LEAD_IN_SETS.test(head) ? { sets: true as const } : {};
+    s.run = scored ? { id: ++s.runs, kind: "lead-in", n, ...sets } : { id: ++s.runs, kind: "lead-in", n, line, ...sets };
     return scored ? "note" : "lead-in";
   }
 
@@ -886,7 +892,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   if (s.run !== null && s.run.kind !== "list") {
     // Minor 280 (AC67): a bare "for time" is the run's note. The colon form only before the run's first movement:
     // after them, "For Time:" heads a new block and closes the run, as before (final review).
-    const bare = line.replace(LEADING_BULLETS, "").trim();
+    const bare = movementTextOf(line).trim();
     const runId = s.run.id;
     const noMovementYet = () => !s.items.some((it) => it.run === runId);
     if (BARE_FOR_TIME.test(bare) && (!bare.endsWith(":") || noMovementYet())) return "note";
@@ -894,10 +900,18 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
     // ("15 Minute Cap", "15 Min.Cap", "Time Cap 12:00") is the section's note and the run stays open. A label
     // ("Time cap: 12:00", "AMRAP 12:") closes the run, as "For Time:" does after the movements (owner ruling 2026-11-05).
     // AC69 (minor 370, owner decision 2026-11-13): before the run's first movement a label is a note too, and keeps it.
-    if (isCapOrAmrapLine(bare) && (!isCapOrAmrapLabel(bare) || noMovementYet())) return "note";
+    // Minor 562 (owner decision 2026-11-14): only for a scheme or rounds run. A sets run ("4 Sets") closes at the label;
+    // its line goes to the note before the label, as AC68 does for a replaced lead-in.
+    const open = s.run;
+    const setsRun = open.kind === "lead-in" && open.sets === true;
+    if (isCapOrAmrapLine(bare) && (!isCapOrAmrapLabel(bare) || (noMovementYet() && !setsRun))) return "note";
+    if (setsRun && isCapOrAmrapLine(bare) && noMovementYet()) {
+      if (open.line !== undefined) s.replacedLeadIn = { line: open.line, at: open.noteAt };
+      return null;
+    }
     // Item 74: a trailing "+" ("200 Meter Run+") joins the next line in the app; it is never part of a name.
     // AC60: a load after " @ " goes last in the note; the rest of the line is read as before.
-    const { text: raw, load, forTime } = splitMovement(line.replace(LEADING_BULLETS, "").replace(TRAILING_PLUS, ""));
+    const { text: raw, load, forTime } = splitMovement(movementTextOf(line).replace(TRAILING_PLUS, ""));
     const loadNote = load === null ? [] : [load];
     const forTimeNote = forTime === null ? [] : [forTime];
     // Final review of minor 215: a line that only reads as structure once its "for time" is off ("Rounds for time",
@@ -949,7 +963,7 @@ function readConstruct(line: string, s: ReadState): LinePlacement | null {
   // makes the line bulleted; every leading bullet comes off its text (AC70, minor 371).
   if (BULLET.test(line)) {
     s.run = null;
-    const { text, load, forTime } = splitMovement(line.replace(LEADING_BULLETS, "").replace(TRAILING_PLUS, ""));
+    const { text, load, forTime } = splitMovement(movementTextOf(line).replace(TRAILING_PLUS, ""));
     const item = rowlessItemOf(text, { max: "any", counted: false });
     // Code review: "- 3 Rounds for time" is structure, never an exercise named "Rounds".
     if (!item || (forTime !== null && isStructureName(item.name))) return null;
