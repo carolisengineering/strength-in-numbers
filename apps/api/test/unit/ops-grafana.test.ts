@@ -78,9 +78,10 @@ describe("Spec 16 AC26 — the Load test dashboard", () => {
 
   // Final review (16B): k6's per-series rate is one route's ratio; the tool pools a step's requests
   // (`countsAsServerError`: status 0 or 5xx), so the panel does too, from the cumulative request counter.
-  it("draws each step's 5xx share pooled over every request, as the tool judges it", () => {
+  // /code-review (16B): with no 5xx series the numerator is empty, so a clean step must still draw 0, not "No data".
+  it("draws each step's 5xx share pooled over every request, as the tool judges it, and 0 for a clean step", () => {
     expect(exprs).toContain(
-      'sum by (step) (k6_http_reqs_total{phase="measure", status=~"5..|0"}) / sum by (step) (k6_http_reqs_total{phase="measure"})',
+      '(sum by (step) (k6_http_reqs_total{phase="measure", status=~"5..|0"}) or 0 * sum by (step) (k6_http_reqs_total{phase="measure"})) / sum by (step) (k6_http_reqs_total{phase="measure"})',
     );
     expect(exprs.join("\n")).not.toContain("k6_server_errors_rate");
   });
@@ -106,6 +107,9 @@ describe("Spec 16 AC25 — every dashboard shows the load-test runs", () => {
         target: expect.objectContaining({ type: "tags", tags: ["loadtest"] }),
       }),
     );
+    // /code-review (16B): a repeated annotation query draws every run twice.
+    const names = doc.annotations!.list.map((a) => a.name);
+    expect(names).toEqual([...new Set(names)]);
   });
 });
 

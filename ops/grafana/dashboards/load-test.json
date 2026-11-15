@@ -56,23 +56,6 @@
         },
         "expr": "changes(sin_process_start_time_seconds[2m]) > 0",
         "iconColor": "orange"
-      },
-      {
-        "name": "Load test runs",
-        "enable": true,
-        "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
-        },
-        "target": {
-          "type": "tags",
-          "tags": [
-            "loadtest"
-          ],
-          "matchAny": false,
-          "limit": 100
-        },
-        "iconColor": "purple"
       }
     ]
   },
@@ -253,7 +236,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (step) (k6_http_reqs_total{phase=\"measure\", status=~\"5..|0\"}) / sum by (step) (k6_http_reqs_total{phase=\"measure\"})",
+          "expr": "(sum by (step) (k6_http_reqs_total{phase=\"measure\", status=~\"5..|0\"}) or 0 * sum by (step) (k6_http_reqs_total{phase=\"measure\"})) / sum by (step) (k6_http_reqs_total{phase=\"measure\"})",
           "legendFormat": "step {{step}}"
         },
         {
