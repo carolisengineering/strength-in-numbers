@@ -35,7 +35,7 @@ export function PersonalRecordsBlock({ workoutId, unitPreference, workout, secti
         </InlineNotice>
       ) : null}
       {ledger.heading === null ? null : <RecordLedgerPanel heading={ledger.heading} lifts={ledger.lifts} />}
-      {ledger.firsts.length === 0 ? null : <FirstTimeLines lines={ledger.firsts} />}
+      {ledger.firsts.length === 0 ? null : <FirstTimeLines lines={ledger.firsts} explain={ledger.explainFirsts} />}
     </div>
   );
 }

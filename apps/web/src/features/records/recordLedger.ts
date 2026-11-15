@@ -36,13 +36,21 @@ export interface LedgerLift {
 export interface FirstTimeLine {
   readonly key: string;
   readonly text: string;
+  /** The line leads with an est. 1-rep max (minor 477). */
+  readonly estimate: boolean;
 }
 
 export interface RecordLedger {
-  /** Null when no lift beat anything: then there is no panel and no brass (AC13). */
+  /** Null when no lift rose: then there is no panel and no brass (AC13; AC6, minor 476). */
   readonly heading: string | null;
+  /** The panel's lifts; empty when `heading` is null. */
   readonly lifts: readonly LedgerLift[];
   readonly firsts: readonly FirstTimeLine[];
+  /**
+   * Minor 477: a first line leads with an est. 1-rep max and the panel draws no estimate row (or isn't drawn), so the
+   * lines carry AC9's explanation themselves. Never both.
+   */
+  readonly explainFirsts: boolean;
 }
 
 /** AC11 (D4): more than 4 collapses to the first 3. */
@@ -64,10 +72,14 @@ export function visibleRecords(records: readonly PersonalRecord[]): PersonalReco
 
 const typeOrder = (r: PersonalRecord) => RECORD_TYPE_VALUES.indexOf(r.recordType);
 
+/** AC6 (owner decision 2026-11-14, minor 476): a lift counts only when one of its rows rose. */
+const rose = (lift: LedgerLift): boolean => lift.rows.some((r) => r.gainText !== null);
+
 function headingOf(lifts: readonly LedgerLift[], section: LedgerSection): string | null {
-  if (lifts.length === 0) return null;
+  const counted = lifts.filter(rose).length;
+  if (counted === 0) return null;
   const oneRow = lifts.length === 1 && lifts[0]!.rows.length === 1;
-  const count = `${lifts.length} ${lifts.length === 1 ? "lift" : "lifts"}`;
+  const count = `${counted} ${counted === 1 ? "lift" : "lifts"}`;
   // AC15 (D5): a workout opened from History did not just set its records; they are the ones it holds now.
   if (section === "history") return oneRow ? "Record from this workout" : `Records from this workout on ${count}`;
   return oneRow ? "New record" : `New records on ${count}`;
@@ -89,7 +101,14 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
     return found ? `from your ${formatSet(found.set, found.modality)}` : null;
   };
 
-  type Built = { order: number; name: string } & ({ kind: "lift"; lift: LedgerLift } | { kind: "first"; first: FirstTimeLine });
+  /** AC12 (D1): a first-ever number's quiet line, led by `lead`. */
+  const firstLine = (key: string, name: string, lead: PersonalRecord): FirstTimeLine => {
+    const value = formatRecordByType(lead.recordType, lead.value, lead.unit, pref);
+    const estimate = lead.recordType === "best_est_1rm";
+    return { key, text: estimate ? `First time logged: ${name}, est. 1-rep max ${value}` : `First time logged: ${name} ${value}`, estimate };
+  };
+
+  type Built = { order: number; name: string } & ({ kind: "lift"; lift: LedgerLift; first: FirstTimeLine | null } | { kind: "first"; first: FirstTimeLine });
   const built: Built[] = [...groups.entries()].map(([key, group]) => {
     const ordered = [...group].sort((a, b) => typeOrder(a) - typeOrder(b));
     const slots = group.map((r) => position.get(r.sourceExerciseId)).filter((n): n is number => n !== undefined);
@@ -99,13 +118,10 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
     const shown = beaten.filter((b) => !(b.record.recordType === "best_est_1rm" && b.pair.gainText === null && beaten.length > 1));
     // Each record carries its own source snapshot's name: name the lift by a row it shows, else by its lead record.
     const name = (shown[0]?.record ?? ordered[0]!).exerciseName;
-    if (shown.length === 0) {
-      // AC12 (D1): a lift that beat nothing is one quiet line, led by its first record in type order.
-      const lead = ordered[0]!;
-      const value = formatRecordByType(lead.recordType, lead.value, lead.unit, pref);
-      const text = lead.recordType === "best_est_1rm" ? `First time logged: ${name}, est. 1-rep max ${value}` : `First time logged: ${name} ${value}`;
-      return { order, name, kind: "first", first: { key, text } };
-    }
+    // AC12 (D1): a lift that beat nothing is one quiet line, led by its first record in type order.
+    if (shown.length === 0) return { order, name, kind: "first", first: firstLine(key, name, ordered[0]!) };
+    // Minor 476: if no lift rises, this one's rows aren't drawn; a first-ever record it holds becomes its line instead.
+    const firstRecord = ordered.find((r) => r.previousValue === null);
     const shared = shown.every((b) => b.record.sourceSetId === shown[0]!.record.sourceSetId);
     const rows: LedgerRow[] = shown.map(({ record, pair }) => {
       const label = recordLabel(record.recordType);
@@ -116,11 +132,16 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
       name,
       kind: "lift",
       lift: { key, name, rows, sourceText: shared ? sourceOf(shown[0]!.record.sourceSetId) : null, hasEstimate: rows.some((r) => r.type === "best_est_1rm") },
+      first: firstRecord ? firstLine(key, name, firstRecord) : null,
     };
   });
   // AC10 (17.2 AC25, D17): the workout's exercise order; a lift that can't be matched goes after, in name order.
   built.sort((a, b) => (a.order === b.order ? a.name.localeCompare(b.name, "en") : a.order - b.order));
-  const lifts = built.flatMap((b) => (b.kind === "lift" ? [b.lift] : []));
-  const firsts = built.flatMap((b) => (b.kind === "first" ? [b.first] : []));
-  return { heading: headingOf(lifts, section), lifts, firsts };
+  const drawn = built.flatMap((b) => (b.kind === "lift" ? [b.lift] : []));
+  const heading = headingOf(drawn, section);
+  // Minor 476: with no panel, a value-only lift is gone; only a first-ever record it held stays, as its line.
+  const lifts = heading === null ? [] : drawn;
+  const firsts = built.flatMap((b) => (b.kind === "first" ? [b.first] : heading === null && b.first !== null ? [b.first] : []));
+  const explainFirsts = firsts.some((f) => f.estimate) && !lifts.some((l) => l.hasEstimate);
+  return { heading, lifts, firsts, explainFirsts };
 }

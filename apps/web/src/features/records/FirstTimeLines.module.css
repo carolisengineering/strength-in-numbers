@@ -17,3 +17,10 @@
   font-size: var(--font-size-sm);
   overflow-wrap: anywhere;
 }
+
+/* Minor 477: AC9's explanation, the panel's own look, when only the first lines show an estimate. */
+.explain {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
