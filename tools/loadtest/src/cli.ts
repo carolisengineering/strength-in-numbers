@@ -1,7 +1,8 @@
 /**
- * Spec 16 — `pnpm --filter @sin/loadtest run loadtest <run|cleanup|seed> …`. Wires the real side effects (k6 as a
- * child process, tokens from dev-idp or Auth0 by target, the API, result files, Ctrl-C) into `runLoad`. Tokens never
- * leave memory except as the k6 child's `LOADTEST_LIFTER_<i>` environment variables, one per lifter.
+ * Spec 16 — `pnpm --filter @sin/loadtest run loadtest <run|cleanup|seed|setup-accounts> …`. Wires the real side
+ * effects (k6 as a child process, tokens from dev-idp or Auth0 by target, the API, result files, Ctrl-C) into
+ * `runLoad`. Tokens never leave memory except as the k6 child's `LOADTEST_LIFTER_<i>` environment variables, one per
+ * lifter.
  */
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -13,10 +14,11 @@ import { accountEmail, accountIds } from "./node/accounts.ts";
 import { apiFor } from "./node/api.ts";
 import { parseArgs } from "./node/args.ts";
 import { cleanupAll } from "./node/cleanup.ts";
-import { ENV_FILE, RUN_SECRETS, loadSecrets } from "./node/env.ts";
+import { ENV_FILE, RUN_SECRETS, SETUP_SECRETS, loadSecrets } from "./node/env.ts";
 import { politeApis } from "./node/polite.ts";
 import { runLoad, type GymResult, type RunDeps } from "./node/run.ts";
 import { ensureSeeded } from "./node/seed.ts";
+import { mgmtClient, setupAccounts } from "./node/setup-accounts.ts";
 import { auth0Tokens } from "./node/tokens-auth0.ts";
 import { localTokens } from "./node/tokens-local.ts";
 
@@ -108,6 +110,12 @@ function realDeps(target: Target): RunDeps {
 
 async function main(argv: string[]): Promise<number> {
   const cmd = parseArgs(argv);
+  if (cmd.cmd === "setup-accounts") {
+    const secrets = loadSecrets(ENV_FILE, SETUP_SECRETS);
+    const client = mgmtClient(secrets, { fetchFn: fetch, sleep: pause, now: Date.now });
+    await setupAccounts(cmd.count, client, secrets, { dryRun: cmd.dryRun, log });
+    return 0;
+  }
   const target = resolveTarget(cmd.target);
   const baseUrl = target.baseUrl!;
   mkdirSync(RESULTS_DIR, { recursive: true });

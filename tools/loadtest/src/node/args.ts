@@ -1,3 +1,4 @@
+import { GYM_STEPS } from "../plan/constants.ts";
 import { resolveTarget, type TargetName } from "../plan/targets.ts";
 import type { RunType } from "../plan/schedule.ts";
 
@@ -20,13 +21,21 @@ export interface RunCommand {
   holdScale?: number;
 }
 
-export type Command = RunCommand | { cmd: "cleanup" | "seed"; target: TargetName; lifters?: number };
+/** AC19 — create the missing Auth0 accounts. No target: the tenant is shared by staging and prod (§6.5). */
+export interface SetupCommand {
+  cmd: "setup-accounts";
+  count: number;
+  dryRun: boolean;
+}
+
+export type Command = RunCommand | SetupCommand | { cmd: "cleanup" | "seed"; target: TargetName; lifters?: number };
 
 export const USAGE =
   "usage: loadtest run <gym|push|burst> --target <local|staging|prod> [--lifters N] [--push F] [--dry-run] " +
   "[--allow-unpassed-push] [--no-metrics-output] [--steps a,b,c --hold-scale s (local only)]\n" +
   "       loadtest cleanup --target <…> [--lifters N]\n" +
-  "       loadtest seed --target <…> [--lifters N]";
+  "       loadtest seed --target <…> [--lifters N]\n" +
+  "       loadtest setup-accounts [--count N] [--dry-run]";
 
 const positiveInt = (flag: string, v: string | undefined): number => {
   if (v === undefined || !/^\d+$/.test(v) || Number(v) < 1) throw new Error(`${flag} needs a whole number of at least 1`);
@@ -35,6 +44,7 @@ const positiveInt = (flag: string, v: string | undefined): number => {
 
 export function parseArgs(argv: string[]): Command {
   const [cmd, ...rest] = argv;
+  if (cmd === "setup-accounts") return parseSetup(rest);
   if (cmd !== "run" && cmd !== "cleanup" && cmd !== "seed") throw new Error(USAGE);
 
   let type: RunType | undefined;
@@ -98,4 +108,18 @@ export function parseArgs(argv: string[]): Command {
     ...(steps !== undefined ? { steps } : {}),
     ...(holdScale !== undefined ? { holdScale } : {}),
   };
+}
+
+function parseSetup(rest: string[]): SetupCommand {
+  let count = Math.max(...GYM_STEPS);
+  let dryRun = false;
+  for (let i = 0; i < rest.length; i += 1) {
+    const flag = rest[i]!;
+    if (flag === "--count") {
+      count = positiveInt("--count", rest[i + 1]);
+      i += 1;
+    } else if (flag === "--dry-run") dryRun = true;
+    else throw new Error(`unknown flag ${flag}\n${USAGE}`);
+  }
+  return { cmd: "setup-accounts", count, dryRun };
 }
