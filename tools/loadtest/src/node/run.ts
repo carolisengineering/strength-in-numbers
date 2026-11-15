@@ -42,8 +42,8 @@ export interface RunDeps {
   /** AC25 — both never throw; a failure is a warning and the run goes on. No-ops on `local`. */
   openAnnotation(a: AnnotationStart): Promise<number | undefined>;
   closeAnnotation(id: number | undefined, a: AnnotationEnd): Promise<void>;
-  /** Registers a Ctrl-C handler; returns its removal. */
-  onSigint(handler: () => void): () => void;
+  /** Registers the stop handler for Ctrl-C, `kill` and a closed terminal (minor 591); returns its removal. */
+  onStop(handler: (signal: StopSignal) => void): () => void;
   now(): Date;
   log(line: string): void;
 }
@@ -109,6 +109,12 @@ export function remoteWriteFor(target: TargetName, metrics: () => Secrets): Remo
   const s = metrics();
   return { url: s.get("GRAFANA_PROM_RW_URL"), username: s.get("GRAFANA_PROM_RW_USER"), password: s.get("GRAFANA_PROM_RW_TOKEN") };
 }
+/** What can stop a run: Ctrl-C, `kill` (SIGTERM) or a closed terminal (SIGHUP). */
+export type StopSignal = "SIGINT" | "SIGTERM" | "SIGHUP";
+
+/** Minor 591: the exit code a run stopped by `kill` or a closed terminal ends with, once its result is written. */
+const STOP_EXIT: Readonly<Record<Exclude<StopSignal, "SIGINT">, number>> = { SIGTERM: 143, SIGHUP: 129 };
+
 /** SIGINTs closer together than this are one Ctrl-C (final review, 16B). */
 const SIGINT_REPEAT_MS = 2000;
 /** Tokens must outlive the run (Review Focus 2): the estimate plus half an hour. */
@@ -217,18 +223,29 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     // One Ctrl-C can reach the CLI several times (the terminal's process group, tsx's relay), and a second SIGINT
     // makes k6 abort without writing its summary. Forward one; a deliberate Ctrl-C after SIGINT_REPEAT_MS aborts.
     // The handler stays through cleanup, where a Ctrl-C only says to wait: Node's default would leave accounts
-    // half cleaned and no result.
+    // half cleaned and no result. Minor 591: a `kill` (SIGTERM) or a closed terminal (SIGHUP) takes the first
+    // Ctrl-C's path, k6 stops at its next safe point, cleanup runs and the result is written, but never sends k6 a
+    // second SIGINT: nobody is at the keyboard to mean it.
     let child: ReturnType<RunDeps["spawnK6"]> | undefined;
     let k6Done = false;
     let forwardedAt: number | undefined;
     let toldToWait = false;
-    const release = deps.onSigint(() => {
+    let stoppedBy: Exclude<StopSignal, "SIGINT"> | undefined;
+    const release = deps.onStop((signal) => {
+      if (signal !== "SIGINT") stoppedBy ??= signal;
       if (k6Done || !child) {
         if (!toldToWait) deps.log("cleanup is running and finishes on its own; wait for the result");
         toldToWait = true;
         return;
       }
       const t = deps.now().getTime();
+      if (signal !== "SIGINT") {
+        if (forwardedAt !== undefined) return;
+        deps.log(`stopping k6 (${signal}); cleanup and the result follow`);
+        forwardedAt = t;
+        child.kill("SIGINT");
+        return;
+      }
       if (forwardedAt !== undefined && t - forwardedAt < SIGINT_REPEAT_MS) return;
       if (forwardedAt === undefined) {
         deps.log("stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary");
@@ -283,6 +300,7 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     for (const line of table(steps)) deps.log(line);
     deps.log(r.sentence);
     endText = cmd.type === "gym" ? `${r.sentence} (N = ${r.n ?? "none"})` : r.sentence;
+    if (stoppedBy) return STOP_EXIT[stoppedBy];
     return complete && cleanup === "done" ? 0 : 1;
   } finally {
     await deps.closeAnnotation(annotation, { endMs: deps.now().getTime(), text: endText });
