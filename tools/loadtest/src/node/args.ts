@@ -1,3 +1,4 @@
+import { GYM_STEPS } from "../plan/constants.ts";
 import { resolveTarget, type TargetName } from "../plan/targets.ts";
 import type { RunType } from "../plan/schedule.ts";
 
@@ -18,15 +19,27 @@ export interface RunCommand {
   steps?: number[];
   /** Dev only, local only: multiply every hold (for short checks). */
   holdScale?: number;
+  /** AC27 — a prod run needs this; a prod push run also needs `confirmProdPush`. */
+  confirmProd?: true;
+  confirmProdPush?: true;
 }
 
-export type Command = RunCommand | { cmd: "cleanup" | "seed"; target: TargetName; lifters?: number };
+/** AC19 — create the missing Auth0 accounts. No target: the tenant is shared by staging and prod (§6.5). */
+export interface SetupCommand {
+  cmd: "setup-accounts";
+  count: number;
+  dryRun: boolean;
+}
+
+export type Command = RunCommand | SetupCommand | { cmd: "cleanup" | "seed"; target: TargetName; lifters?: number };
 
 export const USAGE =
   "usage: loadtest run <gym|push|burst> --target <local|staging|prod> [--lifters N] [--push F] [--dry-run] " +
-  "[--allow-unpassed-push] [--no-metrics-output] [--steps a,b,c --hold-scale s (local only)]\n" +
+  "[--allow-unpassed-push] [--no-metrics-output] [--steps a,b,c --hold-scale s (local only)] " +
+  "[--confirm-prod [--confirm-prod-push]] (prod)\n" +
   "       loadtest cleanup --target <…> [--lifters N]\n" +
-  "       loadtest seed --target <…> [--lifters N]";
+  "       loadtest seed --target <…> [--lifters N]\n" +
+  "       loadtest setup-accounts [--count N] [--dry-run]";
 
 const positiveInt = (flag: string, v: string | undefined): number => {
   if (v === undefined || !/^\d+$/.test(v) || Number(v) < 1) throw new Error(`${flag} needs a whole number of at least 1`);
@@ -35,6 +48,7 @@ const positiveInt = (flag: string, v: string | undefined): number => {
 
 export function parseArgs(argv: string[]): Command {
   const [cmd, ...rest] = argv;
+  if (cmd === "setup-accounts") return parseSetup(rest);
   if (cmd !== "run" && cmd !== "cleanup" && cmd !== "seed") throw new Error(USAGE);
 
   let type: RunType | undefined;
@@ -52,6 +66,8 @@ export function parseArgs(argv: string[]): Command {
   let dryRun = false;
   let allowUnpassedPush = false;
   let metricsOutput = true;
+  let confirmProd = false;
+  let confirmProdPush = false;
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i]!;
     const value = () => {
@@ -68,6 +84,8 @@ export function parseArgs(argv: string[]): Command {
     } else if (cmd === "run" && flag === "--dry-run") dryRun = true;
     else if (cmd === "run" && flag === "--allow-unpassed-push") allowUnpassedPush = true;
     else if (cmd === "run" && flag === "--no-metrics-output") metricsOutput = false;
+    else if (cmd === "run" && flag === "--confirm-prod") confirmProd = true;
+    else if (cmd === "run" && flag === "--confirm-prod-push") confirmProdPush = true;
     else if (cmd === "run" && flag === "--steps") steps = (value() ?? "").split(",").map((s) => positiveInt("--steps", s));
     else if (cmd === "run" && flag === "--hold-scale") {
       holdScale = Number(value());
@@ -77,7 +95,6 @@ export function parseArgs(argv: string[]): Command {
 
   if (target === undefined) throw new Error(`--target is required\n${USAGE}`);
   const resolved = resolveTarget(target);
-  if (resolved.name !== "local") throw new Error(`${resolved.name} is not wired yet (Spec 16 Phase B)`);
 
   if (cmd !== "run") return lifters === undefined ? { cmd, target: resolved.name } : { cmd, target: resolved.name, lifters };
 
@@ -97,5 +114,21 @@ export function parseArgs(argv: string[]): Command {
     ...(lifters !== undefined ? { lifters } : {}),
     ...(steps !== undefined ? { steps } : {}),
     ...(holdScale !== undefined ? { holdScale } : {}),
+    ...(confirmProd ? { confirmProd: true as const } : {}),
+    ...(confirmProdPush ? { confirmProdPush: true as const } : {}),
   };
+}
+
+function parseSetup(rest: string[]): SetupCommand {
+  let count = Math.max(...GYM_STEPS);
+  let dryRun = false;
+  for (let i = 0; i < rest.length; i += 1) {
+    const flag = rest[i]!;
+    if (flag === "--count") {
+      count = positiveInt("--count", rest[i + 1]);
+      i += 1;
+    } else if (flag === "--dry-run") dryRun = true;
+    else throw new Error(`unknown flag ${flag}\n${USAGE}`);
+  }
+  return { cmd: "setup-accounts", count, dryRun };
 }

@@ -23,3 +23,9 @@ export const WARMUP_REQUESTS = 5;
 /** X, per step (AC7). */
 export const SET_SAVE_P95_MS = 2000;
 export const SERVER_ERROR_RATE_MAX = 0.01;
+
+/**
+ * AC27 — a prod run is refused when its estimated request count is above this: about one default gym run (12,785)
+ * plus bursts and headroom, far below a push run at full scale. Keeps a prod run inside the free tiers (runbook).
+ */
+export const PROD_MAX_REQUESTS = 60_000;

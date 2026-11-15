@@ -29,9 +29,10 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["run", "gym", "--target", "nowhere"])).toThrow('Unknown target "nowhere"; use one of local, staging, prod');
   });
 
-  it("Phase A refuses prod and staging", () => {
-    expect(() => parseArgs(["run", "gym", "--target", "prod"])).toThrow("prod is not wired yet (Spec 16 Phase B)");
-    expect(() => parseArgs(["cleanup", "--target", "staging"])).toThrow("staging is not wired yet (Spec 16 Phase B)");
+  it("Phase B — staging parses for every command", () => {
+    expect(parseArgs(["run", "gym", "--target", "staging"])).toMatchObject({ cmd: "run", type: "gym", target: "staging" });
+    expect(parseArgs(["cleanup", "--target", "staging"])).toEqual({ cmd: "cleanup", target: "staging" });
+    expect(parseArgs(["seed", "--target", "staging", "--lifters", "3"])).toEqual({ cmd: "seed", target: "staging", lifters: 3 });
   });
 
   it("the dev-only --steps and --hold-scale are local only", () => {

@@ -21,6 +21,13 @@
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "expr": "changes(sin_process_start_time_seconds[2m]) > 0",
         "iconColor": "orange"
+      },
+      {
+        "name": "Load test runs",
+        "enable": true,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "target": { "type": "tags", "tags": ["loadtest"], "matchAny": false, "limit": 100 },
+        "iconColor": "purple"
       }
     ]
   },
