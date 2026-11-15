@@ -67,13 +67,18 @@ export function gymGate(result: GymResult | undefined): string | null {
   if (result.status !== "complete") return "the newest gym run is incomplete";
   if (result.cleanup !== "done") return "the newest gym run's cleanup failed";
   // Minor 583: both keys must be there; `{}` is not a full-ladder run, it just doesn't say.
-  if (!result.flags || !("steps" in result.flags) || !("holdScale" in result.flags)) return "the newest gym run doesn't record how it was run";
-  if (result.flags.steps !== null || result.flags.holdScale !== null) {
+  const flags: unknown = result.flags;
+  if (typeof flags !== "object" || flags === null || Array.isArray(flags) || !("steps" in flags) || !("holdScale" in flags)) {
+    return "the newest gym run doesn't record how it was run";
+  }
+  const recorded = flags as NonNullable<GymResult["flags"]>;
+  if (recorded.steps !== null || recorded.holdScale !== null) {
     return "the newest gym run was shortened with --steps / --hold-scale";
   }
   // `!== null`, so a file written before `lifters` was recorded doesn't pass either.
-  if (result.flags.lifters !== null) return "the newest gym run used --lifters instead of the full ladder";
-  if (result.n === null) return "the newest gym run has no passing step";
+  if (recorded.lifters !== null) return "the newest gym run used --lifters instead of the full ladder";
+  // Code review: a corrupt file with no `n`, or a non-number, has no passing step either.
+  if (typeof result.n !== "number") return "the newest gym run has no passing step";
   return null;
 }
 

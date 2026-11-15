@@ -499,6 +499,19 @@ describe("AC22 — a whole fake staging run prints no secret", () => {
 describe("minor 583 — the push gate refuses a corrupt or flagless gym result", () => {
   const push: RunCommand = { ...gym, type: "push", push: 2, steps: undefined, holdScale: undefined, lifters: undefined };
 
+  it("code review: a result with no n (not a number) has no passing step", () => {
+    const noN: Partial<GymResult> = { ...ok };
+    delete noN.n;
+    expect(gymGate(noN as GymResult)).toBe("the newest gym run has no passing step");
+    expect(gymGate({ ...ok, n: "25" } as unknown as GymResult)).toBe("the newest gym run has no passing step");
+  });
+
+  it("code review: flags that aren't an object read as not recording how it was run, never a raw error", () => {
+    for (const flags of ["x", 1, true, []]) {
+      expect(gymGate({ ...ok, flags } as unknown as GymResult), JSON.stringify(flags)).toBe("the newest gym run doesn't record how it was run");
+    }
+  });
+
   it("a result file that isn't JSON, or isn't an object, is refused by name", () => {
     for (const text of ["{not json", "null", "42", '"text"']) {
       expect(() => parseGymResult("2026-x-local-gym.json", text), text).toThrow("the newest gym run's result file can't be read (2026-x-local-gym.json)");

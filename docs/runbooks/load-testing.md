@@ -190,6 +190,9 @@ A full gym run holds each step long enough to collect 200 set saves at real pace
 - To stop it from another terminal, signal the CLI, never k6: `kill $(pgrep -f src/cli.ts)`. Don't use
   `pkill -f loadtest`: k6's own command line holds `tools/loadtest/k6/run.ts`, so k6 would get that signal and the
   CLI's SIGINT, and two signals make k6 abort without its summary.
+- A second `kill` never pushes k6 harder. If k6 hasn't stopped a minute after a `kill` or a closed terminal, abort it
+  by hand: `kill -INT $(pgrep -f 'k6 run')`. k6 then quits without its summary; the CLI still cleans up and writes the
+  result, marked incomplete. Never `kill -9` the CLI: its cleanup doesn't run, and the detached k6 keeps going.
 
 ## 4. Production
 

@@ -25,7 +25,7 @@ import { mgmtClient, setupAccounts } from "./node/setup-accounts.ts";
 import { auth0Tokens } from "./node/tokens-auth0.ts";
 import { localTokens } from "./node/tokens-local.ts";
 import { k6Env } from "./node/k6-env.ts";
-import { terminalLog } from "./node/terminal.ts";
+import { ignoreWriteErrors, terminalLog } from "./node/terminal.ts";
 
 const RESULTS_DIR = fileURLToPath(new URL("../results/", import.meta.url));
 const PROD_TFVARS = fileURLToPath(new URL("../../../infra/prod.tfvars", import.meta.url));
@@ -49,7 +49,9 @@ const noPace = () => Promise.resolve();
  * secret and token as they're loaded. (k6 writes to the terminal itself and is never given a secret to print.)
  */
 const redactor = new Redactor();
-// Minor 591: after a hang-up the terminal is gone; `terminal` drops the writes, the result file keeps the record.
+// Minor 591: after a hang-up the terminal is gone; `terminal` drops the writes, the result file keeps the record, and a
+// write that fails anyway (it arrives as an event) never crashes the CLI before cleanup.
+ignoreWriteErrors([process.stdout, process.stderr]);
 const terminal = terminalLog((text) => process.stdout.write(redactor.apply(text)));
 const log = terminal.log;
 const loadKnown = (need: Parameters<typeof loadSecrets>[1]): Secrets => {
@@ -173,11 +175,8 @@ function realDeps(target: Target): RunDeps {
     onStop: (handler) => {
       const on = (signal: StopSignal) => () => {
         if (signal === "SIGHUP") {
-          // The terminal is gone: stop writing to it, and let a late write error pass instead of crashing the CLI
-          // before cleanup.
+          // The terminal is gone: stop writing to it (write errors are already ignored, at start).
           terminal.hangUp();
-          process.stdout.on("error", () => {});
-          process.stderr.on("error", () => {});
         }
         handler(signal);
       };

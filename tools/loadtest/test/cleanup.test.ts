@@ -53,14 +53,14 @@ describe("minor 364 — cleanup stops when it makes no progress", () => {
   it("a workout whose delete never removes it stops the account with an error, not a hang", { timeout: 2000 }, async () => {
     const api = accountWith(3, false);
     api.stuckOnDelete.add(id(2));
-    await expect(cleanupAccount(api)).rejects.toThrow("a deleted workout is still listed (its DELETE answered 404, but the list still shows it)");
+    await expect(cleanupAccount(api)).rejects.toThrow(/^a workout is still listed after its delete answered \d{3}$/);
     expect(api.calls.filter((c) => c.startsWith("GET /v1/workouts?")).length).toBeLessThanOrEqual(3);
   });
 
   it("cleanupAll names the account by number", { timeout: 2000 }, async () => {
     const stuck = accountWith(1, false);
     stuck.stuckOnDelete.add(id(1));
-    await expect(cleanupAll([accountWith(2, false), stuck], { pace: async () => {} })).rejects.toThrow(/^account #2: a deleted workout is still listed/);
+    await expect(cleanupAll([accountWith(2, false), stuck], { pace: async () => {} })).rejects.toThrow(/^account #2: a workout is still listed after its delete answered 404$/);
   });
 
   it("Review Focus 4: a 404 for a workout that really is gone doesn't trip the guard", async () => {
