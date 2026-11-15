@@ -4,7 +4,7 @@
  * the account's number, never its password, a secret or a token (AC22).
  */
 import type { Secrets } from "./env.ts";
-import { callSignal, retryAfterWaitMs } from "./http-limits.ts";
+import { auth0ErrorCode, callSignal, retryAfterWaitMs } from "./http-limits.ts";
 
 export interface Auth0Deps {
   fetchFn: typeof fetch;
@@ -64,8 +64,7 @@ async function attempt(email: string, s: Secrets, fetchFn: typeof fetch): Promis
   if (res.ok) return { retry: false, why: `HTTP ${res.status}, no access_token` };
   if (res.status === 429 || res.status >= 500) return { retry: true, why: `HTTP ${res.status}`, retryAfter: res.headers.get("retry-after") };
   // Auth0's `error` is a fixed code (invalid_grant, unauthorized_client …); its description is free text, so it stays out.
-  const code = typeof body.error === "string" && /^[a-z_]{1,64}$/.test(body.error) ? ` ${body.error}` : "";
-  return { retry: false, why: `HTTP ${res.status}${code}` };
+  return { retry: false, why: `HTTP ${res.status}${auth0ErrorCode(body)}` };
 }
 
 function hours(s: number): string {

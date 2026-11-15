@@ -29,3 +29,15 @@ export function retryAfterWaitMs(header: string | null, fallbackS: number, log: 
   log(`Auth0 asked to wait ${asked} s`);
   return asked * 1000;
 }
+
+/**
+ * Minor 589: Auth0's fixed error code from an answer body, as " <code>" (`errorCode` first, as the Management API sends
+ * it, then `error`), or "" when there is none. Only a plain code (`^[a-z_]{1,64}$`): a description or message is free
+ * text and could echo input, so it never appears.
+ */
+export function auth0ErrorCode(body: unknown): string {
+  if (typeof body !== "object" || body === null) return "";
+  const { errorCode, error } = body as { errorCode?: unknown; error?: unknown };
+  for (const code of [errorCode, error]) if (typeof code === "string" && /^[a-z_]{1,64}$/.test(code)) return ` ${code}`;
+  return "";
+}

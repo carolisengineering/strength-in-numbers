@@ -26,8 +26,17 @@ export class Redactor {
     this.learnValues(secrets.values());
   }
 
+  /**
+   * Minor 593: also the value's JSON-escaped form, because the result file is redacted after `JSON.stringify`, which
+   * escapes a quote, a backslash or a newline inside a secret.
+   */
   learnValues(values: Iterable<string>): void {
-    for (const v of values) if (v !== "") this.#values.add(v);
+    for (const v of values) {
+      if (v === "") continue;
+      this.#values.add(v);
+      const escaped = JSON.stringify(v).slice(1, -1);
+      if (escaped !== v) this.#values.add(escaped);
+    }
   }
 
   apply(text: string): string {

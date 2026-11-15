@@ -180,7 +180,7 @@ async function main(argv: string[]): Promise<number> {
   const cmd = parseArgs(argv);
   if (cmd.cmd === "setup-accounts") {
     const secrets = loadKnown(SETUP_SECRETS);
-    const client = mgmtClient(secrets, { fetchFn: fetch, sleep: pause, now: Date.now });
+    const client = mgmtClient(secrets, { fetchFn: fetch, sleep: pause, now: Date.now, log, learn: (v) => redactor.learnValues([v]) });
     await setupAccounts(cmd.count, client, secrets, { dryRun: cmd.dryRun, log });
     return 0;
   }

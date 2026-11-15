@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { closeAnnotation, openAnnotation } from "../src/node/annotate.ts";
 import { ANNOTATION_SECRETS, RUN_SECRETS, SETUP_SECRETS, secretsFrom } from "../src/node/env.ts";
-import { CALL_TIMEOUT_MS, RETRY_AFTER_CAP_S, callSignal, retryAfterWaitMs } from "../src/node/http-limits.ts";
+import { CALL_TIMEOUT_MS, RETRY_AFTER_CAP_S, auth0ErrorCode, callSignal, retryAfterWaitMs } from "../src/node/http-limits.ts";
 import { mgmtClient } from "../src/node/setup-accounts.ts";
 import { auth0Tokens } from "../src/node/tokens-auth0.ts";
 
@@ -70,7 +70,7 @@ describe("minor 585 — every Grafana and Auth0 call times out after 10 s", () =
   it("Management API: requests carry a signal, and a timeout names the path", async () => {
     const s = secretsFrom({ AUTH0_DOMAIN: "tenant.example.test", AUTH0_MGMT_CLIENT_ID: "mid", AUTH0_MGMT_CLIENT_SECRET: "msecret", LOADTEST_AUTH0_CONNECTION: "loadtest", LOADTEST_ACCOUNT_PASSWORD: "pw" }, SETUP_SECRETS);
     const { fetchFn, signals } = recordingFetch((_n, url) => (url.endsWith("/oauth/token") ? Response.json({ access_token: "mgmt-token" }) : timedOut()));
-    const client = mgmtClient(s, { fetchFn, sleep: async () => {}, now: () => 0 });
+    const client = mgmtClient(s, { fetchFn, sleep: async () => {}, now: () => 0, log: () => {}, learn: () => {} });
     await expect(client.listConnectionEmails("loadtest")).rejects.toThrow("Auth0 Management API: no answer from /api/v2/users (timeout or network error)");
     expect(signals.every((sig) => sig instanceof AbortSignal)).toBe(true);
   });
@@ -93,5 +93,16 @@ describe("minor 587 — Retry-After is capped at 60 s and logged", () => {
 
   it("Review Focus 1: an HTTP-date, 0, a negative or a missing header falls back, with no line", () => {
     for (const header of ["Wed, 21 Oct 2026 07:28:00 GMT", "0", "-5", null]) expect(run(header), String(header)).toEqual({ ms: 2_000, log: [] });
+  });
+});
+
+describe("minor 589 — auth0ErrorCode", () => {
+  it("prefers errorCode, then error, and only a plain code", () => {
+    expect(auth0ErrorCode({ errorCode: "invalid_password", error: "Bad Request" })).toBe(" invalid_password");
+    expect(auth0ErrorCode({ error: "access_denied" })).toBe(" access_denied");
+    expect(auth0ErrorCode({ error: "Forbidden Thing" })).toBe("");
+    expect(auth0ErrorCode({ errorCode: "x".repeat(65) })).toBe("");
+    expect(auth0ErrorCode(null)).toBe("");
+    expect(auth0ErrorCode("text")).toBe("");
   });
 });
