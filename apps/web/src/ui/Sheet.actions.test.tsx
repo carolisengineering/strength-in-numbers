@@ -334,6 +334,18 @@ describe("17.10 AC5, AC8, AC9, AC11, AC12 — the row's CSS", () => {
     expect(box).not.toContainElement(sheetRow().getByRole("button", { name: "Save" }));
   });
 
+  // A flex item's default `min-width: auto` is ignored once `flex-basis` is 0, so three buttons squeezed a long label
+  // inside its button at 320 px instead of wrapping the row.
+  it("minor 490: a button never shrinks below its label, so the row wraps instead of squeezing", () => {
+    const button = ruleOf(".buttons button");
+    expect(button).toMatch(/flex:\s*1 1 0/);
+    // fit-content, not min-content: min-content is the longest word, so "Remove section" still broke between words.
+    expect(button).toMatch(/min-width:\s*fit-content/);
+    // A three-button row stays on one line at 320 px (the harness's 55b and 63e measure it).
+    expect(button).toMatch(/padding-inline:\s*var\(--space-2\)/);
+    expect(ruleOf(".buttons")).toMatch(/flex-wrap:\s*wrap/);
+  });
+
   it("AC8: with the keyboard up the row's bottom padding drops the inset", () => {
     const rule = ruleOf(':global(:root[data-keyboard="open"]) .actions');
     expect(rule).toMatch(/padding-bottom:\s*var\(--space-3\)/);

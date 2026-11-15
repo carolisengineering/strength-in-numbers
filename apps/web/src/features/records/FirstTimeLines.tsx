@@ -14,7 +14,7 @@ export function FirstTimeLines({ lines, explain }: { lines: readonly FirstTimeLi
   const shown = lines.slice(0, collapsedCount(lines.length, expanded));
   return (
     <div className={styles.firsts}>
-      <ul className={styles.lines}>
+      <ul className={styles.lines} data-first-times="">
         {shown.map((line) => (
           <li key={line.key}>{line.text}</li>
         ))}

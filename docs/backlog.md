@@ -839,7 +839,7 @@ reads a few words per line, and the `ZOOM_KNOWN` rows for BL-38 are removed.
 
 **At 200% text a sheet row's three buttons clip "Delete set" and "Cancel".**
 
-**Status: Open.** Found by Spec 17.13 AC19's zoom pass on 2026-11-13 (`mobile-200pct/z3-edit-sheet`).
+**Status: Fixed (minors PR H, minor 490, 2026-11-15).** Found by Spec 17.13 AC19's zoom pass on 2026-11-13 (`mobile-200pct/z3-edit-sheet`). A row button is never narrower than its label (`min-width: fit-content`), so at 200% text the row wraps (Delete set on its own line) instead of clipping; the harness's sheet-row check passes on `z3-edit-sheet` and the `ZOOM_KNOWN` rows are removed.
 
 **What is wrong:** the row gives danger, Cancel and the primary equal shares of the width (Spec 17.10). At 390 px
 with 200% text a third of the row is narrower than "Cancel", so the text runs past the button's edge.
