@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RoutineCreateSchema } from "@sin/core";
 import { ensureSeeded } from "../src/node/seed.ts";
-import { seededRoutineSets } from "../src/plan/routine.ts";
 import { accountEmail, accountIds } from "../src/node/accounts.ts";
 import { FakeApi } from "./fake-api.ts";
 
@@ -12,7 +11,13 @@ describe("AC23 — seeding is idempotent", () => {
     const second = await ensureSeeded(api);
     expect(api.calls.filter((c) => c === "POST /v1/routines")).toHaveLength(1);
     expect(second).toEqual(first);
-    expect(first.sets).toEqual(seededRoutineSets());
+  });
+
+  it("minor 582 — ensureSeeded returns only the routine, on the create path and the found path", async () => {
+    const api = new FakeApi();
+    const created = await ensureSeeded(api);
+    expect(created).toEqual({ routineId: expect.any(String) });
+    expect(await ensureSeeded(api)).toEqual({ routineId: created.routineId });
   });
 
   it("the posted body uses the catalog's ids and passes the create schema", async () => {

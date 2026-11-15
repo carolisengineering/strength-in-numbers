@@ -86,6 +86,8 @@ In the Auth0 dashboard of tenant `dev-gncuqvfir0wv0t4l` (shared by staging and p
    - **Add service account token.**
 3. Import `ops/grafana/dashboards/load-test.json`, and re-import `api-overview.json` and `usage.json`
    (`observability.md` §4). All three show the "Load test runs" annotations.
+   - The Load test dashboard has a **Target** picker (default staging). Its k6 panels show only that target's runs.
+   - A copy imported before minors PR J (2026-11-15) has no picker: re-import `load-test.json` before the next run.
 
 ### 2.4 The env file
 
@@ -234,6 +236,8 @@ the point.
 1. Read **the sentence**, for example `staging handles 75 lifters mid-workout at the same time; at 100 the set save
    p95 went over 2 s`. Then read the per-step table.
 2. Open **si-api — load test** in Grafana at the run's annotation window.
+   - Set **Target** to the run's target first. It opens on staging, so after a `local` or `prod` run the k6 row reads
+     "No data" until you switch it.
    - The top row is k6's view: lifters, requests per second, set-save p95 against the 2 s line, 5xx share and 429s.
    - The rows below are the API's own view.
 3. **At the first failing step, look at what moved.** That is the first thing that breaks:

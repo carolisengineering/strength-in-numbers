@@ -9,6 +9,8 @@
  *   LOADTEST_SCHEDULE JSON Schedule, LOADTEST_SUMMARY_PATH,
  *   LOADTEST_RUN_NONCE  this run's 32-bit nonce, mixed into each lifter's payload seed only (minor 365)
  * LOADTEST_LIFTER_COUNT (at least 1) and LOADTEST_RUN_NONCE are required: without them k6 stops at init (minor 580).
+ * Each VU parses only its own LOADTEST_LIFTER_<i>, on its first iteration (minor 581); a bad one aborts the whole run,
+ * naming the variable.
  */
 import { sleep } from "k6";
 import exec from "k6/execution";
@@ -17,14 +19,16 @@ import { Counter, Rate } from "k6/metrics";
 import { BURST_WINDOW_S, WARMUP_MAX_S, WARMUP_REQUESTS } from "../src/plan/constants.ts";
 import { newLifterState, runActions, type ExecutorIo } from "../src/plan/executor.ts";
 import { createRng } from "../src/plan/rng.ts";
-import { lifterSeeds, readLifters, readNonce } from "../src/plan/lifters.ts";
+import { lifterOrAbort, lifterSeeds, readLifterCount, readNonce, type LifterInput } from "../src/plan/lifters.ts";
 import { SEEDED_ITEMS, seededRoutineSets } from "../src/plan/routine.ts";
 import { burstOffset, stepAt, toK6Scenario, type RunType, type Schedule } from "../src/plan/schedule.ts";
 import { OPEN_APP_READS, buildSession, joinAt, joinedActions, type Action } from "../src/plan/session.ts";
 import { buildThresholds, countsAsServerError } from "../src/plan/thresholds.ts";
 import type { TagKey } from "../src/plan/tags.ts";
 
-const LIFTERS = readLifters(__ENV);
+const LIFTER_COUNT = readLifterCount(__ENV);
+/** This VU's lifter. k6 gives every VU its own module state, so each one parses only its own variable. */
+let lifter: LifterInput | undefined;
 /** Every account holds the same seeded routine, so every lifter plans the same sets. */
 const SETS = seededRoutineSets();
 const SCHEDULE = JSON.parse(__ENV.LOADTEST_SCHEDULE ?? '{"warmupS":0,"pushFactor":1,"stages":[]}') as Schedule;
@@ -42,6 +46,8 @@ export const options = {
   // "count" lets the reporter tell a step with no set saves from one with p95 0 (k6 lists zero-sample submetrics).
   summaryTrendStats: ["avg", "p(95)", "max", "count"],
   setupTimeout: `${WARMUP_MAX_S + 60}s`,
+  // Minor 592: every metric, `vus` included (it has no request tags), carries the target the dashboard filters by.
+  tags: { target: TARGET },
   // Every request is tagged by its template (AC11); never let k6 add the raw URL as a tag value.
   systemTags: ["status", "method", "name", "group", "check", "error_code", "scenario"],
 };
@@ -99,8 +105,7 @@ const weights = SEEDED_ITEMS.map((i) => i.weightKg);
 
 export default function (data: { t0: number }): void {
   const index = exec.vu.idInTest - 1;
-  const lifter = LIFTERS[index];
-  if (!lifter) throw new Error(`no account for lifter ${index + 1}; the CLI passes ${LIFTERS.length}`);
+  lifter ??= lifterOrAbort(__ENV, index, LIFTER_COUNT, (reason) => exec.test.abort(reason));
   const io = makeIo(lifter.token, data.t0);
   const iteration = exec.vu.iterationInInstance;
   // `seed` shapes the plan (reproducible, AC2); `payload` makes the bodies, fresh each run (minor 365).

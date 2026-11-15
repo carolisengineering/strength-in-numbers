@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { report, stepResults, type StepResult } from "../src/plan/report.ts";
+import { X_NO_SET_SAVES, X_SET_SAVE, report, stepResults, type StepResult } from "../src/plan/report.ts";
 import { summary } from "./k6-summary.ts";
 
 const LIFTERS = [25, 50, 75, 100];
@@ -128,5 +128,39 @@ describe("burst sentence", () => {
     expect(report({ target: "local", type: "burst", pushFactor: 1, steps }).sentence).toBe(
       "local handles 10 lifters opening the app within a minute before 5xx rate over 1% goes wrong",
     );
+  });
+});
+
+describe("minor 369 — the no-set-saves reason reads as a sentence", () => {
+  const step = (k: number, lifters: number, failedOn: string | null): StepResult => ({
+    step: k,
+    lifters,
+    measured: true,
+    p95Ms: failedOn === X_NO_SET_SAVES ? null : 300,
+    errorRate: 0,
+    rateLimited: 0,
+    pass: failedOn === null,
+    failedOn,
+  });
+  const run = (steps: StepResult[]) => report({ target: "staging", type: "gym", pushFactor: 1, steps });
+
+  it("the step after N measured no set saves", () => {
+    const r = run([step(1, 20, null), step(2, 40, null), step(3, 60, X_NO_SET_SAVES)]);
+    expect(r.sentence).toBe("staging handles 40 lifters mid-workout at the same time, but the next step (60 lifters) measured no set saves");
+    expect(r.x).toBe("no set saves measured");
+  });
+
+  it("no step passed and the first measured no set saves", () => {
+    expect(run([step(1, 20, X_NO_SET_SAVES)]).sentence).toBe("staging: no step passed; the first step (20 lifters) measured no set saves");
+  });
+
+  it("a step below N measured no set saves", () => {
+    const r = run([step(1, 20, X_NO_SET_SAVES), step(2, 40, null)]);
+    expect(r.sentence.endsWith("(non-monotonic: the 20-lifter step measured no set saves although a larger step passed)")).toBe(true);
+  });
+
+  it("guard: any other reason keeps today's wording", () => {
+    const r = run([step(1, 20, null), step(2, 40, X_SET_SAVE)]);
+    expect(r.sentence).toBe("staging handles 20 lifters mid-workout at the same time before set-save p95 over 2 s goes wrong");
   });
 });

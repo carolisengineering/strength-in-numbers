@@ -28,7 +28,8 @@ export interface RunDeps {
   /** Minor 588: whether `k6 version` runs, checked before any token is fetched. */
   checkK6(): Promise<boolean>;
   tokens(ids: string[], expiresInS: number): Promise<string[]>;
-  apisFor(tokens: string[]): Api[];
+  /** Minor 594: given runLoad's base URL, so prod's isn't read from `prod.tfvars` a second time. */
+  apisFor(baseUrl: string, tokens: string[]): Api[];
   cleanupAll(apis: Api[]): Promise<{ removed: number }>;
   writeResult(name: string, body: Record<string, unknown>): void;
   readSummary(path: string): unknown | undefined;
@@ -191,8 +192,8 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   const rw = cmd.metricsOutput ? deps.remoteWrite() : undefined;
   const ids = accountIds(accounts);
   const tokens = await deps.tokens(ids, durationS(schedule) + meanSessionS(sets, cmd.push) + TOKEN_MARGIN_S);
-  const apis = deps.apisFor(tokens);
-  const seeded: { routineId: string; sets: number[] }[] = [];
+  const apis = deps.apisFor(baseUrl, tokens);
+  const seeded: { routineId: string }[] = [];
   for (const api of apis) seeded.push(await ensureSeeded(api));
 
   const start = deps.now();
@@ -297,7 +298,12 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
       status: complete ? "complete" : "incomplete",
       cleanup,
       // The push gate (D9) refuses a shortened gym run, so the result records how this one was run.
-      flags: { steps: cmd.steps ?? null, holdScale: cmd.holdScale ?? null, lifters: cmd.lifters ?? null },
+      // Minor 579: `--hold-scale 1` holds each step for its full time, so it records as a full run.
+      flags: {
+        steps: cmd.steps ?? null,
+        holdScale: cmd.holdScale === undefined || cmd.holdScale === 1 ? null : cmd.holdScale,
+        lifters: cmd.lifters ?? null,
+      },
     });
     for (const line of table(steps)) deps.log(line);
     deps.log(r.sentence);

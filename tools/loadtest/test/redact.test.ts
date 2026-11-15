@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { secretsFrom } from "../src/node/env.ts";
 import { Redactor, redact } from "../src/node/redact.ts";
 
@@ -62,5 +62,29 @@ describe("minor 593 — a secret is redacted in its JSON-escaped form too", () =
     const r = new Redactor();
     r.learnValues(["plain"]);
     expect(r.apply("a plain b")).toBe("a [redacted] b");
+  });
+});
+
+describe("minor 594 — the Redactor sorts once, and still sees a value learned after an apply", () => {
+  it("a longer value learned later still wins over a shorter one it contains", () => {
+    const r = new Redactor();
+    r.learnValues(["abc"]);
+    expect(r.apply("x abc y")).toBe("x [redacted] y");
+    r.learnValues(["abcdef"]);
+    expect(r.apply("x abcdef y")).toBe("x [redacted] y");
+  });
+
+  it("code review — learning a value it already holds doesn't force a re-sort", () => {
+    const r = new Redactor();
+    r.learnValues(["abc", "abcdef"]);
+    r.apply("warm the cache");
+    r.learnValues(["abc"]);
+    const sort = vi.spyOn(Array.prototype, "sort");
+    try {
+      expect(r.apply("x abc y")).toBe("x [redacted] y");
+      expect(sort).not.toHaveBeenCalled();
+    } finally {
+      sort.mockRestore();
+    }
   });
 });

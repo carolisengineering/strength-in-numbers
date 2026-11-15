@@ -5,11 +5,15 @@ import type { Secrets } from "./env.ts";
  * longest values go first, so a value that contains another is replaced whole.
  */
 export function redact(text: string, secrets: Secrets, extra: readonly string[] = []): string {
-  return replaceAll(text, [...secrets.values(), ...extra]);
+  return replaceAll(text, longestFirst([...secrets.values(), ...extra]));
 }
 
-function replaceAll(text: string, values: Iterable<string>): string {
-  const sorted = [...values].filter((v) => v !== "").sort((a, b) => b.length - a.length);
+function longestFirst(values: Iterable<string>): string[] {
+  return [...values].filter((v) => v !== "").sort((a, b) => b.length - a.length);
+}
+
+/** `sorted` is longest first, so a value that contains another is replaced whole. */
+function replaceAll(text: string, sorted: readonly string[]): string {
   let out = text;
   for (const value of sorted) out = out.split(value).join("[redacted]");
   return out;
@@ -21,6 +25,8 @@ function replaceAll(text: string, values: Iterable<string>): string {
  */
 export class Redactor {
   readonly #values = new Set<string>();
+  /** Minor 594: sorted once per change, not on every `apply`; `null` after a new value is learned. */
+  #sorted: string[] | null = null;
 
   learn(secrets: Secrets): void {
     this.learnValues(secrets.values());
@@ -33,13 +39,16 @@ export class Redactor {
   learnValues(values: Iterable<string>): void {
     for (const v of values) {
       if (v === "") continue;
+      const before = this.#values.size;
       this.#values.add(v);
       const escaped = JSON.stringify(v).slice(1, -1);
       if (escaped !== v) this.#values.add(escaped);
+      if (this.#values.size !== before) this.#sorted = null;
     }
   }
 
   apply(text: string): string {
-    return replaceAll(text, this.#values);
+    this.#sorted ??= longestFirst(this.#values);
+    return replaceAll(text, this.#sorted);
   }
 }
