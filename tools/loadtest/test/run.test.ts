@@ -97,6 +97,33 @@ describe("AC16 — cleanup runs even when the run does not finish", () => {
     expect(kill).toHaveBeenCalledWith("SIGINT");
     expect(h.d.cleanupAll).toHaveBeenCalledTimes(1);
   });
+
+  // Final review (16B): one Ctrl-C reaches the CLI several times (the terminal's process group, tsx's relay), and a
+  // second SIGINT makes k6 abort without its summary. Forward one; a deliberate second Ctrl-C after 2 s still aborts.
+  it("forwards one SIGINT for a burst of them, and a later one again", async () => {
+    let resolveExit!: (v: { code: number | null; signal: string | null }) => void;
+    const kill = vi.fn();
+    let nowMs = Date.parse("2026-11-06T12:00:00.000Z");
+    const h = deps({
+      spawnK6: vi.fn(() => ({ exited: new Promise<{ code: number | null; signal: string | null }>((r) => (resolveExit = r)), kill })),
+      readSummary: vi.fn(() => undefined),
+      now: () => new Date(nowMs),
+    });
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.spawnK6).toHaveBeenCalled());
+    h.fireSigint();
+    nowMs += 50;
+    h.fireSigint();
+    nowMs += 500;
+    h.fireSigint();
+    expect(kill).toHaveBeenCalledTimes(1);
+    expect(h.lines).toContain("stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary");
+    nowMs += 2500;
+    h.fireSigint();
+    expect(kill).toHaveBeenCalledTimes(2);
+    resolveExit({ code: null, signal: "SIGINT" });
+    await done;
+  });
 });
 
 describe("final review — a failed cleanup never loses the run's result", () => {

@@ -17,6 +17,7 @@ import { cleanupAll } from "./node/cleanup.ts";
 import { closeAnnotation, openAnnotation } from "./node/annotate.ts";
 import { ANNOTATION_SECRETS, ENV_FILE, METRICS_SECRETS, RUN_SECRETS, SETUP_SECRETS, loadSecrets, type Secrets } from "./node/env.ts";
 import { politeApis } from "./node/polite.ts";
+import { Redactor } from "./node/redact.ts";
 import { prodBaseUrl } from "./node/prod.ts";
 import { remoteWriteFor, runLoad, type GymResult, type RunDeps } from "./node/run.ts";
 import { ensureSeeded } from "./node/seed.ts";
@@ -41,18 +42,35 @@ const politeFor = (baseUrl: string, tokens: string[]) =>
     { ...POLITE, sleep: pause, now: Date.now },
   );
 const noPace = () => Promise.resolve();
-const log = (line: string) => process.stdout.write(`${line}\n`);
+/**
+ * AC22 — everything the CLI prints, its errors and the result file pass through one Redactor, which learns each
+ * secret and token as they're loaded. (k6 writes to the terminal itself and is never given a secret to print.)
+ */
+const redactor = new Redactor();
+const log = (line: string) => process.stdout.write(`${redactor.apply(line)}\n`);
+const loadKnown = (need: Parameters<typeof loadSecrets>[1]): Secrets => {
+  const secrets = loadSecrets(ENV_FILE, need);
+  redactor.learn(secrets);
+  return secrets;
+};
+const learnTokens = (tokens: string[]): string[] => {
+  redactor.learnValues(tokens);
+  return tokens;
+};
 
 /**
  * The target's token source (AC6): dev-idp for `local`, Auth0's password-realm grant for `staging` / `prod`. The env
  * file is read only when tokens are needed, so a `--dry-run` works without it.
  */
 function tokensFor(target: Target): RunDeps["tokens"] {
-  if (target.tokenSource === "dev-idp") return (ids, expiresInS) => localTokens(ids, { idpUrl: IDP_URL, expiresInS });
-  return (ids, expiresInS) => {
-    const secrets = loadSecrets(ENV_FILE, RUN_SECRETS);
+  if (target.tokenSource === "dev-idp") {
+    return async (ids, expiresInS) => learnTokens(await localTokens(ids, { idpUrl: IDP_URL, expiresInS }));
+  }
+  return async (ids, expiresInS) => {
+    const secrets = loadKnown(RUN_SECRETS);
     log(`fetching ${ids.length} Auth0 tokens, 2 a second`);
-    return auth0Tokens(ids.map(accountEmail), secrets, { fetchFn: fetch, sleep: pause, now: Date.now }, { needS: expiresInS });
+    const deps = { fetchFn: fetch, sleep: pause, now: Date.now };
+    return learnTokens(await auth0Tokens(ids.map(accountEmail), secrets, deps, { needS: expiresInS }));
   };
 }
 
@@ -66,7 +84,7 @@ function annotationsFor(target: Target): Pick<RunDeps, "openAnnotation" | "close
   return {
     openAnnotation: async (a) => {
       try {
-        secrets = loadSecrets(ENV_FILE, ANNOTATION_SECRETS);
+        secrets = loadKnown(ANNOTATION_SECRETS);
       } catch (err) {
         log(`Grafana annotation skipped: ${err instanceof Error ? err.message : String(err)}`);
         return undefined;
@@ -79,14 +97,36 @@ function annotationsFor(target: Target): Pick<RunDeps, "openAnnotation" | "close
 
 function realDeps(target: Target): RunDeps {
   return {
-    remoteWrite: () => remoteWriteFor(target.name, () => loadSecrets(ENV_FILE, METRICS_SECRETS)),
+    remoteWrite: () => remoteWriteFor(target.name, () => loadKnown(METRICS_SECRETS)),
     ...annotationsFor(target),
     spawnK6: (args, env) => {
-      const child = spawn("k6", args, { cwd: RESULTS_DIR, env: { ...process.env, ...env }, stdio: "inherit" });
+      // Its own process group, so the terminal's Ctrl-C reaches k6 only as the one SIGINT `runLoad` forwards (a second
+      // SIGINT makes k6 abort without its summary). Detached, k6 would outlive a closed terminal, so the CLI stops it
+      // when it exits or is hung up on or terminated.
+      const child = spawn("k6", args, { cwd: RESULTS_DIR, env: { ...process.env, ...env }, stdio: "inherit", detached: true });
+      const stopK6 = () => void child.kill("SIGKILL");
+      const hangUp = (signal: NodeJS.Signals) => {
+        stopK6();
+        process.exit(signal === "SIGHUP" ? 129 : 143);
+      };
+      process.once("exit", stopK6);
+      process.once("SIGHUP", hangUp);
+      process.once("SIGTERM", hangUp);
       return {
         exited: new Promise((resolve, reject) => {
-          child.once("error", reject);
-          child.once("exit", (code, signal) => resolve({ code, signal }));
+          const forget = () => {
+            process.off("exit", stopK6);
+            process.off("SIGHUP", hangUp);
+            process.off("SIGTERM", hangUp);
+          };
+          child.once("error", (err) => {
+            forget();
+            reject(err);
+          });
+          child.once("exit", (code, signal) => {
+            forget();
+            resolve({ code, signal });
+          });
         }),
         kill: (signal) => void child.kill(signal),
       };
@@ -96,7 +136,7 @@ function realDeps(target: Target): RunDeps {
     apisFor: (tokens) => politeFor(target.baseUrl ?? readProdBaseUrl(), tokens),
     cleanupAll: (apis) => cleanupAll(apis, { pace: noPace }),
     writeResult: (name, body) => {
-      writeFileSync(join(RESULTS_DIR, name), `${JSON.stringify(body, null, 2)}\n`);
+      writeFileSync(join(RESULTS_DIR, name), `${redactor.apply(JSON.stringify(body, null, 2))}\n`);
       log(`result: tools/loadtest/results/${name}`);
     },
     readSummary: (path) => {
@@ -139,7 +179,7 @@ function realDeps(target: Target): RunDeps {
 async function main(argv: string[]): Promise<number> {
   const cmd = parseArgs(argv);
   if (cmd.cmd === "setup-accounts") {
-    const secrets = loadSecrets(ENV_FILE, SETUP_SECRETS);
+    const secrets = loadKnown(SETUP_SECRETS);
     const client = mgmtClient(secrets, { fetchFn: fetch, sleep: pause, now: Date.now });
     await setupAccounts(cmd.count, client, secrets, { dryRun: cmd.dryRun, log });
     return 0;
@@ -167,7 +207,7 @@ main(process.argv.slice(2)).then(
     process.exitCode = code;
   },
   (err: unknown) => {
-    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`${redactor.apply(err instanceof Error ? err.message : String(err))}\n`);
     process.exitCode = 1;
   },
 );

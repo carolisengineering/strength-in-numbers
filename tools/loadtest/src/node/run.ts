@@ -89,6 +89,8 @@ export function remoteWriteFor(target: TargetName, metrics: () => Secrets): Remo
   const s = metrics();
   return { url: s.get("GRAFANA_PROM_RW_URL"), username: s.get("GRAFANA_PROM_RW_USER"), password: s.get("GRAFANA_PROM_RW_TOKEN") };
 }
+/** SIGINTs closer together than this are one Ctrl-C (final review, 16B). */
+const SIGINT_REPEAT_MS = 2000;
 /** Tokens must outlive the run (Review Focus 2): the estimate plus half an hour. */
 const TOKEN_MARGIN_S = 1800;
 
@@ -184,7 +186,18 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     let cleanup: "done" | "failed" = "done";
     try {
       const child = deps.spawnK6(args, env);
-      const release = deps.onSigint(() => child.kill("SIGINT"));
+      // One Ctrl-C can reach the CLI several times (the terminal's process group, tsx's relay), and a second SIGINT
+      // makes k6 abort without writing its summary. Forward one; a deliberate Ctrl-C after SIGINT_REPEAT_MS aborts.
+      let forwardedAt: number | undefined;
+      const release = deps.onSigint(() => {
+        const t = deps.now().getTime();
+        if (forwardedAt !== undefined && t - forwardedAt < SIGINT_REPEAT_MS) return;
+        if (forwardedAt === undefined) {
+          deps.log("stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary");
+        }
+        forwardedAt = t;
+        child.kill("SIGINT");
+      });
       try {
         const exit = await child.exited;
         deps.log(`k6 exited (code ${exit.code ?? "none"}${exit.signal ? `, signal ${exit.signal}` : ""})`);
