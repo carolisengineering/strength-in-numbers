@@ -4,11 +4,14 @@
  * the account's number, never its password, a secret or a token (AC22).
  */
 import type { Secrets } from "./env.ts";
+import { auth0ErrorCode, callSignal, retryAfterWaitMs } from "./http-limits.ts";
 
 export interface Auth0Deps {
   fetchFn: typeof fetch;
   sleep(ms: number): Promise<void>;
   now(): number;
+  /** Minor 587: one line for each `Retry-After` wait. */
+  log(line: string): void;
 }
 
 export interface Auth0Opts {
@@ -32,7 +35,7 @@ export function tokenExpS(token: string): number | undefined {
   }
 }
 
-type Attempt = { token: string } | { retry: boolean; why: string; retryAfterS?: number };
+type Attempt = { token: string } | { retry: boolean; why: string; retryAfter?: string | null };
 
 async function attempt(email: string, s: Secrets, fetchFn: typeof fetch): Promise<Attempt> {
   let res: Response;
@@ -50,19 +53,18 @@ async function attempt(email: string, s: Secrets, fetchFn: typeof fetch): Promis
         client_secret: s.get("LOADTEST_AUTH0_CLIENT_SECRET"),
         scope: "openid",
       }),
+      signal: callSignal(),
     });
   } catch {
     return { retry: true, why: "network error" };
   }
   const body = (await res.json().catch(() => ({}))) as { access_token?: unknown; error?: unknown };
   if (res.ok && typeof body.access_token === "string" && body.access_token !== "") return { token: body.access_token };
-  if (res.ok) return { retry: true, why: `HTTP ${res.status}, no access_token` };
-  const retryAfter = Number(res.headers.get("retry-after"));
-  const retryAfterS = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined;
-  if (res.status === 429 || res.status >= 500) return { retry: true, why: `HTTP ${res.status}`, retryAfterS };
+  // Minor 590: a 2xx with no token is usually a deterministic Action error; retrying costs 15 s and five logins.
+  if (res.ok) return { retry: false, why: `HTTP ${res.status}, no access_token` };
+  if (res.status === 429 || res.status >= 500) return { retry: true, why: `HTTP ${res.status}`, retryAfter: res.headers.get("retry-after") };
   // Auth0's `error` is a fixed code (invalid_grant, unauthorized_client …); its description is free text, so it stays out.
-  const code = typeof body.error === "string" && /^[a-z_]{1,64}$/.test(body.error) ? ` ${body.error}` : "";
-  return { retry: false, why: `HTTP ${res.status}${code}` };
+  return { retry: false, why: `HTTP ${res.status}${auth0ErrorCode(body)}` };
 }
 
 function hours(s: number): string {
@@ -91,7 +93,7 @@ export async function auth0Tokens(emails: string[], s: Secrets, deps: Auth0Deps,
       }
       if (!result.retry) throw new Error(`token fetch failed for account #${i + 1} (${result.why})`);
       if (n >= maxAttempts) throw new Error(`token fetch failed for account #${i + 1} after ${maxAttempts} attempts (${result.why})`);
-      await deps.sleep((result.retryAfterS ?? 2 ** (n - 1)) * 1000);
+      await deps.sleep(retryAfterWaitMs(result.retryAfter ?? null, 2 ** (n - 1), deps.log));
     }
 
     if (i === 0) {

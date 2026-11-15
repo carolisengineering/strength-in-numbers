@@ -25,6 +25,8 @@ export interface K6Child {
 
 export interface RunDeps {
   spawnK6(args: string[], env: Record<string, string>): K6Child;
+  /** Minor 588: whether `k6 version` runs, checked before any token is fetched. */
+  checkK6(): Promise<boolean>;
   tokens(ids: string[], expiresInS: number): Promise<string[]>;
   apisFor(tokens: string[]): Api[];
   cleanupAll(apis: Api[]): Promise<{ removed: number }>;
@@ -40,8 +42,8 @@ export interface RunDeps {
   /** AC25 — both never throw; a failure is a warning and the run goes on. No-ops on `local`. */
   openAnnotation(a: AnnotationStart): Promise<number | undefined>;
   closeAnnotation(id: number | undefined, a: AnnotationEnd): Promise<void>;
-  /** Registers a Ctrl-C handler; returns its removal. */
-  onSigint(handler: () => void): () => void;
+  /** Registers the stop handler for Ctrl-C, `kill` and a closed terminal (minor 591); returns its removal. */
+  onStop(handler: (signal: StopSignal) => void): () => void;
   now(): Date;
   log(line: string): void;
 }
@@ -64,14 +66,37 @@ export function gymGate(result: GymResult | undefined): string | null {
   if (!result) return "there is no gym run";
   if (result.status !== "complete") return "the newest gym run is incomplete";
   if (result.cleanup !== "done") return "the newest gym run's cleanup failed";
-  if (!result.flags) return "the newest gym run doesn't record how it was run";
-  if (result.flags.steps !== null || result.flags.holdScale !== null) {
+  // Minor 583: both keys must be there; `{}` is not a full-ladder run, it just doesn't say.
+  const flags: unknown = result.flags;
+  if (typeof flags !== "object" || flags === null || Array.isArray(flags) || !("steps" in flags) || !("holdScale" in flags)) {
+    return "the newest gym run doesn't record how it was run";
+  }
+  const recorded = flags as NonNullable<GymResult["flags"]>;
+  if (recorded.steps !== null || recorded.holdScale !== null) {
     return "the newest gym run was shortened with --steps / --hold-scale";
   }
   // `!== null`, so a file written before `lifters` was recorded doesn't pass either.
-  if (result.flags.lifters !== null) return "the newest gym run used --lifters instead of the full ladder";
-  if (result.n === null) return "the newest gym run has no passing step";
+  if (recorded.lifters !== null) return "the newest gym run used --lifters instead of the full ladder";
+  // Code review: a corrupt file with no `n`, or a non-number, has no passing step either.
+  if (typeof result.n !== "number") return "the newest gym run has no passing step";
   return null;
+}
+
+/**
+ * Minor 583: a gym result file as the push gate reads it. A file that isn't JSON, or isn't an object, is refused by
+ * name rather than crashing `run push` with a raw parse error.
+ */
+export function parseGymResult(fileName: string, text: string): GymResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`the newest gym run's result file can't be read (${fileName})`);
+  }
+  return parsed as GymResult;
 }
 
 const K6_SCRIPT = fileURLToPath(new URL("../../k6/run.ts", import.meta.url));
@@ -89,6 +114,12 @@ export function remoteWriteFor(target: TargetName, metrics: () => Secrets): Remo
   const s = metrics();
   return { url: s.get("GRAFANA_PROM_RW_URL"), username: s.get("GRAFANA_PROM_RW_USER"), password: s.get("GRAFANA_PROM_RW_TOKEN") };
 }
+/** What can stop a run: Ctrl-C, `kill` (SIGTERM) or a closed terminal (SIGHUP). */
+export type StopSignal = "SIGINT" | "SIGTERM" | "SIGHUP";
+
+/** Minor 591: the exit code a run stopped by `kill` or a closed terminal ends with, once its result is written. */
+const STOP_EXIT: Readonly<Record<Exclude<StopSignal, "SIGINT">, number>> = { SIGTERM: 143, SIGHUP: 129 };
+
 /** SIGINTs closer together than this are one Ctrl-C (final review, 16B). */
 const SIGINT_REPEAT_MS = 2000;
 /** Tokens must outlive the run (Review Focus 2): the estimate plus half an hour. */
@@ -137,9 +168,19 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   const baseUrl = target.baseUrl ?? deps.prodBaseUrl();
   if (target.name === "prod") deps.log(`prod guards: pass (${baseUrl})`);
   if (cmd.dryRun) return 0;
+  // Minor 588: a missing k6 would otherwise show up as an ENOENT after the token fetches and the seeding.
+  if (!(await deps.checkK6())) {
+    deps.log("k6 isn't installed or isn't on PATH (brew install k6)");
+    return 2;
+  }
 
   if (cmd.type === "push" && !cmd.allowUnpassedPush) {
-    const reason = gymGate(deps.latestGymResult(target.name));
+    let reason: string | null;
+    try {
+      reason = gymGate(deps.latestGymResult(target.name));
+    } catch (err) {
+      reason = err instanceof Error ? err.message : String(err);
+    }
     if (reason) {
       deps.log(`push needs a passing gym run on ${target.name} first: ${reason} (or --allow-unpassed-push)`);
       return 2;
@@ -181,52 +222,60 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
 
   const annotation = await deps.openAnnotation({ target: target.name, type: cmd.type, startMs: start.getTime() });
   let endText = `load test: ${cmd.type} run on ${target.name} did not finish`;
-  try {
-    let summary: unknown;
-    let cleanup: "done" | "failed" = "done";
-    // One Ctrl-C can reach the CLI several times (the terminal's process group, tsx's relay), and a second SIGINT
-    // makes k6 abort without writing its summary. Forward one; a deliberate Ctrl-C after SIGINT_REPEAT_MS aborts.
-    // The handler stays through cleanup, where a Ctrl-C only says to wait: Node's default would leave accounts
-    // half cleaned and no result.
-    let child: ReturnType<RunDeps["spawnK6"]> | undefined;
-    let k6Done = false;
-    let forwardedAt: number | undefined;
-    let toldToWait = false;
-    const release = deps.onSigint(() => {
-      if (k6Done || !child) {
-        if (!toldToWait) deps.log("cleanup is running and finishes on its own; wait for the result");
-        toldToWait = true;
-        return;
-      }
-      const t = deps.now().getTime();
-      if (forwardedAt !== undefined && t - forwardedAt < SIGINT_REPEAT_MS) return;
-      if (forwardedAt === undefined) {
-        deps.log("stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary");
-      }
+  let summary: unknown;
+  let cleanup: "done" | "failed" = "done";
+  // One Ctrl-C can reach the CLI several times (the terminal's process group, tsx's relay), and a second SIGINT
+  // makes k6 abort without writing its summary. Forward one; a deliberate Ctrl-C after SIGINT_REPEAT_MS aborts.
+  // The handler stays through cleanup, where a Ctrl-C only says to wait: Node's default would leave accounts
+  // half cleaned and no result. Minor 591: a `kill` (SIGTERM) or a closed terminal (SIGHUP) takes the first
+  // Ctrl-C's path, k6 stops at its next safe point, cleanup runs and the result is written, but never sends k6 a
+  // second SIGINT: nobody is at the keyboard to mean it. The handler stays until the result is written and the
+  // annotation closed (final review), so a second signal after cleanup still only says to wait.
+  let child: ReturnType<RunDeps["spawnK6"]> | undefined;
+  let k6Done = false;
+  let forwardedAt: number | undefined;
+  let toldToWait = false;
+  let stoppedBy: Exclude<StopSignal, "SIGINT"> | undefined;
+  const release = deps.onStop((signal) => {
+    if (signal !== "SIGINT") stoppedBy ??= signal;
+    if (k6Done || !child) {
+      if (!toldToWait) deps.log("cleanup is running and finishes on its own; wait for the result");
+      toldToWait = true;
+      return;
+    }
+    const t = deps.now().getTime();
+    if (signal !== "SIGINT") {
+      if (forwardedAt !== undefined) return;
+      deps.log(`stopping k6 (${signal}); cleanup and the result follow`);
       forwardedAt = t;
       child.kill("SIGINT");
-    });
+      return;
+    }
+    if (forwardedAt !== undefined && t - forwardedAt < SIGINT_REPEAT_MS) return;
+    if (forwardedAt === undefined) {
+      deps.log("stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary");
+    }
+    forwardedAt = t;
+    child.kill("SIGINT");
+  });
+  try {
     try {
-      try {
-        child = deps.spawnK6(args, env);
-        const exit = await child.exited;
-        deps.log(`k6 exited (code ${exit.code ?? "none"}${exit.signal ? `, signal ${exit.signal}` : ""})`);
-      } finally {
-        k6Done = true;
-        deps.log("cleaning up the load-test accounts…");
-        try {
-          const { removed } = await deps.cleanupAll(apis);
-          deps.log(`cleanup removed ${removed} workouts`);
-        } catch (err) {
-          // Never lose the run's result to a cleanup problem; say how to finish it by hand.
-          cleanup = "failed";
-          deps.log(`cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
-          deps.log(`finish it with: pnpm --filter @sin/loadtest run loadtest cleanup --target ${target.name} --lifters ${accounts}`);
-        }
-        summary = deps.readSummary(summaryPath);
-      }
+      child = deps.spawnK6(args, env);
+      const exit = await child.exited;
+      deps.log(`k6 exited (code ${exit.code ?? "none"}${exit.signal ? `, signal ${exit.signal}` : ""})`);
     } finally {
-      release();
+      k6Done = true;
+      deps.log("cleaning up the load-test accounts…");
+      try {
+        const { removed } = await deps.cleanupAll(apis);
+        deps.log(`cleanup removed ${removed} workouts`);
+      } catch (err) {
+        // Never lose the run's result to a cleanup problem; say how to finish it by hand.
+        cleanup = "failed";
+        deps.log(`cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+        deps.log(`finish it with: pnpm --filter @sin/loadtest run loadtest cleanup --target ${target.name} --lifters ${accounts}`);
+      }
+      summary = deps.readSummary(summaryPath);
     }
 
     const steps = stepResults(summary, schedule.stages.map((s) => s.lifters), cmd.type);
@@ -253,8 +302,10 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
     for (const line of table(steps)) deps.log(line);
     deps.log(r.sentence);
     endText = cmd.type === "gym" ? `${r.sentence} (N = ${r.n ?? "none"})` : r.sentence;
+    if (stoppedBy) return STOP_EXIT[stoppedBy];
     return complete && cleanup === "done" ? 0 : 1;
   } finally {
     await deps.closeAnnotation(annotation, { endMs: deps.now().getTime(), text: endText });
+    release();
   }
 }

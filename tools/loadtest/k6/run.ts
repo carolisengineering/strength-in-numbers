@@ -8,6 +8,7 @@
  *   LOADTEST_TARGET, LOADTEST_BASE_URL, LOADTEST_TYPE (gym | push | burst), LOADTEST_PUSH,
  *   LOADTEST_SCHEDULE JSON Schedule, LOADTEST_SUMMARY_PATH,
  *   LOADTEST_RUN_NONCE  this run's 32-bit nonce, mixed into each lifter's payload seed only (minor 365)
+ * LOADTEST_LIFTER_COUNT (at least 1) and LOADTEST_RUN_NONCE are required: without them k6 stops at init (minor 580).
  */
 import { sleep } from "k6";
 import exec from "k6/execution";
@@ -16,7 +17,7 @@ import { Counter, Rate } from "k6/metrics";
 import { BURST_WINDOW_S, WARMUP_MAX_S, WARMUP_REQUESTS } from "../src/plan/constants.ts";
 import { newLifterState, runActions, type ExecutorIo } from "../src/plan/executor.ts";
 import { createRng } from "../src/plan/rng.ts";
-import { lifterSeeds, readLifters } from "../src/plan/lifters.ts";
+import { lifterSeeds, readLifters, readNonce } from "../src/plan/lifters.ts";
 import { SEEDED_ITEMS, seededRoutineSets } from "../src/plan/routine.ts";
 import { burstOffset, stepAt, toK6Scenario, type RunType, type Schedule } from "../src/plan/schedule.ts";
 import { OPEN_APP_READS, buildSession, joinAt, joinedActions, type Action } from "../src/plan/session.ts";
@@ -32,7 +33,8 @@ const TARGET = __ENV.LOADTEST_TARGET ?? "local";
 const BASE_URL = __ENV.LOADTEST_BASE_URL ?? "http://localhost:8080";
 const PUSH = Number(__ENV.LOADTEST_PUSH ?? "1");
 const SUMMARY_PATH = __ENV.LOADTEST_SUMMARY_PATH ?? "summary.json";
-const NONCE = Number(__ENV.LOADTEST_RUN_NONCE ?? "0") >>> 0;
+// Minor 580: both are required; k6 started without the CLI refuses at init, naming the variable.
+const NONCE = readNonce(__ENV);
 
 export const options = {
   scenarios: toK6Scenario(SCHEDULE, TYPE),

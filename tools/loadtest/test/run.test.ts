@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RunCommand } from "../src/node/args.ts";
 import { METRICS_SECRETS, secretsFrom } from "../src/node/env.ts";
-import { gymGate, remoteWriteFor, runLoad, type GymResult, type RunDeps } from "../src/node/run.ts";
+import { gymGate, parseGymResult, remoteWriteFor, runLoad, type GymResult, type RunDeps, type StopSignal } from "../src/node/run.ts";
 import type { Api } from "../src/node/api.ts";
 import { summary } from "./k6-summary.ts";
 
@@ -13,7 +13,7 @@ const passingSummary = (steps: number): unknown => summary(Array.from({ length: 
 function deps(overrides: Partial<RunDeps> = {}) {
   const lines: string[] = [];
   const results: { name: string; body: Record<string, unknown> }[] = [];
-  let sigint: (() => void) | undefined;
+  let stop: ((signal: StopSignal) => void) | undefined;
   const api: Api = {
     get: async (path) =>
       path === "/v1/routines"
@@ -25,6 +25,7 @@ function deps(overrides: Partial<RunDeps> = {}) {
   };
   const d: RunDeps = {
     spawnK6: vi.fn(() => ({ exited: Promise.resolve({ code: 0, signal: null }), kill: vi.fn() })),
+    checkK6: vi.fn(async () => true),
     tokens: vi.fn(async (ids: string[]) => ids.map(() => TOKEN)),
     apisFor: vi.fn((tokens: string[]) => tokens.map(() => api)),
     cleanupAll: vi.fn(async () => ({ removed: 7 })),
@@ -32,10 +33,10 @@ function deps(overrides: Partial<RunDeps> = {}) {
     readSummary: vi.fn(() => passingSummary(3)),
     latestGymResult: vi.fn(() => undefined),
     commit: vi.fn(async () => "abc123"),
-    onSigint: vi.fn((handler: () => void) => {
-      sigint = handler;
+    onStop: vi.fn((handler: (signal: StopSignal) => void) => {
+      stop = handler;
       return () => {
-        sigint = undefined;
+        stop = undefined;
       };
     }),
     now: () => new Date("2026-11-06T12:00:00.000Z"),
@@ -46,7 +47,7 @@ function deps(overrides: Partial<RunDeps> = {}) {
     closeAnnotation: vi.fn(async () => {}),
     ...overrides,
   };
-  return { d, lines, results, fireSigint: () => sigint?.() };
+  return { d, lines, results, fire: (signal: StopSignal = "SIGINT") => stop?.(signal) };
 }
 
 const gym: RunCommand = {
@@ -92,7 +93,7 @@ describe("AC16 — cleanup runs even when the run does not finish", () => {
     });
     const done = runLoad(gym, h.d);
     await vi.waitFor(() => expect(h.d.spawnK6).toHaveBeenCalled());
-    h.fireSigint();
+    h.fire();
     await done;
     expect(kill).toHaveBeenCalledWith("SIGINT");
     expect(h.d.cleanupAll).toHaveBeenCalledTimes(1);
@@ -105,8 +106,8 @@ describe("AC16 — cleanup runs even when the run does not finish", () => {
     const h: ReturnType<typeof deps> = deps({
       spawnK6: vi.fn(() => ({ exited: Promise.resolve({ code: 0, signal: null }), kill })),
       cleanupAll: vi.fn(async () => {
-        h.fireSigint();
-        h.fireSigint();
+        h.fire();
+        h.fire();
         return { removed: 3 };
       }),
     });
@@ -132,15 +133,15 @@ describe("AC16 — cleanup runs even when the run does not finish", () => {
     });
     const done = runLoad(gym, h.d);
     await vi.waitFor(() => expect(h.d.spawnK6).toHaveBeenCalled());
-    h.fireSigint();
+    h.fire();
     nowMs += 50;
-    h.fireSigint();
+    h.fire();
     nowMs += 500;
-    h.fireSigint();
+    h.fire();
     expect(kill).toHaveBeenCalledTimes(1);
     expect(h.lines).toContain("stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary");
     nowMs += 2500;
-    h.fireSigint();
+    h.fire();
     expect(kill).toHaveBeenCalledTimes(2);
     resolveExit({ code: null, signal: "SIGINT" });
     await done;
@@ -297,6 +298,18 @@ describe("--dry-run", () => {
     expect(d.tokens).not.toHaveBeenCalled();
     expect(d.spawnK6).not.toHaveBeenCalled();
     expect(d.cleanupAll).not.toHaveBeenCalled();
+    expect(d.checkK6).not.toHaveBeenCalled();
+  });
+});
+
+describe("minor 588 — a missing k6 is found before any token", () => {
+  it("refuses with 2 and a fixed message, before tokens, seeding, the annotation and k6", async () => {
+    const { d, lines } = deps({ checkK6: vi.fn(async () => false) });
+    expect(await runLoad(gym, d)).toBe(2);
+    expect(lines).toContain("k6 isn't installed or isn't on PATH (brew install k6)");
+    expect(d.tokens).not.toHaveBeenCalled();
+    expect(d.openAnnotation).not.toHaveBeenCalled();
+    expect(d.spawnK6).not.toHaveBeenCalled();
   });
 });
 
@@ -480,5 +493,133 @@ describe("AC22 — a whole fake staging run prints no secret", () => {
     const closeText = JSON.stringify((d.closeAnnotation as ReturnType<typeof vi.fn>).mock.calls);
     const everything = [...lines, JSON.stringify(results), JSON.stringify(args), closeText].join("\n");
     for (const secret of [TOKEN, RW.password]) expect(everything).not.toContain(secret);
+  });
+});
+
+describe("minor 583 — the push gate refuses a corrupt or flagless gym result", () => {
+  const push: RunCommand = { ...gym, type: "push", push: 2, steps: undefined, holdScale: undefined, lifters: undefined };
+
+  it("code review: a result with no n (not a number) has no passing step", () => {
+    const noN: Partial<GymResult> = { ...ok };
+    delete noN.n;
+    expect(gymGate(noN as GymResult)).toBe("the newest gym run has no passing step");
+    expect(gymGate({ ...ok, n: "25" } as unknown as GymResult)).toBe("the newest gym run has no passing step");
+  });
+
+  it("code review: flags that aren't an object read as not recording how it was run, never a raw error", () => {
+    for (const flags of ["x", 1, true, []]) {
+      expect(gymGate({ ...ok, flags } as unknown as GymResult), JSON.stringify(flags)).toBe("the newest gym run doesn't record how it was run");
+    }
+  });
+
+  it("a result file that isn't JSON, or isn't an object, is refused by name", () => {
+    for (const text of ["{not json", "null", "42", '"text"']) {
+      expect(() => parseGymResult("2026-x-local-gym.json", text), text).toThrow("the newest gym run's result file can't be read (2026-x-local-gym.json)");
+    }
+    expect(parseGymResult("ok.json", JSON.stringify({ n: 25, status: "complete" }))).toEqual({ n: 25, status: "complete" });
+  });
+
+  it("runLoad turns that into the push gate's refusal, with 2 and no run", async () => {
+    const { d, lines } = deps({
+      latestGymResult: vi.fn(() => {
+        throw new Error("the newest gym run's result file can't be read (x.json)");
+      }),
+    });
+    expect(await runLoad(push, d)).toBe(2);
+    expect(lines.some((l) => l.includes("push needs a passing gym run on local first: the newest gym run's result file can't be read (x.json)"))).toBe(true);
+    expect(d.tokens).not.toHaveBeenCalled();
+  });
+
+  it("flags with no steps or holdScale key read as not recording how it was run", () => {
+    expect(gymGate({ ...ok, flags: {} as GymResult["flags"] })).toBe("the newest gym run doesn't record how it was run");
+    expect(gymGate({ ...ok, flags: { steps: null } as unknown as GymResult["flags"] })).toBe("the newest gym run doesn't record how it was run");
+  });
+});
+
+describe("minor 591 — SIGTERM and SIGHUP finish the run like one Ctrl-C", () => {
+  /** k6 runs until it is sent a SIGINT; the test fires the stop signals. */
+  function running(overrides: Partial<RunDeps> = {}) {
+    let resolveExit!: (v: { code: number | null; signal: string | null }) => void;
+    const kill = vi.fn(() => resolveExit({ code: null, signal: "SIGINT" }));
+    const h = deps({
+      spawnK6: vi.fn(() => ({ exited: new Promise<{ code: number | null; signal: string | null }>((r) => (resolveExit = r)), kill })),
+      ...overrides,
+    });
+    return { h, kill };
+  }
+
+  it.each<[StopSignal, number]>([
+    ["SIGTERM", 143],
+    ["SIGHUP", 129],
+  ])("%s while k6 runs: one SIGINT to k6, cleanup, the result file, the annotation's end, exit %i", async (signal, code) => {
+    const { h, kill } = running();
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.spawnK6).toHaveBeenCalled());
+    h.fire(signal);
+    expect(await done).toBe(code);
+    expect(kill).toHaveBeenCalledTimes(1);
+    expect(kill).toHaveBeenCalledWith("SIGINT");
+    expect(h.d.cleanupAll).toHaveBeenCalledTimes(1);
+    expect(h.results).toHaveLength(1);
+    expect(h.results[0]!.body).toMatchObject({ cleanup: "done" });
+    expect(h.d.closeAnnotation).toHaveBeenCalledTimes(1);
+    expect(h.lines).toContain(`stopping k6 (${signal}); cleanup and the result follow`);
+  });
+
+  it("a second SIGTERM, even seconds later, never sends k6 a second SIGINT", async () => {
+    let nowMs = Date.parse("2026-11-06T12:00:00.000Z");
+    let resolveExit!: (v: { code: number | null; signal: string | null }) => void;
+    const kill = vi.fn();
+    const h = deps({
+      spawnK6: vi.fn(() => ({ exited: new Promise<{ code: number | null; signal: string | null }>((r) => (resolveExit = r)), kill })),
+      now: () => new Date(nowMs),
+    });
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.spawnK6).toHaveBeenCalled());
+    h.fire("SIGTERM");
+    nowMs += 3000;
+    h.fire("SIGTERM");
+    expect(kill).toHaveBeenCalledTimes(1);
+    resolveExit({ code: null, signal: "SIGINT" });
+    expect(await done).toBe(143);
+  });
+
+  it("Review Focus 2: SIGTERM, then Ctrl-C during cleanup: cleanup finishes, one wait line, exit 143", async () => {
+    let finishCleanup!: () => void;
+    const h: ReturnType<typeof deps> = deps({
+      cleanupAll: vi.fn(
+        () =>
+          new Promise<{ removed: number }>((resolve) => {
+            finishCleanup = () => resolve({ removed: 2 });
+          }),
+      ),
+    });
+    let resolveExit!: (v: { code: number | null; signal: string | null }) => void;
+    const kill = vi.fn(() => resolveExit({ code: null, signal: "SIGINT" }));
+    h.d.spawnK6 = vi.fn(() => ({ exited: new Promise<{ code: number | null; signal: string | null }>((r) => (resolveExit = r)), kill }));
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.spawnK6).toHaveBeenCalled());
+    h.fire("SIGTERM");
+    await vi.waitFor(() => expect(h.d.cleanupAll).toHaveBeenCalled());
+    h.fire("SIGINT");
+    h.fire("SIGINT");
+    finishCleanup();
+    expect(await done).toBe(143);
+    expect(kill).toHaveBeenCalledTimes(1);
+    expect(h.lines.filter((l) => l.startsWith("cleanup is running"))).toHaveLength(1);
+    expect(h.results).toHaveLength(1);
+  });
+});
+
+describe("minor 591 (final review) — a stop signal is handled until the result is written", () => {
+  it("the stop handler is released only after the result file and the annotation's end", async () => {
+    const order: string[] = [];
+    const h = deps({
+      writeResult: vi.fn(() => void order.push("write")),
+      closeAnnotation: vi.fn(async () => void order.push("close")),
+      onStop: vi.fn(() => () => void order.push("release")),
+    });
+    await runLoad(gym, h.d);
+    expect(order).toEqual(["write", "close", "release"]);
   });
 });

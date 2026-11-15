@@ -7,9 +7,13 @@ import type { Api } from "./api.ts";
  */
 export async function cleanupAccount(api: Api): Promise<number> {
   let removed = 0;
+  // Minor 364: every id this pass deleted, with what its DELETE answered. One that page one lists again was never
+  // removed, so the loop below would read the same page forever.
+  const deleted = new Map<string, number>();
   const remove = async (id: string) => {
     const { status } = await api.del(`/v1/workouts/${id}`);
     if (status !== 204 && status !== 200 && status !== 404) throw new Error(`DELETE /v1/workouts/{id} answered ${status}`);
+    deleted.set(id, status);
     removed += 1;
   };
 
@@ -22,6 +26,8 @@ export async function cleanupAccount(api: Api): Promise<number> {
     if (page.status !== 200) throw new Error(`GET /v1/workouts answered ${page.status}`);
     const { items } = page.body as { items: { id: string }[]; next: string | null };
     if (items.length === 0) break;
+    const stuck = items.find((w) => deleted.has(w.id));
+    if (stuck) throw new Error(`a workout is still listed after its delete answered ${deleted.get(stuck.id)}`);
     for (const w of items) await remove(w.id);
   }
   return removed;
@@ -35,7 +41,12 @@ export async function cleanupAll(apis: Api[], opts: { pace: (i: number) => Promi
   let removed = 0;
   for (const [i, api] of apis.entries()) {
     await opts.pace(i);
-    removed += await cleanupAccount(api);
+    try {
+      removed += await cleanupAccount(api);
+    } catch (err) {
+      // By number only, as everywhere else in the tool.
+      throw new Error(`account #${i + 1}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   return { removed };
 }

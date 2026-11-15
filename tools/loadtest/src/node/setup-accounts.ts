@@ -5,6 +5,7 @@
  */
 import { accountEmail, accountIds } from "./accounts.ts";
 import type { Secrets } from "./env.ts";
+import { auth0ErrorCode, callSignal, retryAfterWaitMs } from "./http-limits.ts";
 
 export interface NewUser {
   connection: string;
@@ -23,6 +24,10 @@ export interface MgmtDeps {
   fetchFn: typeof fetch;
   sleep(ms: number): Promise<void>;
   now(): number;
+  /** Minor 587: one line for each `Retry-After` wait. */
+  log(line: string): void;
+  /** Minor 593: the Management token, handed to the CLI's redactor as soon as it is known. */
+  learn(value: string): void;
 }
 
 const PER_PAGE = 100;
@@ -41,10 +46,15 @@ export function mgmtClient(s: Secrets, deps: MgmtDeps): MgmtClient {
         if (wait > 0) await deps.sleep(wait);
       }
       lastStart = deps.now();
-      const res = await deps.fetchFn(url, init);
+      let res: Response;
+      try {
+        res = await deps.fetchFn(url, { ...init, signal: callSignal() });
+      } catch {
+        // Minor 585: a timeout or a dropped connection names the path (never a header, a body or the token).
+        throw new Error(`Auth0 Management API: no answer from ${new URL(url).pathname} (timeout or network error)`);
+      }
       if (res.status !== 429 || n >= MAX_429_RETRIES) return res;
-      const after = Number(res.headers.get("retry-after"));
-      await deps.sleep((Number.isFinite(after) && after > 0 ? after : 1) * 1000);
+      await deps.sleep(retryAfterWaitMs(res.headers.get("retry-after"), 1, deps.log));
     }
   }
 
@@ -62,9 +72,10 @@ export function mgmtClient(s: Secrets, deps: MgmtDeps): MgmtClient {
       });
       const body = (await res.json().catch(() => ({}))) as { access_token?: unknown };
       if (!res.ok || typeof body.access_token !== "string") {
-        throw new Error(`Auth0 Management API: the token request answered HTTP ${res.status}`);
+        throw new Error(`Auth0 Management API: the token request answered HTTP ${res.status}${auth0ErrorCode(body)}`);
       }
       token = body.access_token;
+      deps.learn(token);
     }
     return send(`${base}${path}`, {
       ...init,
@@ -84,7 +95,7 @@ export function mgmtClient(s: Secrets, deps: MgmtDeps): MgmtClient {
           fields: "email",
         });
         const res = await authed(`/api/v2/users?${q}`);
-        if (!res.ok) throw new Error(`Auth0 Management API: listing users answered HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`Auth0 Management API: listing users answered HTTP ${res.status}${auth0ErrorCode(await res.json().catch(() => null))}`);
         const users = (await res.json()) as { email?: unknown }[];
         for (const u of users) if (typeof u.email === "string") found.add(u.email.toLowerCase());
         if (users.length < PER_PAGE) return found;
@@ -97,7 +108,7 @@ export function mgmtClient(s: Secrets, deps: MgmtDeps): MgmtClient {
         body: JSON.stringify(body),
       });
       if (res.status === 409) return "exists";
-      if (!res.ok) throw new Error(`Auth0 Management API: creating ${body.email} answered HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`Auth0 Management API: creating ${body.email} answered HTTP ${res.status}${auth0ErrorCode(await res.json().catch(() => null))}`);
       return "created";
     },
   };

@@ -125,7 +125,7 @@ function fakeMgmt(total: number, opts: { createStatus?: number } = {}) {
     }
     return new Response("not found", { status: 404 });
   }) as unknown as typeof fetch;
-  const deps = { fetchFn, sleep: async () => {}, now: () => 0 };
+  const deps = { fetchFn, sleep: async () => {}, now: () => 0, log: () => {}, learn: () => {} };
   return { deps, requests };
 }
 
@@ -167,5 +167,82 @@ describe("AC19 — the Management client", () => {
       .catch((e: Error) => e);
     expect((err as Error).message).toBe("Auth0 Management API: creating loadtest+001@example.test answered HTTP 400");
     for (const v of s.values()) expect((err as Error).message).not.toContain(v);
+  });
+});
+
+/** A Management API fake whose every answer the test scripts, by method and path, in call order. */
+function scriptedMgmt(answer: (method: string, path: string, n: number) => Response) {
+  const order: string[] = [];
+  const sleeps: number[] = [];
+  const logs: string[] = [];
+  const learned: string[] = [];
+  let fetches = 0;
+  const fetchFn = (async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    const method = init?.method ?? "GET";
+    order.push(`${method} ${url.pathname}`);
+    return answer(method, url.pathname, fetches++);
+  }) as unknown as typeof fetch;
+  const deps = {
+    fetchFn,
+    sleep: async (ms: number) => void sleeps.push(ms),
+    now: () => 0,
+    log: (line: string) => void logs.push(line),
+    learn: (value: string) => void (learned.push(value), order.push("learn")),
+  };
+  return { deps, order, sleeps, logs, learned };
+}
+const token = () => Response.json({ access_token: "mgmt-token", token_type: "Bearer" });
+const newUser = { connection: "loadtest", email: "loadtest+001@example.test", password: "p", email_verified: true as const };
+
+describe("minor 589 — Management errors carry Auth0's error code, never its message", () => {
+  it("a create's 400 names errorCode", async () => {
+    const m = scriptedMgmt((method, path) =>
+      path === "/oauth/token" ? token() : Response.json({ errorCode: "invalid_password", message: "PasswordStrengthError: free text" }, { status: 400 }),
+    );
+    const err = await mgmtClient(s, m.deps).createUser(newUser).catch((e: Error) => e);
+    expect((err as Error).message).toBe("Auth0 Management API: creating loadtest+001@example.test answered HTTP 400 invalid_password (password policy)");
+    expect((err as Error).message).not.toContain("free text");
+  });
+
+  it("final review: the Management API's real weak-password answer names its code and the password policy, never the text", async () => {
+    const m = scriptedMgmt((_method, path) =>
+      path === "/oauth/token"
+        ? token()
+        : Response.json({ statusCode: 400, error: "Bad Request", message: "PasswordStrengthError: Password is too weak", errorCode: "auth0_idp_error" }, { status: 400 }),
+    );
+    const err = await mgmtClient(s, m.deps).createUser(newUser).catch((e: Error) => e);
+    expect((err as Error).message).toBe("Auth0 Management API: creating loadtest+001@example.test answered HTTP 400 auth0_idp_error (password policy)");
+    expect((err as Error).message).not.toContain("too weak");
+  });
+
+  it("a listing's code that isn't a plain code is left out", async () => {
+    const m = scriptedMgmt((_m, path) => (path === "/oauth/token" ? token() : Response.json({ error: "Forbidden Thing" }, { status: 403 })));
+    await expect(mgmtClient(s, m.deps).listConnectionEmails("loadtest")).rejects.toThrow(/^Auth0 Management API: listing users answered HTTP 403$/);
+  });
+
+  it("the token request names Auth0's error", async () => {
+    const m = scriptedMgmt(() => Response.json({ error: "access_denied", error_description: "free text" }, { status: 401 }));
+    await expect(mgmtClient(s, m.deps).listConnectionEmails("loadtest")).rejects.toThrow(/^Auth0 Management API: the token request answered HTTP 401 access_denied$/);
+  });
+});
+
+describe("minor 587 — the Management client caps Retry-After", () => {
+  it("a 429 asking for 300 s waits 60 s, and says so", async () => {
+    const m = scriptedMgmt((_m, path, n) =>
+      path === "/oauth/token" ? token() : n === 1 ? new Response("", { status: 429, headers: { "retry-after": "300" } }) : Response.json([]),
+    );
+    await mgmtClient(s, m.deps).listConnectionEmails("loadtest");
+    expect(m.sleeps).toContain(60_000);
+    expect(m.logs).toEqual(["Auth0 asked to wait 300 s; waiting 60 s"]);
+  });
+});
+
+describe("minor 593 — the Management token is learned by the redactor", () => {
+  it("learn gets the token before the first users request", async () => {
+    const m = scriptedMgmt((_m, path) => (path === "/oauth/token" ? token() : Response.json([])));
+    await mgmtClient(s, m.deps).listConnectionEmails("loadtest");
+    expect(m.learned).toEqual(["mgmt-token"]);
+    expect(m.order.indexOf("learn")).toBeLessThan(m.order.indexOf("GET /api/v2/users"));
   });
 });

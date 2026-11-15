@@ -19,11 +19,13 @@ import { ANNOTATION_SECRETS, ENV_FILE, METRICS_SECRETS, RUN_SECRETS, SETUP_SECRE
 import { politeApis } from "./node/polite.ts";
 import { Redactor } from "./node/redact.ts";
 import { prodBaseUrl } from "./node/prod.ts";
-import { remoteWriteFor, runLoad, type GymResult, type RunDeps } from "./node/run.ts";
+import { parseGymResult, remoteWriteFor, runLoad, type RunDeps, type StopSignal } from "./node/run.ts";
 import { ensureSeeded } from "./node/seed.ts";
 import { mgmtClient, setupAccounts } from "./node/setup-accounts.ts";
 import { auth0Tokens } from "./node/tokens-auth0.ts";
 import { localTokens } from "./node/tokens-local.ts";
+import { k6Env } from "./node/k6-env.ts";
+import { ignoreWriteErrors, terminalLog } from "./node/terminal.ts";
 
 const RESULTS_DIR = fileURLToPath(new URL("../results/", import.meta.url));
 const PROD_TFVARS = fileURLToPath(new URL("../../../infra/prod.tfvars", import.meta.url));
@@ -47,7 +49,11 @@ const noPace = () => Promise.resolve();
  * secret and token as they're loaded. (k6 writes to the terminal itself and is never given a secret to print.)
  */
 const redactor = new Redactor();
-const log = (line: string) => process.stdout.write(`${redactor.apply(line)}\n`);
+// Minor 591: after a hang-up the terminal is gone; `terminal` drops the writes, the result file keeps the record, and a
+// write that fails anyway (it arrives as an event) never crashes the CLI before cleanup.
+ignoreWriteErrors([process.stdout, process.stderr]);
+const terminal = terminalLog((text) => process.stdout.write(redactor.apply(text)));
+const log = terminal.log;
 const loadKnown = (need: Parameters<typeof loadSecrets>[1]): Secrets => {
   const secrets = loadSecrets(ENV_FILE, need);
   redactor.learn(secrets);
@@ -69,7 +75,7 @@ function tokensFor(target: Target): RunDeps["tokens"] {
   return async (ids, expiresInS) => {
     const secrets = loadKnown(RUN_SECRETS);
     log(`fetching ${ids.length} Auth0 tokens, 2 a second`);
-    const deps = { fetchFn: fetch, sleep: pause, now: Date.now };
+    const deps = { fetchFn: fetch, sleep: pause, now: Date.now, log };
     return learnTokens(await auth0Tokens(ids.map(accountEmail), secrets, deps, { needS: expiresInS }));
   };
 }
@@ -101,23 +107,17 @@ function realDeps(target: Target): RunDeps {
     ...annotationsFor(target),
     spawnK6: (args, env) => {
       // Its own process group, so the terminal's Ctrl-C reaches k6 only as the one SIGINT `runLoad` forwards (a second
-      // SIGINT makes k6 abort without its summary). Detached, k6 would outlive a closed terminal, so the CLI stops it
-      // when it exits or is hung up on or terminated.
-      const child = spawn("k6", args, { cwd: RESULTS_DIR, env: { ...process.env, ...env }, stdio: "inherit", detached: true });
+      // SIGINT makes k6 abort without its summary). A `kill` or a closed terminal also goes through `runLoad` (onStop,
+      // minor 591), so k6 stops gently and cleanup runs; the exit hook's SIGKILL is only the last resort, for a CLI
+      // that ends while k6 still runs.
+      // Minor 586: only PATH, HOME, TMPDIR and the tool's own variables, never the whole shell environment.
+      const child = spawn("k6", args, { cwd: RESULTS_DIR, env: k6Env(process.env, env), stdio: "inherit", detached: true });
       const stopK6 = () => void child.kill("SIGKILL");
-      const hangUp = (signal: NodeJS.Signals) => {
-        stopK6();
-        process.exit(signal === "SIGHUP" ? 129 : 143);
-      };
       process.once("exit", stopK6);
-      process.once("SIGHUP", hangUp);
-      process.once("SIGTERM", hangUp);
       return {
         exited: new Promise((resolve, reject) => {
           const forget = () => {
             process.off("exit", stopK6);
-            process.off("SIGHUP", hangUp);
-            process.off("SIGTERM", hangUp);
           };
           child.once("error", (err) => {
             forget();
@@ -131,6 +131,12 @@ function realDeps(target: Target): RunDeps {
         kill: (signal) => void child.kill(signal),
       };
     },
+    checkK6: () =>
+      new Promise((resolve) => {
+        const probe = spawn("k6", ["version"], { env: k6Env(process.env, {}), stdio: "ignore" });
+        probe.once("error", () => resolve(false));
+        probe.once("exit", (code) => resolve(code === 0));
+      }),
     tokens: tokensFor(target),
     // Read lazily, so a prod dry run prints its guards before prod.tfvars is checked.
     apisFor: (tokens) => politeFor(target.baseUrl ?? readProdBaseUrl(), tokens),
@@ -156,7 +162,7 @@ function realDeps(target: Target): RunDeps {
         .sort()
         .at(-1);
       if (!newest) return undefined;
-      return JSON.parse(readFileSync(join(RESULTS_DIR, newest), "utf8")) as GymResult;
+      return parseGymResult(newest, readFileSync(join(RESULTS_DIR, newest), "utf8"));
     },
     commit: async (url) => {
       try {
@@ -166,9 +172,19 @@ function realDeps(target: Target): RunDeps {
         return null;
       }
     },
-    onSigint: (handler) => {
-      process.on("SIGINT", handler);
-      return () => void process.off("SIGINT", handler);
+    onStop: (handler) => {
+      const on = (signal: StopSignal) => () => {
+        if (signal === "SIGHUP") {
+          // The terminal is gone: stop writing to it (write errors are already ignored, at start).
+          terminal.hangUp();
+        }
+        handler(signal);
+      };
+      const listeners = (["SIGINT", "SIGTERM", "SIGHUP"] as const).map((signal) => [signal, on(signal)] as const);
+      for (const [signal, listener] of listeners) process.on(signal, listener);
+      return () => {
+        for (const [signal, listener] of listeners) process.off(signal, listener);
+      };
     },
     now: () => new Date(),
     log,
@@ -180,7 +196,7 @@ async function main(argv: string[]): Promise<number> {
   const cmd = parseArgs(argv);
   if (cmd.cmd === "setup-accounts") {
     const secrets = loadKnown(SETUP_SECRETS);
-    const client = mgmtClient(secrets, { fetchFn: fetch, sleep: pause, now: Date.now });
+    const client = mgmtClient(secrets, { fetchFn: fetch, sleep: pause, now: Date.now, log, learn: (v) => redactor.learnValues([v]) });
     await setupAccounts(cmd.count, client, secrets, { dryRun: cmd.dryRun, log });
     return 0;
   }
@@ -207,7 +223,11 @@ main(process.argv.slice(2)).then(
     process.exitCode = code;
   },
   (err: unknown) => {
-    process.stderr.write(`${redactor.apply(err instanceof Error ? err.message : String(err))}\n`);
+    try {
+      process.stderr.write(`${redactor.apply(err instanceof Error ? err.message : String(err))}\n`);
+    } catch {
+      // A closed terminal (minor 591): the exit code still says it failed.
+    }
     process.exitCode = 1;
   },
 );

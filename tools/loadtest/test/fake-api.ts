@@ -15,6 +15,8 @@ export class FakeApi implements Api {
   ].map((catalogKey, i) => ({ id: `0190f6c2-0000-7000-8000-${String(i).padStart(12, "0")}`, catalogKey }));
   /** Ids whose next DELETE answers 404 (someone else removed it first). */
   goneOnDelete = new Set<string>();
+  /** Ids whose every DELETE answers 404 and leaves the workout listed (minor 364). */
+  stuckOnDelete = new Set<string>();
   pageSize = 2;
   private nextId = 1;
 
@@ -55,6 +57,7 @@ export class FakeApi implements Api {
   async del(path: string): Promise<{ status: number }> {
     this.calls.push(`DELETE ${path}`);
     const id = path.split("/").pop()!;
+    if (this.stuckOnDelete.has(id)) return { status: 404 };
     if (this.goneOnDelete.delete(id)) {
       this.workouts = this.workouts.filter((w) => w.id !== id);
       return { status: 404 };
