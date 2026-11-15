@@ -91,8 +91,8 @@ describe("10.7 AC13 — editor coupling (screen)", () => {
     expect(screen.getByRole("button", { name: "Superset Barbell Row with Overhead Press" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("a timed section of 8 grouped and a 9th loose shows the cap line under it", async () => {
+  it("minor 314 — a loaded timed section of 8 grouped and a 9th loose shows no cap line (nothing was capped here)", async () => {
     await open(routineId(4));
-    expect(within(screen.getByRole("region", { name: "Main" })).getByText(GROUP_CAP_LINE)).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Main" })).queryByText(GROUP_CAP_LINE)).toBeNull();
   });
 });

@@ -121,21 +121,21 @@ describe("10.7 AC13 — editor coupling (reducer)", () => {
   it("9 loose items made timed: the first 8 grouped, the 9th loose, and the cap line shows", () => {
     const d = run(sectioned("", ["M", "a b c d e f g h i"]), actions.setSectionTimer("M", SET_TIMER));
     expect(groups(d)).toEqual([1, 1, 1, 1, 1, 1, 1, 1, null]);
-    expect(groupCapShown(d.items, d.sections[0]!)).toBe(true);
+    expect(groupCapShown(d, d.sections[0]!)).toBe(true);
   });
 
   it("a 9th added to a timed superset of 8 stays loose; the cap line shows; the body is valid (Review Focus 4)", () => {
     const d = run(timedM("a1 b1 c1 d1 e1 f1 g1 h1"), actions.add(exerciseId(20)));
     expect(groups(d)).toEqual([1, 1, 1, 1, 1, 1, 1, 1, null]);
-    expect(groupCapShown(d.items, d.sections[0]!)).toBe(true);
+    expect(groupCapShown(d, d.sections[0]!)).toBe(true);
     expect(RoutineWriteSchema.safeParse(body(d)).success).toBe(true);
   });
 
   it("the cap line doesn't show for an untimed section or 8 items", () => {
     const untimed = sectioned("", ["M", "a1 b1 c1 d1 e1 f1 g1 h1 i"]);
-    expect(groupCapShown(untimed.items, untimed.sections[0]!)).toBe(false);
+    expect(groupCapShown(untimed, untimed.sections[0]!)).toBe(false);
     const eight = timedM("a1 b1 c1 d1 e1 f1 g1 h1");
-    expect(groupCapShown(eight.items, eight.sections[0]!)).toBe(false);
+    expect(groupCapShown(eight, eight.sections[0]!)).toBe(false);
   });
 
   it("an unlink after a fill stays unlinked across rename, note and same-format edits", () => {

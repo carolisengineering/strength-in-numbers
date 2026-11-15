@@ -14,9 +14,12 @@ export interface ClearOnEdit<K extends string> {
  * field; the next Done or Save checks every field again (minors 313, 326, 521). The edited set belongs to one errors
  * object: a new object (the next Done or Save, or a server 422) starts with nothing hidden. So never pass a fresh
  * object on every render (`errors.timer ?? {}`): keep the stored object, or a module-level constant for "none".
+ * Every change of object starts clean, a return to an earlier one included (A → B → A, minor 536): the stored set is
+ * reset during the render that sees the change, so it never outlives the object it was made for.
  */
 export function useClearOnEdit<K extends string>(errors: Partial<Record<K, string | null | undefined>>): ClearOnEdit<K> {
   const [state, setState] = useState<{ source: object; edited: ReadonlySet<K> }>(() => ({ source: errors, edited: new Set() }));
+  if (state.source !== errors) setState({ source: errors, edited: NONE_EDITED });
   const edited = state.source === errors ? state.edited : NONE_EDITED;
   return useMemo(() => {
     const of = (field: K): string | undefined => {

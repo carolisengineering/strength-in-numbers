@@ -160,6 +160,8 @@ export function issueForPath(
   keys: readonly string[],
   planKeys: PlanKeys = [],
   sectionKeys: readonly string[] = [],
+  /** The issue's own message, compared (never shown) for a timer length field (minor 316). */
+  message = "",
 ): DraftIssue | null {
   const [head, index, field, rowIndex, rowField] = path;
   if (head === "name") return { scope: "name", message: NAME_INVALID };
@@ -171,7 +173,7 @@ export function issueForPath(
     if (field === "timer") {
       // Spec 10.7 AC10: the app's words for the field the server names; anything else sits under the group.
       const prefix = `sections.${String(index)}.timer`;
-      const hit = timerErrorForPath(path.map(String).join("."), prefix);
+      const hit = timerErrorForPath(path.map(String).join("."), prefix, message);
       if (hit === null) return null;
       return { scope: "section", sectionKey, field: "timer", timerField: hit.field, message: hit.message };
     }
@@ -286,7 +288,7 @@ export function validateDraft(
         push({ scope: "form", message: zodIssue.path[2] === "sectionKey" ? FORM_INVALID : GROUP_BUG });
         continue;
       }
-      push(issueForPath(zodIssue.path, keys, planKeys, draft.sections.map((s) => s.key)) ?? { scope: "form", message: FORM_INVALID });
+      push(issueForPath(zodIssue.path, keys, planKeys, draft.sections.map((s) => s.key), zodIssue.message) ?? { scope: "form", message: FORM_INVALID });
     }
   }
   for (const issue of plannedViolationIssues(draft, body, modalityOf)) push(issue);

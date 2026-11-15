@@ -33,3 +33,16 @@ describe("minor 313 — useClearOnEdit: a field's error clears when that field c
     expect(result.current.visible).toEqual({});
   });
 });
+
+describe("minor 536 — a return to an earlier errors object starts clean", () => {
+  it("errors A, edit, then B, then A again shows every message of A", () => {
+    const a: Errors = { name: "Enter a name.", notes: "Too long." };
+    const b: Errors = { notes: "Too long." };
+    const { result, rerender } = renderHook(({ e }) => useClearOnEdit(e), { initialProps: { e: a } });
+    act(() => result.current.edit("name"));
+    expect(result.current.of("name")).toBeUndefined();
+    rerender({ e: b });
+    rerender({ e: a });
+    expect(result.current.visible).toEqual({ name: "Enter a name.", notes: "Too long." });
+  });
+});

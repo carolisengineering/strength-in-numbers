@@ -459,7 +459,7 @@ export function RoutineEditor({ routine, initial }: { routine: Routine | null; i
                 ) : (
                   <p className={sectionStyles.reason}>{SECTION_EMPTY_HINT}</p>
                 )}
-                {groupCapShown(draft.items, section) ? <p className={sectionStyles.reason}>{GROUP_CAP_LINE}</p> : null}
+                {groupCapShown(draft, section) ? <p className={sectionStyles.reason}>{GROUP_CAP_LINE}</p> : null}
               </section>
             );
           })}

@@ -3,9 +3,11 @@ import { sectioned } from "../../test/sectionedDraft";
 import { CAP_MAX_ERROR, ROUND_LENGTH_MAX_ERROR, ROUNDS_RANGE_ERROR, TIMER_CHECK_ERROR } from "../sectionTimer/timerCopy";
 import { serverIssuesFor } from "./routineErrors";
 import { sectionError, sectionMessagesFor } from "./sheetIssues";
+import { overMaxError } from "../../test/timerServerMessages";
 
 const draft = sectioned("x", ["W", "a"], ["M", "b"]);
-const err = (path: string) => ({ path, message: "server text" });
+// A length path carries the schema's over-maximum message, the case its "or less" copy is for (minor 316).
+const err = (path: string) => overMaxError(path, "server text");
 
 describe("10.7 AC10 — server field errors", () => {
   it.each<[string, "rounds" | "roundSeconds" | "capSeconds" | "group", string]>([

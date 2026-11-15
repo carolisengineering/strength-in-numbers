@@ -10,8 +10,6 @@ import {
   PLANNED_SETS_PER_ITEM_MAX,
   ROUTINE_ITEMS_MAX,
   ROUTINE_SECTIONS_MAX,
-  runOrdinals,
-  SUPERSET_GROUP_MEMBERS_MAX,
   timedGroupRange,
   unlinkRule,
   type Routine,
@@ -88,6 +86,11 @@ export interface Draft {
   readonly adjusted: boolean;
   /** Spec 10.3 AC5: a link was refused or dissolved at a section boundary; the editor shows a notice until dismissed. */
   readonly unlinkNotice: boolean;
+  /**
+   * Minor 314: the sections whose last grouping change was a fill or join that stopped at 8, so the cap line tells
+   * the truth. Draft-only: never in `toRoutineInput`, and a loaded draft starts without it (absent reads as empty).
+   */
+  readonly cappedSections?: ReadonlySet<string>;
 }
 
 export type DraftAction =
@@ -286,32 +289,41 @@ function regroupSection(
   sections: readonly DraftSection[],
   sectionKey: string,
   trigger: "fill" | { readonly join: string },
-): DraftItem[] {
+): { items: DraftItem[]; capped: boolean } {
   const settled = settle(items, sections);
   const start = settled.findIndex((i) => i.sectionKey === sectionKey);
-  if (start < 0) return settled;
+  if (start < 0) return { items: settled, capped: false };
   let end = start;
   while (end < settled.length && settled[end]!.sectionKey === sectionKey) end += 1;
   const part = settled.slice(start, end);
   const slots = slotsOf(part);
   const range = timedGroupRange(slots, trigger);
-  if (range === null) return settled;
-  const grouped = groupRangeRule(slots, range.from, range.to).slots;
-  return [...settled.slice(0, start), ...fromSlots(part, grouped), ...settled.slice(end)];
+  if (range === null) return { items: settled, capped: false };
+  const grouped = groupRangeRule(slots, range.from, range.to);
+  return { items: [...settled.slice(0, start), ...fromSlots(part, grouped.slots), ...settled.slice(end)], capped: grouped.capped };
 }
 
 /**
- * Spec 10.7 AC13: the editor's "only the first 8 are grouped" line — a timed section with more than 8 items whose
- * first 8 are one run and whose 9th is ungrouped. Derived, so it needs no draft field.
+ * Spec 10.7 AC13: the editor's "only the first 8 are grouped" line — a timed section whose last grouping change was a
+ * fill or join that stopped at 8 (minor 314). A superset of 8 the lifter linked by hand shows nothing.
  */
-export function groupCapShown(items: readonly DraftItem[], section: DraftSection): boolean {
-  if (section.timer === null) return false;
-  const part = items.filter((i) => i.sectionKey === section.key);
-  if (part.length <= SUPERSET_GROUP_MEMBERS_MAX) return false;
-  const runs = runOrdinals(part.map((i) => i.supersetGroup));
-  const first = runs[0];
-  return first !== null && runs.slice(0, SUPERSET_GROUP_MEMBERS_MAX).every((r) => r === first) && runs[SUPERSET_GROUP_MEMBERS_MAX] === null;
+export function groupCapShown(draft: Pick<Draft, "cappedSections">, section: DraftSection): boolean {
+  return section.timer !== null && (draft.cappedSections?.has(section.key) ?? false);
 }
+
+/** Minor 314: record whether the last grouping change in `sectionKey` capped. A null section is never timed. */
+function withCap(state: Draft, sectionKey: string | null, capped: boolean): Draft {
+  if (sectionKey === null) return state;
+  const now = state.cappedSections ?? NO_CAPPED;
+  if (now.has(sectionKey) === capped) return state;
+  const next = new Set(now);
+  if (capped) next.add(sectionKey);
+  else next.delete(sectionKey);
+  return { ...state, cappedSections: next };
+}
+
+const NO_CAPPED: ReadonlySet<string> = new Set();
+const sectionOf = (state: Draft, key: string): string | null => state.items.find((i) => i.key === key)?.sectionKey ?? null;
 
 const withItems = (state: Draft, items: readonly DraftItem[]): Draft => ({ ...state, items: settle(items, state.sections), dirty: true });
 
@@ -348,17 +360,18 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const last = state.sections[state.sections.length - 1];
       const appended = [...state.items, item];
       // Spec 10.7 AC13: an exercise added to a timed last section joins its one superset (§6.4 join).
-      return withItems(state, last?.timer ? regroupSection(appended, state.sections, last.key, { join: item.key }) : appended);
+      const joined = last?.timer ? regroupSection(appended, state.sections, last.key, { join: item.key }) : { items: appended, capped: false };
+      return withCap(withItems(state, joined.items), item.sectionKey, joined.capped);
     }
     case "remove":
       return state.items.some((i) => i.key === action.key)
-        ? withItems(state, state.items.filter((i) => i.key !== action.key))
+        ? withCap(withItems(state, state.items.filter((i) => i.key !== action.key)), sectionOf(state, action.key), false)
         : state;
     case "moveUp":
     case "moveDown": {
       const index = state.items.findIndex((i) => i.key === action.key);
       const out = move(state.items, index, action.type === "moveUp" ? -1 : 1);
-      return out ? withItems(state, out) : state;
+      return out ? withCap(withItems(state, out), sectionOf(state, action.key), false) : state;
     }
     case "setTargets": {
       const index = state.items.findIndex((i) => i.key === action.key);
@@ -391,7 +404,7 @@ export function reduce(state: Draft, action: DraftAction): Draft {
     }
     case "toggleLink": {
       const out = toggleLink(state, action.index);
-      return out ? withItems(state, out) : state;
+      return out ? withCap(withItems(state, out), state.items[action.index]!.sectionKey, false) : state;
     }
     case "addSection": {
       const name = action.name.trim();
@@ -415,7 +428,9 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const sections = state.sections.map((s) => (s.key === action.key ? { ...s, timer: action.timer } : s));
       // Spec 10.7 AC13: becoming timed, or changing format, fills in the grouping; numbers, None, rename and notes never do.
       const fills = action.timer !== null && (section.timer === null || section.timer.format !== action.timer.format);
-      return withSections(state, sections, fills ? regroupSection(state.items, sections, action.key, "fill") : state.items);
+      if (!fills) return withCap(withSections(state, sections, state.items), action.key, action.timer === null ? false : groupCapShown(state, section));
+      const filled = regroupSection(state.items, sections, action.key, "fill");
+      return withCap(withSections(state, sections, filled.items), action.key, filled.capped);
     }
     case "moveSectionUp":
     case "moveSectionDown": {
@@ -429,7 +444,7 @@ export function reduce(state: Draft, action: DraftAction): Draft {
     case "deleteSection": {
       if (!state.sections.some((s) => s.key === action.key)) return state;
       const items = state.items.map((i) => (i.sectionKey === action.key ? { ...i, sectionKey: null } : i));
-      return withSections(state, state.sections.filter((s) => s.key !== action.key), items);
+      return withCap(withSections(state, state.sections.filter((s) => s.key !== action.key), items), action.key, false);
     }
     case "moveItemToSection": {
       const item = state.items.find((i) => i.key === action.itemKey);
@@ -441,7 +456,8 @@ export function reduce(state: Draft, action: DraftAction): Draft {
       const rest = [...state.items.filter((i) => i.key !== item.key), moved];
       const target = action.sectionKey === null ? undefined : state.sections.find((s) => s.key === action.sectionKey);
       // Spec 10.7 AC13: moved into a timed section, it joins that section's one superset (§6.4 join).
-      const next = withItems(state, target?.timer ? regroupSection(rest, state.sections, target.key, { join: item.key }) : rest);
+      const joined = target?.timer ? regroupSection(rest, state.sections, target.key, { join: item.key }) : { items: rest, capped: false };
+      const next = withCap(withCap(withItems(state, joined.items), item.sectionKey, false), action.sectionKey, joined.capped);
       // The notice says the exercise was unlinked: only true when it left a superset and didn't join one there.
       const regrouped = next.items.find((i) => i.key === item.key)!.supersetGroup !== null;
       return item.supersetGroup === null || regrouped ? next : { ...next, unlinkNotice: true };

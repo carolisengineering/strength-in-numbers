@@ -3,6 +3,7 @@ import { ApiError } from "../../../api";
 import { ROUND_LENGTH_MAX_ERROR, TIMER_CHECK_ERROR } from "../../sectionTimer/timerCopy";
 import { SECTION_COPY } from "./sectionCopy";
 import { resolveSectionFailure } from "./resolveSectionFailure";
+import { ROUND_SECONDS_MAX_MESSAGE } from "../../../test/timerServerMessages";
 
 const api = (status: number, slug = "about:blank", errors?: { path: string; message: string }[]) =>
   new ApiError({
@@ -30,7 +31,7 @@ describe("10.7 AC18 — 409 section-result-exists", () => {
 
 describe("10.7 AC25 — failure table, timer rows", () => {
   it("a 422 on timer.roundSeconds sits under the round length", () => {
-    expect(resolve("update-section", api(422, "validation-error", [{ path: "timer.roundSeconds", message: "SERVER-SECRET" }]))).toStrictEqual({
+    expect(resolve("update-section", api(422, "validation-error", [{ path: "timer.roundSeconds", message: ROUND_SECONDS_MAX_MESSAGE }]))).toStrictEqual({
       type: "fields",
       name: null,
       notes: null,

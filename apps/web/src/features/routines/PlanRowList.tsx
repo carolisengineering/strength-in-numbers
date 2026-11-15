@@ -18,6 +18,8 @@ export const WEIGHT_UNIT_CHOICES: readonly { value: WeightUnit; label: string }[
 interface PendingFocus {
   readonly key: string;
   readonly target: "summary" | "moveUp" | "moveDown" | "type" | "reps" | "weight";
+  /** A Move's rows when it was pressed: the same rows drawn again means the parent refused it (minor 522). */
+  readonly movedFrom?: readonly PlanRowText[];
 }
 
 /** The first row, in row order, with a reps or weight error (Spec 17.11 AC16); `null` when none has one. */
@@ -93,6 +95,12 @@ export function PlanRowList({ rows, showReps, showWeight, unit, fallbackUnit, er
   useLayoutEffect(() => {
     const pending = pendingFocus.current;
     if (pending === null) return;
+    // Minor 522: a Move the parent didn't apply draws the same rows; drop its focus, or the next unrelated render
+    // (a keystroke in Rest) would pull focus to the Move button.
+    if (pending.movedFrom === rows) {
+      pendingFocus.current = null;
+      return;
+    }
     const panel = document.getElementById(`${prefix}-${pending.key}-panel`);
     const summary = document.getElementById(`${prefix}-${pending.key}-summary`);
     let target: HTMLElement | null;
@@ -113,7 +121,7 @@ export function PlanRowList({ rows, showReps, showWeight, unit, fallbackUnit, er
     onAdd(key);
   };
   const move = (key: string, dir: -1 | 1) => {
-    pendingFocus.current = { key, target: dir < 0 ? "moveUp" : "moveDown" };
+    pendingFocus.current = { key, target: dir < 0 ? "moveUp" : "moveDown", movedFrom: rows };
     onMove(key, dir);
   };
   const remove = (index: number) => {

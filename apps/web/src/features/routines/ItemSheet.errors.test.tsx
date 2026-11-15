@@ -128,3 +128,22 @@ describe("17.11 AC16 — an item opened with a message on a row", () => {
     expect(screen.getByLabelText("Set 2 weight")).not.toHaveFocus();
   });
 });
+
+describe("minor 538 — a successful Plan each set keeps Rest's message", () => {
+  it("Done flags Rest and Sets; fix Sets; Plan each set: Rest's message still shows", async () => {
+    const user = userEvent.setup();
+    render(<ItemSheet open title="Bench Press" item={item({ plan: null })} modality="weight_reps" onDone={vi.fn()} onClose={vi.fn()} />);
+    const sets = screen.getByLabelText("Sets");
+    await user.clear(sets);
+    await user.type(sets, "abc");
+    await user.type(screen.getByLabelText("Rest"), "abc");
+    await user.click(done());
+    expect(screen.getByLabelText("Sets")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Rest")).toHaveAttribute("aria-invalid", "true");
+    await user.clear(screen.getByLabelText("Sets"));
+    await user.type(screen.getByLabelText("Sets"), "3");
+    await user.click(screen.getByRole("button", { name: "Plan each set" }));
+    expect(screen.queryByLabelText("Sets")).toBeNull();
+    expect(screen.getByLabelText("Rest")).toHaveAttribute("aria-invalid", "true");
+  });
+});

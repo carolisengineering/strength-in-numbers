@@ -31,6 +31,45 @@ function Harness({ initial }: { initial: PlanRowText[] }) {
 const setup = (initial: PlanRowText[]) => ({ user: userEvent.setup(), ...render(<Harness initial={initial} />) });
 const openGroups = () => screen.queryAllByRole("group", { name: /^Set \d+$/ }).map((g) => g.getAttribute("aria-label"));
 
+describe("minor 522 — a Move that changes nothing leaves no focus pending", () => {
+  /** A parent that refuses every Move, with its own Rest field (a keystroke there re-renders the list). */
+  function Refusing() {
+    const [rows, setRows] = useState<readonly PlanRowText[]>(THREE);
+    const [rest, setRest] = useState("");
+    return (
+      <>
+        <PlanRowList
+          rows={rows}
+          showReps
+          showWeight
+          unit="kg"
+          errors={new Map()}
+          onField={(key, patch) => setRows((r) => setRowField(r, key, patch))}
+          onAdd={() => {}}
+          onRemove={() => {}}
+          onMove={() => {}}
+          onUnit={() => {}}
+        />
+        <label>
+          Rest
+          <input value={rest} onChange={(e) => setRest(e.target.value)} />
+        </label>
+      </>
+    );
+  }
+
+  it("a refused Move, then a keystroke in Rest, keeps focus in Rest", async () => {
+    const user = userEvent.setup();
+    render(<Refusing />);
+    await openRow(user, 2);
+    await user.click(screen.getByRole("button", { name: "Move down, set 2" }));
+    await user.click(screen.getByLabelText("Rest"));
+    await user.keyboard("1");
+    expect(screen.getByLabelText("Rest")).toHaveFocus();
+    expect(screen.getByLabelText("Rest")).toHaveValue("1");
+  });
+});
+
 describe("17.11 AC17 — focus survives Move", () => {
   it("Move down on row 2 keeps focus on Move down, now named for set 3, and the row stays open", async () => {
     const { user } = setup(FOUR);
