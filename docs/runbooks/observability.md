@@ -170,7 +170,9 @@ warnings have their own line, at most one per 5 minutes: `telemetry SDK warning:
 
 **Dashboards:** Dashboards → New → **Import** → upload `ops/grafana/dashboards/api-overview.json`,
 pick the stack's Prometheus data source (usually `grafanacloud-<stack>-prom`) for the
-`datasource` variable → Import. Repeat for `usage.json`.
+`datasource` variable → Import. Repeat for `usage.json` and `load-test.json` (Spec 16; it reads k6's
+metrics, so its top row is empty until the first load-test run). All three show the "Load test runs" annotations
+(tag `loadtest`); re-import `api-overview.json` and `usage.json` if yours were imported before Spec 16 Phase B.
 
 **Alert rules:** Alerting → Alert rules → **New alert rule**, one per rule in
 `ops/grafana/alerts/api.yaml`. Copy each query `expr`, threshold, `for: 5m`, and set

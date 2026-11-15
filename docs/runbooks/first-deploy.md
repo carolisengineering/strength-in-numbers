@@ -707,9 +707,12 @@ then diagnose. `db:rls -- enable` switches it back on. `migrate deploy` will not
 off: every boot logs `rls_disabled` until you enable it, and `db:rls -- status` prints a `WARNING` line.
 
 **S8 — the speed gate (AC38).** A Spec 16 gym run on staging, compared with the S0 baseline: set-save p95 under 2,000 ms at
-150 lifters, and N drops by no more than one step. The run itself is in `docs/runbooks/load-testing.md`, which Spec 16 Phase
-B writes. If S0 was never run, take the baseline by redeploying the pre-21.1 commit with the owner URL, as spec §6.9 S0
-says. **A failed gate blocks production's first real user. It doesn't block anything on staging.** The first fixes to try
+150 lifters, and N drops by no more than one step. Both runs and their order are in `docs/runbooks/load-testing.md` ("The
+21.1 speed gate"). S0 is taken with the kill switch on the same code (owner, 2026-11-14): `db:rls -- disable`, a
+full-ladder gym run, then `db:rls -- enable`, with `OWNER_DATABASE_URL` set only around each `db:rls` command and unset
+during the run. Then the S8 run, with RLS on. The fallback, for a baseline that also leaves out the scoped handle's
+extra statements, is to redeploy the pre-21.1 commit with the owner URL, as spec §6.9 S0 says. **A failed gate blocks
+production's first real user. It doesn't block anything on staging.** The first fixes to try
 are in spec §6.11: the Neon region nearest Cloud Run, then folding the `resolveUser` lookup into one call; each is its own
 reviewed change.
 
