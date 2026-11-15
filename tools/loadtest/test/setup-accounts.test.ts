@@ -201,8 +201,19 @@ describe("minor 589 — Management errors carry Auth0's error code, never its me
       path === "/oauth/token" ? token() : Response.json({ errorCode: "invalid_password", message: "PasswordStrengthError: free text" }, { status: 400 }),
     );
     const err = await mgmtClient(s, m.deps).createUser(newUser).catch((e: Error) => e);
-    expect((err as Error).message).toBe("Auth0 Management API: creating loadtest+001@example.test answered HTTP 400 invalid_password");
+    expect((err as Error).message).toBe("Auth0 Management API: creating loadtest+001@example.test answered HTTP 400 invalid_password (password policy)");
     expect((err as Error).message).not.toContain("free text");
+  });
+
+  it("final review: the Management API's real weak-password answer names its code and the password policy, never the text", async () => {
+    const m = scriptedMgmt((_method, path) =>
+      path === "/oauth/token"
+        ? token()
+        : Response.json({ statusCode: 400, error: "Bad Request", message: "PasswordStrengthError: Password is too weak", errorCode: "auth0_idp_error" }, { status: 400 }),
+    );
+    const err = await mgmtClient(s, m.deps).createUser(newUser).catch((e: Error) => e);
+    expect((err as Error).message).toBe("Auth0 Management API: creating loadtest+001@example.test answered HTTP 400 auth0_idp_error (password policy)");
+    expect((err as Error).message).not.toContain("too weak");
   });
 
   it("a listing's code that isn't a plain code is left out", async () => {

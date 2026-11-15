@@ -32,12 +32,15 @@ export function retryAfterWaitMs(header: string | null, fallbackS: number, log: 
 
 /**
  * Minor 589: Auth0's fixed error code from an answer body, as " <code>" (`errorCode` first, as the Management API sends
- * it, then `error`), or "" when there is none. Only a plain code (`^[a-z_]{1,64}$`): a description or message is free
- * text and could echo input, so it never appears.
+ * it, then `error`), or "" when there is none. Only a plain code (`^[a-z0-9_]{1,64}$`; the Management API's weak-password
+ * answer is `auth0_idp_error`): a description or message is free text and could echo input, so it never appears. The
+ * one exception is a fixed tag: a message that starts with Auth0's `PasswordStrengthError` adds " (password policy)",
+ * because `auth0_idp_error` alone doesn't say why (final review; the Auth0 SDKs match the same prefix).
  */
 export function auth0ErrorCode(body: unknown): string {
   if (typeof body !== "object" || body === null) return "";
-  const { errorCode, error } = body as { errorCode?: unknown; error?: unknown };
-  for (const code of [errorCode, error]) if (typeof code === "string" && /^[a-z_]{1,64}$/.test(code)) return ` ${code}`;
-  return "";
+  const { errorCode, error, message } = body as { errorCode?: unknown; error?: unknown; message?: unknown };
+  const policy = typeof message === "string" && message.startsWith("PasswordStrengthError") ? " (password policy)" : "";
+  for (const code of [errorCode, error]) if (typeof code === "string" && /^[a-z0-9_]{1,64}$/.test(code)) return ` ${code}${policy}`;
+  return policy;
 }

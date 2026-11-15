@@ -184,9 +184,12 @@ A full gym run holds each step long enough to collect 200 set saves at real pace
   only if k6 hangs.
 - Once k6 has stopped, Ctrl-C no longer interrupts anything. Cleanup always runs to the end and the result is written,
   however many times you press it.
-- Closing the terminal or `kill <pid>` (SIGHUP / SIGTERM) does what one Ctrl-C does: k6 stops at the next safe point,
+- Closing the terminal or a `kill` (SIGHUP / SIGTERM) does what one Ctrl-C does: k6 stops at the next safe point,
   cleanup runs and the result is written. The CLI then exits 129 (closed terminal) or 143 (`kill`). After a closed
   terminal, the result file is the only record.
+- To stop it from another terminal, signal the CLI, never k6: `kill $(pgrep -f src/cli.ts)`. Don't use
+  `pkill -f loadtest`: k6's own command line holds `tools/loadtest/k6/run.ts`, so k6 would get that signal and the
+  CLI's SIGINT, and two signals make k6 abort without its summary.
 
 ## 4. Production
 

@@ -102,6 +102,8 @@ describe("minor 589 — auth0ErrorCode", () => {
     expect(auth0ErrorCode({ error: "access_denied" })).toBe(" access_denied");
     expect(auth0ErrorCode({ error: "Forbidden Thing" })).toBe("");
     expect(auth0ErrorCode({ errorCode: "x".repeat(65) })).toBe("");
+    expect(auth0ErrorCode({ errorCode: "auth0_idp_error" })).toBe(" auth0_idp_error");
+    expect(auth0ErrorCode({ message: "PasswordStrengthError: Password is too weak" })).toBe(" (password policy)");
     expect(auth0ErrorCode(null)).toBe("");
     expect(auth0ErrorCode("text")).toBe("");
   });

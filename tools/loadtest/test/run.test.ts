@@ -597,3 +597,16 @@ describe("minor 591 — SIGTERM and SIGHUP finish the run like one Ctrl-C", () =
     expect(h.results).toHaveLength(1);
   });
 });
+
+describe("minor 591 (final review) — a stop signal is handled until the result is written", () => {
+  it("the stop handler is released only after the result file and the annotation's end", async () => {
+    const order: string[] = [];
+    const h = deps({
+      writeResult: vi.fn(() => void order.push("write")),
+      closeAnnotation: vi.fn(async () => void order.push("close")),
+      onStop: vi.fn(() => () => void order.push("release")),
+    });
+    await runLoad(gym, h.d);
+    expect(order).toEqual(["write", "close", "release"]);
+  });
+});
