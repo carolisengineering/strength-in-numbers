@@ -56,6 +56,23 @@
         },
         "expr": "changes(sin_process_start_time_seconds[2m]) > 0",
         "iconColor": "orange"
+      },
+      {
+        "name": "Load test runs",
+        "enable": true,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "target": {
+          "type": "tags",
+          "tags": [
+            "loadtest"
+          ],
+          "matchAny": false,
+          "limit": 100
+        },
+        "iconColor": "purple"
       }
     ]
   },
@@ -137,7 +154,7 @@
         "w": 12,
         "h": 8
       },
-      "description": "Saving a set, 95th percentile as k6 sees it, per step. Above the dashed 2 s line the step fails (X).",
+      "description": "Saving a set, 95th percentile as k6 sees it, per step, over answered saves in the step's measured part (not the ramp). Above the dashed 2 s line the step fails (X). Timeouts show in the 5xx panel, not here.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -177,7 +194,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (step) (k6_http_req_duration_p95{name=\"set_save\"})",
+          "expr": "max by (step) (k6_http_req_duration_p95{name=\"set_save\", phase=\"measure\", status=~\"2..\"})",
           "legendFormat": "step {{step}}"
         },
         {
@@ -196,7 +213,7 @@
         "w": 12,
         "h": 8
       },
-      "description": "Share of k6's requests answered 5xx (or no answer), per step. Above 1% the step fails (X).",
+      "description": "Share of each step's requests answered 5xx or not at all (status 0), pooled over every request as the tool judges it. Above 1% the step fails (X).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -236,7 +253,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max by (step) (k6_server_errors_rate)",
+          "expr": "sum by (step) (k6_http_reqs_total{phase=\"measure\", status=~\"5..|0\"}) / sum by (step) (k6_http_reqs_total{phase=\"measure\"})",
           "legendFormat": "step {{step}}"
         },
         {
@@ -255,7 +272,7 @@
         "w": 12,
         "h": 8
       },
-      "description": "Requests the API rate-limited. Any 429 fails the step (X).",
+      "description": "Requests the API rate-limited during each step's measured part. Any 429 fails the step (X).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -269,7 +286,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (step) (increase(k6_rate_limited_total[$__rate_interval]))",
+          "expr": "sum by (step) (increase(k6_rate_limited_total{phase=\"measure\"}[$__rate_interval]))",
           "legendFormat": "step {{step}}"
         }
       ]

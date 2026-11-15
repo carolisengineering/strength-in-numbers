@@ -22,7 +22,7 @@ const base = (n: string) => n.replace(/_(bucket|count|sum|total)$/, "");
  * Spec 16 AC26 — the names k6 2.3's Prometheus remote-write output gives the load test's metrics, with
  * `K6_PROMETHEUS_RW_TREND_STATS=p(95),max` (read from a real run, 2026-11-14). Only load-test.json may use them.
  */
-const K6_NAMES = ["k6_vus", "k6_http_reqs_total", "k6_http_req_duration_p95", "k6_server_errors_rate", "k6_rate_limited_total"];
+const K6_NAMES = ["k6_vus", "k6_http_reqs_total", "k6_http_req_duration_p95", "k6_rate_limited_total"];
 const LOAD_TEST = "grafana/dashboards/load-test.json";
 const allowed = (file: string, n: string) =>
   (KNOWN as readonly string[]).includes(base(n)) || (file.endsWith(LOAD_TEST) && K6_NAMES.includes(n));
@@ -71,9 +71,18 @@ describe("Spec 16 AC26 — the Load test dashboard", () => {
     }
   });
 
-  it("draws set-save p95 against a 2 s line", () => {
-    expect(exprs).toContain('max by (step) (k6_http_req_duration_p95{name="set_save"})');
+  it("draws set-save p95 against a 2 s line, from answered saves in the measured part of each step", () => {
+    expect(exprs).toContain('max by (step) (k6_http_req_duration_p95{name="set_save", phase="measure", status=~"2.."})');
     expect(exprs).toContain("vector(2)");
+  });
+
+  // Final review (16B): k6's per-series rate is one route's ratio; the tool pools a step's requests
+  // (`countsAsServerError`: status 0 or 5xx), so the panel does too, from the cumulative request counter.
+  it("draws each step's 5xx share pooled over every request, as the tool judges it", () => {
+    expect(exprs).toContain(
+      'sum by (step) (k6_http_reqs_total{phase="measure", status=~"5..|0"}) / sum by (step) (k6_http_reqs_total{phase="measure"})',
+    );
+    expect(exprs.join("\n")).not.toContain("k6_server_errors_rate");
   });
 
   it("every rate() window is $__rate_interval, and it has the datasource and cpu_limit variables", () => {
