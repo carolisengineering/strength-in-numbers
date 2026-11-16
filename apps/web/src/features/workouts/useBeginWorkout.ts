@@ -3,6 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { RoutineId } from "@sin/core";
 import { track } from "../../observability/track";
 import { classifyWorkoutError, type ClassifiedError } from "./errors";
+import { START_BLOCKED_MESSAGE } from "./messages";
+import { useWaitingFinish } from "./useWaitingFinish";
 import { WORKOUT_KEYS } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { startWorkoutFields } from "./timestamps";
@@ -11,7 +13,12 @@ import { useStartWorkout } from "./useWorkoutMutations";
 export const START_CLOCK_MESSAGE = "Your device clock looks wrong — check the date and time, then try again.";
 export const START_FAILED_MESSAGE = "Couldn't start your workout — try again.";
 
-export type BeginOutcome = { kind: "started" } | { kind: "resumed" } | { kind: "failed"; failure: ClassifiedError };
+export type BeginOutcome =
+  | { kind: "started" }
+  | { kind: "resumed" }
+  | { kind: "failed"; failure: ClassifiedError }
+  /** Spec 06.7 AC18: a finish op (any status) is in the outbox; nothing was sent. */
+  | { kind: "blocked"; message: typeof START_BLOCKED_MESSAGE };
 
 /**
  * The idempotent start (Spec 06.1 §6.5, extracted by Spec 10.0 AC13 / D13). The key is minted on the
@@ -23,6 +30,7 @@ export function useBeginWorkout(options: { routineId?: string } = {}) {
   const { routineId } = options;
   const start = useStartWorkout();
   const queryClient = useQueryClient();
+  const finishOp = useWaitingFinish().op; // any status: refused counts too (AC18)
   const keyRef = useRef<string | null>(null);
   const inFlight = useRef(false); // synchronous guard: state would not update before a second tap
   const [failure, setFailure] = useState<ClassifiedError | null>(null);
@@ -30,6 +38,8 @@ export function useBeginWorkout(options: { routineId?: string } = {}) {
 
   const begin = useCallback(async (): Promise<BeginOutcome | null> => {
     if (inFlight.current) return null;
+    // Spec 06.7 AC18: the last workout hasn't sent (or was refused): starting would break the one-active-workout rule.
+    if (finishOp !== null) return { kind: "blocked", message: START_BLOCKED_MESSAGE };
     inFlight.current = true;
     setFailure(null);
     keyRef.current ??= crypto.randomUUID();
@@ -61,7 +71,7 @@ export function useBeginWorkout(options: { routineId?: string } = {}) {
     } finally {
       inFlight.current = false;
     }
-  }, [mutateAsync, queryClient, routineId]);
+  }, [finishOp, mutateAsync, queryClient, routineId]);
 
   return { begin, busy: start.isPending, failure };
 }
