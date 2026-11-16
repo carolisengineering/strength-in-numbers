@@ -11,6 +11,11 @@ export interface QueuedClientDeps {
   cached: () => WorkoutDetail | null | undefined;
   /** Spec 06.7 AC16: the cached `["workouts","detail",id]`, so the summary of a waiting finish needs no request. */
   cachedDetail?: (id: string) => WorkoutDetail | undefined;
+  /**
+   * Spec 06.7 AC14: finish op ids a tap is waiting on, within `FINISH_WAIT_MS`. The provider's landing effects read it:
+   * a finish that lands in that wait was never shown as "saved on this phone" (`workout_finished.queued` is false).
+   */
+  finishWaits?: Set<string>;
 }
 
 /**
@@ -18,7 +23,7 @@ export interface QueuedClientDeps {
  * what the screen should show; reads overlay the outbox; everything else is the REST client's. A set
  * write for a workout that is not cached (not reachable from the session screen) falls back to REST.
  */
-export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail }: QueuedClientDeps): WorkoutClient {
+export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail, finishWaits }: QueuedClientDeps): WorkoutClient {
   const view = (workout: WorkoutDetail) => project(workout, outbox.getState()).workout;
 
   /**
@@ -67,7 +72,12 @@ export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail }
       const opId = outbox.enqueueFinish({ workoutId: id, body, meta });
       const queued = (reason: "offline" | "slow") => ({ status: "queued" as const, reason, durable: outbox.getState().durable });
       if (!outbox.getState().online) return queued("offline");
-      return (await outbox.whenFinishSettles(opId, FINISH_WAIT_MS)) === "landed" ? { status: "landed" } : queued("slow");
+      finishWaits?.add(opId);
+      try {
+        return (await outbox.whenFinishSettles(opId, FINISH_WAIT_MS)) === "landed" ? { status: "landed" } : queued("slow");
+      } finally {
+        finishWaits?.delete(opId);
+      }
     },
 
     async createSet(workoutExerciseId, body) {

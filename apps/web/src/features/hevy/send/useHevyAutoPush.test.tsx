@@ -33,7 +33,7 @@ import { setHevyAutoPush } from "../../../ui/hevyAutoPush";
 import { CatalogProvider } from "../../catalog/CatalogProvider";
 import { catalogKey } from "../../catalog/constants";
 import { ME_QUERY_KEY } from "../../me/useMe";
-import { __resetFinishListeners, emitWorkoutFinished } from "../../workouts/finishEvents";
+import { __forgetEmittedForTests, __resetFinishListeners, emitWorkoutFinished } from "../../workouts/finishEvents";
 import { WorkoutClientContext } from "../../workouts/queries";
 import type { WorkoutClient } from "../../workouts/workoutClient";
 import { hevyKeyStore } from "../keyStore";
@@ -250,6 +250,8 @@ describe("20.2 AC28 — exactly once", () => {
     const s = setupHook();
     emitWorkoutFinished({ workoutId: WORKOUT_ID });
     await waitFor(() => expect(linkMethods(s)).toContain("PUT"));
+    // Spec 06.7 AC14: the bus emits once per workout per page load, so a second event means another page load.
+    __forgetEmittedForTests();
     emitWorkoutFinished({ workoutId: WORKOUT_ID });
     await waitFor(() => expect(linkMethods(s).filter((m) => m === "GET").length).toBeGreaterThanOrEqual(2));
     await settle();

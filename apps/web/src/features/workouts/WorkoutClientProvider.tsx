@@ -7,6 +7,7 @@ import { localStorageAdapter, type StorageAdapter } from "../../storage/storage"
 import { applyEditedCaches } from "../records/cache";
 import { withExerciseNotes, withSection, withSectionCleared, withSetRemoved, withSetUpserted } from "./cache";
 import { createDraftStores } from "./drafts/draftStore";
+import { createFinishLanding } from "./finishLanding";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { createRestStores } from "./restStore";
 import { RestStoresContext } from "./useRestTimer";
@@ -115,6 +116,9 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
   const { outbox, client, editClient, drafts, rest } = useMemo(() => {
     const adapter = storage ?? localStorageAdapter();
     const rest = createWorkoutClient(api);
+    const drafts = createDraftStores(adapter, userId);
+    const restTimers = createRestStores(adapter, userId);
+    const finishWaits = new Set<string>();
     const outbox: Outbox = createOutbox({
       storage: adapter,
       rest,
@@ -146,19 +150,22 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
         }
       },
       onDiscarded: (ops) => applyDiscarded(queryClient, ops),
+      // Spec 06.7 AC14: the one place a finish's landing effects run.
+      onFinishSynced: createFinishLanding({ queryClient, drafts, rest: restTimers, waiting: finishWaits }),
     });
     const client = createQueuedWorkoutClient({
       rest,
       outbox,
       cached: () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active),
       cachedDetail: (id) => queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id)),
+      finishWaits,
     });
     return {
       outbox,
       client,
       editClient: rest, // Spec 18.0 D5: edit mode's plain REST client
-      drafts: createDraftStores(adapter, userId),
-      rest: createRestStores(adapter, userId),
+      drafts,
+      rest: restTimers,
     };
   }, [api, queryClient, storage, userId]);
 
