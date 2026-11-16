@@ -86,11 +86,15 @@ export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail, 
      */
     async finishOrQueue(id, body, meta) {
       const opId = outbox.enqueueFinish({ workoutId: id, body, meta });
+      const refused = () => outbox.getState().ops.some((o) => o.id === opId && o.status === "failed");
       const queued = (reason: "offline" | "slow") => ({ status: "queued" as const, reason, durable: outbox.getState().durable });
+      // An earlier failed write of the workout blocks the finish at once (AC2): that is a refusal, offline or not.
+      if (refused()) return { status: "refused" };
       if (!outbox.getState().online) return queued("offline");
       finishWaits?.add(opId);
       try {
-        return (await outbox.whenFinishSettles(opId, FINISH_WAIT_MS)) === "landed" ? { status: "landed" } : queued("slow");
+        if ((await outbox.whenFinishSettles(opId, FINISH_WAIT_MS)) === "landed") return { status: "landed" };
+        return refused() ? { status: "refused" } : queued("slow");
       } finally {
         finishWaits?.delete(opId);
       }

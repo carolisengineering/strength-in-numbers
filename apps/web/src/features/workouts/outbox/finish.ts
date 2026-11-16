@@ -3,7 +3,7 @@ import { isFinishOp, type FinishOp, type OutboxOp } from "./ops";
 
 /**
  * Spec 06.7 §3, D7: how long the Finish tap waits for its op to land before it says "saved on this phone". Shorter
- * than `SEND_TIMEOUT_MS` on purpose: the request is not cancelled when the wait ends, and a late landing still shows.
+ * than `SEND_TIMEOUT_MS` on purpose: the request is not canceled when the wait ends, and a late landing still shows.
  */
 export const FINISH_WAIT_MS = 8_000;
 

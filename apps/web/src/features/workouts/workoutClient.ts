@@ -44,10 +44,16 @@ export interface SendOptions {
 }
 
 /**
- * Spec 06.7 AC13: what a Finish tap became. `landed`: the cloud has it (the landing effects have run). `queued`: it is
- * saved on this phone and sends later; `durable` is false when the phone couldn't save it (keep the page open).
+ * Spec 06.7 AC13: what a Finish tap became. `landed`: the cloud has it (on the queued client, the landing effects have
+ * run; the REST client runs none). `queued`: it is saved on this phone and sends later; `durable` is false when the
+ * phone couldn't save it (keep the page open). `refused` (code review, B1): the finish op failed within the wait — the
+ * server refused it, or an earlier write of the workout had failed — so the workout reopens to fix (AC29), never
+ * "saved on this phone".
  */
-export type FinishOutcome = { status: "landed" } | { status: "queued"; reason: "offline" | "slow"; durable: boolean };
+export type FinishOutcome =
+  | { status: "landed" }
+  | { status: "queued"; reason: "offline" | "slow"; durable: boolean }
+  | { status: "refused" };
 
 /**
  * The REST seam for the workout screen (Spec 06.1 §6.1). React-free. Every write the screen makes

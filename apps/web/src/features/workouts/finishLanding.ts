@@ -50,10 +50,8 @@ export function createFinishLanding({ queryClient, drafts, rest, waiting, landed
     // exercises). A copy seeded at the tap (the projection) may carry client set keys, so it is re-read afterwards.
     if (result.outcome === "landed") {
       const workout = withoutRecords(result.updated);
-      const fromActive = active?.id === id ? active : undefined;
-      const base = fromActive ?? queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id));
-      if (base) queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), { ...base, ...workout });
-      if (base && !fromActive) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(id), exact: true });
+      if (held) queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), { ...held, ...workout });
+      if (held && active?.id !== id) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(id), exact: true });
     } else {
       queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), result.detail);
     }

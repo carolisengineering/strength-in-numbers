@@ -90,7 +90,7 @@ describe("06.7 AC13 — finishOrQueue always resolves, and says which", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(settled).toEqual({ status: "queued", reason: "slow", durable: true });
     expect(t.outbox.getState().ops).toEqual([expect.objectContaining({ kind: "finish", status: "sending" })]);
-    // A late success still lands (the request was not cancelled at the wait's end, §6.4).
+    // A late success still lands (the request was not canceled at the wait's end, §6.4).
     t.finish.calls[0]!.resolve(updated(t.workout));
     await vi.advanceTimersByTimeAsync(0);
     expect(t.outbox.getState().ops).toEqual([]);
@@ -134,11 +134,11 @@ describe("06.7 AC13 — finishOrQueue always resolves, and says which", () => {
   });
 
   it.each([
-    ["a network failure", network()],
-    ["a 5xx", apiError(503)],
-    ["a refusal (422)", apiError(422)],
-    ["a 404", apiError(404)],
-  ])("never rejects for %s: it resolves queued and the op owns the outcome", async (_name, error) => {
+    ["a network failure", network(), { status: "queued", reason: "slow", durable: true }],
+    ["a 5xx", apiError(503), { status: "queued", reason: "slow", durable: true }],
+    ["a refusal (422)", apiError(422), { status: "refused" }],
+    ["a 404", apiError(404), { status: "refused" }],
+  ])("never rejects for %s: it resolves, and the op owns the outcome", async (_name, error, outcome) => {
     const t = setup();
     let settled: unknown;
     void t.client.finishOrQueue(t.workout.id, { endedAt: ENDED }, META).then(
@@ -148,7 +148,25 @@ describe("06.7 AC13 — finishOrQueue always resolves, and says which", () => {
     await vi.advanceTimersByTimeAsync(0);
     t.finish.calls[0]!.reject(error);
     await vi.advanceTimersByTimeAsync(FINISH_WAIT_MS);
-    expect(settled).toEqual({ status: "queued", reason: "slow", durable: true });
+    expect(settled).toEqual(outcome);
+  });
+
+  it("code review: a finish refused within the wait resolves refused at once, never 'saved on this phone' (AC29)", async () => {
+    const t = setup();
+    let settled: unknown;
+    void t.client.finishOrQueue(t.workout.id, { endedAt: ENDED }, META).then((r) => (settled = r));
+    await vi.advanceTimersByTimeAsync(0);
+    t.finish.calls[0]!.reject(apiError(422));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toEqual({ status: "refused" });
+  });
+
+  it.each([true, false])("code review: a finish blocked at enqueue by a failed write resolves refused (online: %s)", async (online) => {
+    const t = setup({ isOnline: () => online });
+    t.outbox.enqueueCreate({ workoutId: t.workout.id, workoutExerciseId: t.workout.exercises[0]!.id, body: { clientGeneratedId: KEY, reps: 5, isComplete: true } });
+    t.outbox.__setForTests(t.outbox.getState().ops.map((o) => ({ ...o, status: "failed" as const, failure: { status: 422, type: "about:blank", requestId: "r" } })));
+    await expect(t.client.finishOrQueue(t.workout.id, { endedAt: ENDED }, META)).resolves.toEqual({ status: "refused" });
+    expect(t.finish.fn).not.toHaveBeenCalled();
   });
 
   it("the REST client's finishOrQueue wraps finish and resolves landed", async () => {
