@@ -22,6 +22,9 @@ import { track } from "../../observability/track";
 import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";
 import { useDraftStores } from "./drafts/DraftStoreContext";
 import { useOutbox } from "./outbox/OutboxContext";
+import { waitingFinishOf, withQueuedFinish } from "./outbox/finish";
+import { isFinishOp, type OutboxOp } from "./outbox/ops";
+import type { RestStores } from "./restStore";
 import { useRestStores } from "./useRestTimer";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
@@ -112,6 +115,45 @@ export function useFinishWorkout(): UseMutationResult<
       emitWorkoutFinished({ workoutId: id });
     },
   });
+}
+
+/**
+ * Spec 06.7 AC15, §6.3 step 5: what a Finish tap that resolved `queued` does, and nothing else. It seeds the summary's
+ * detail with the projected finished copy (the live copy with the waiting op applied, AC16), clears the rest timer (the
+ * workout is over, D6) and tracks `workout_finish_queued { reason }`. No Hevy event, no `workout_finished`, drafts kept,
+ * records and History untouched: the cloud doesn't have it yet. A failed op is never applied (AC19).
+ */
+export function applyQueuedFinish(
+  queryClient: QueryClient,
+  { id, reason, ops, rest }: { id: string; reason: "offline" | "slow"; ops: readonly OutboxOp[]; rest: Pick<RestStores, "clearWorkout"> | null | undefined },
+): void {
+  const active = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
+  if (active?.id === id && waitingFinishOf(id, ops)) {
+    queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), withQueuedFinish(active, ops));
+  }
+  rest?.clearWorkout(id);
+  track("workout_finish_queued", { reason });
+}
+
+/**
+ * Spec 06.7 AC20: drop a finished workout the server no longer has (the gone card's Discard, AC30, the only caller):
+ * its ops and id-map entries, drafts, rest timer and detail cache. Once: a second call finds no ops and does nothing.
+ */
+export function useDiscardUnsentWorkout(): (workoutId: string) => void {
+  const queryClient = useQueryClient();
+  const outbox = useOutbox();
+  const drafts = useDraftStores();
+  const rest = useRestStores();
+  return (workoutId) => {
+    const ops = outbox?.getState().ops.filter((o) => o.workoutId === workoutId) ?? [];
+    if (ops.length === 0) return;
+    const setCount = ops.find(isFinishOp)?.meta.setCount ?? 0;
+    outbox?.dropWorkout(workoutId);
+    drafts?.clearWorkout(workoutId);
+    rest?.clearWorkout(workoutId);
+    queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(workoutId), exact: true });
+    track("workout_discarded", { phase: "unsent", setCount });
+  };
 }
 
 export function useDeleteWorkout(): UseMutationResult<
