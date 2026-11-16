@@ -136,6 +136,8 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
         refreshFinishedElsewhere(queryClient, op.workoutId);
       },
       onFailed: (op, error) => {
+        // Spec 06.7 AC12: a refused finish is the finish path's (onFinishFailed), never a set write's report or re-read.
+        if (op.kind === "finish") return;
         reportUnexpected(REPORT_OP[op.kind], error);
         // A delete's optimistic removal took the row out of the cache, and only a read brings it back to be marked
         // under the failed op (Spec 17.5 AC6). A rejected create fails the delete queued behind it without naming it here.

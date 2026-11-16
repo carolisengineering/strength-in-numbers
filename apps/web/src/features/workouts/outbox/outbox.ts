@@ -273,6 +273,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       await need(rest.deleteResult)(op.sectionId);
       return null;
     }
+    if (op.kind === "finish") throw new Error("outbox: a finish op is not sendable yet");
     const id = resolveSetId(op.target);
     if (id === null) throw new UnresolvedTarget();
     if (op.kind === "update") return rest.updateSet(id, op.body);

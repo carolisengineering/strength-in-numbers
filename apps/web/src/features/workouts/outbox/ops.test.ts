@@ -201,7 +201,7 @@ describe("10.7 AC66 — parseOutboxFile", () => {
     expect(parseOutboxFile(value)).toBeNull();
   });
 
-  it("the known kinds are exactly the set, note and timer-entry kinds", () => {
-    expect([...OUTBOX_OP_KINDS].sort()).toEqual(["create", "delete", "note", "result", "round", "update"]);
+  it("the known kinds are exactly the set, note, timer-entry and finish kinds (Spec 06.7 AC1)", () => {
+    expect([...OUTBOX_OP_KINDS].sort()).toEqual(["create", "delete", "finish", "note", "result", "round", "update"]);
   });
 });

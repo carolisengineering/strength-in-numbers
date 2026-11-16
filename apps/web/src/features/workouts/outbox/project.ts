@@ -7,7 +7,7 @@ import {
   type WorkoutDetail,
   type WorkoutSection,
 } from "@sin/core";
-import { isSectionOp, type CreateOp, type IdMap, type OpTarget, type OutboxOp, type SectionOp } from "./ops";
+import { isFinishOp, isSectionOp, type CreateOp, type IdMap, type OpTarget, type OutboxOp, type SectionOp } from "./ops";
 
 export type RowSync = { state: "pending" } | { state: "failed"; opId: string; status: number };
 
@@ -124,7 +124,8 @@ export function project(
   let exercises = workout.exercises;
   let sections = workout.sections;
   for (const op of ops) {
-    if (op.workoutId !== workout.id) continue;
+    // Spec 06.7 §6.2: the active workout never shows an unsent finish; only `withQueuedFinish` (the summary) applies one.
+    if (op.workoutId !== workout.id || isFinishOp(op)) continue;
     if (isSectionOp(op)) {
       // Spec 10.7 AC38: a timer entry overlays the section (queued, sending and failed alike, like a note).
       const index = sections.findIndex((s) => s.id === op.sectionId);

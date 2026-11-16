@@ -59,7 +59,7 @@ describe("10.7 AC34 — section op shapes on disk", () => {
   });
 
   it("the known kinds now include round and result", () => {
-    expect([...OUTBOX_OP_KINDS].sort()).toEqual(["create", "delete", "note", "result", "round", "update"]);
+    expect(OUTBOX_OP_KINDS.has("round") && OUTBOX_OP_KINDS.has("result")).toBe(true);
   });
 
   it("a file with only set and note ops serializes exactly as before", () => {

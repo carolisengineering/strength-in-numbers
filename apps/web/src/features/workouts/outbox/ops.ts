@@ -19,6 +19,8 @@ export interface OpFailure {
   status: number;
   type: string;
   requestId: string | null;
+  /** Spec 06.7 AC2: a finish op failed because this earlier op of its workout failed. */
+  blockedBy?: string;
 }
 
 /** The fields every op carries (Spec 10.7 AC34 split `OpBase` so set and note ops stay byte-identical on disk). */
@@ -60,10 +62,22 @@ export type RoundOp = SectionOpBase & { kind: "round"; round: number; body: { se
 /** Spec 10.7 AC34: the section's result (`null` clears it), keyed by section. */
 export type ResultOp = SectionOpBase & { kind: "result"; body: SetSectionResult | null };
 export type SectionOp = RoundOp | ResultOp;
-export type OutboxOp = SetOp | NoteOp | SectionOp;
+/** Spec 06.7 §4: what the summary card, tracking and the Hevy event need after a reload. Scalars only: no names or values. */
+export interface FinishMeta {
+  startedAt: string;
+  exerciseCount: number;
+  setCount: number;
+  endedEarly: boolean;
+  unloggedPlannedSets: number;
+  hadPlannedDuration: boolean;
+}
+/** Spec 06.7 AC1: the workout's finish, exactly the `PATCH` body (10.5 AC13), sent last for its workout (AC2). */
+export type FinishOp = CommonOpBase & { kind: "finish"; body: { endedAt: string; keepRoutine?: true }; meta: FinishMeta };
+export type OutboxOp = SetOp | NoteOp | SectionOp | FinishOp;
 /** The three set kinds — never a note or a timer entry (Spec 10.7 AC39). */
 export const isSetOp = (op: OutboxOp): op is SetOp => op.kind === "create" || op.kind === "update" || op.kind === "delete";
 export const isSectionOp = (op: OutboxOp): op is SectionOp => op.kind === "round" || op.kind === "result";
+export const isFinishOp = (op: OutboxOp): op is FinishOp => op.kind === "finish";
 /** One key per timer entry: a round of a section, or the section's result. */
 export const sectionKey = (op: SectionOp): string => `${op.sectionId}:${op.kind === "round" ? op.round : "result"}`;
 
@@ -84,7 +98,9 @@ const CommonShape = {
   attempts: z.number().int().min(0),
   nextAttemptAt: z.number(),
   enqueuedAt: z.number(),
-  failure: z.object({ status: z.number(), type: z.string(), requestId: z.string().nullable() }).optional(),
+  failure: z
+    .object({ status: z.number(), type: z.string(), requestId: z.string().nullable(), blockedBy: z.string().optional() })
+    .optional(),
 };
 const BaseShape = { ...CommonShape, workoutExerciseId: z.string() };
 
@@ -108,6 +124,20 @@ export const OutboxOpSchema = z.discriminatedUnion("kind", [
     body: z.object({ seconds: z.number().int().min(1).nullable() }),
   }),
   z.object({ ...CommonShape, kind: z.literal("result"), sectionId: z.string(), body: SetSectionResultSchema.nullable() }),
+  // Spec 06.7 AC1: the finish, on the workout (no workoutExerciseId).
+  z.object({
+    ...CommonShape,
+    kind: z.literal("finish"),
+    body: z.object({ endedAt: z.string(), keepRoutine: z.literal(true).optional() }),
+    meta: z.object({
+      startedAt: z.string(),
+      exerciseCount: z.number().int().min(0),
+      setCount: z.number().int().min(0),
+      endedEarly: z.boolean(),
+      unloggedPlannedSets: z.number().int().min(0),
+      hadPlannedDuration: z.boolean(),
+    }),
+  }),
 ]);
 
 /** The shape of `sin:workout:outbox`; `v` lets a later spec migrate it. */
@@ -315,7 +345,8 @@ function combineNote(ops: readonly OutboxOp[], incoming: NoteOp): OutboxOp[] {
 export function combine(ops: readonly OutboxOp[], incoming: OutboxOp): OutboxOp[] {
   if (isSectionOp(incoming)) return combineSection(ops, incoming);
   if (incoming.kind === "note") return combineNote(ops, incoming);
-  if (incoming.kind === "create") return [...ops, incoming];
+  // Spec 06.7 AC2: a finish is never merged; `enqueueFinish` decides whether one is added.
+  if (incoming.kind === "create" || incoming.kind === "finish") return [...ops, incoming];
   const dropped = dropNeverStoredSet(ops, incoming);
   if (dropped) return dropped;
   const refolded = refoldRejectedCreate(ops, incoming);
