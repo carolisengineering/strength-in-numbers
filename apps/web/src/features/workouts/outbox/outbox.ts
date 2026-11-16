@@ -58,6 +58,11 @@ export interface OutboxState {
   readonly online: boolean;
   /** Another tab wrote the outbox: this one has stopped sending and saving (AC19). */
   readonly conflict: boolean;
+  /**
+   * Spec 06.7 AC10: "saved on this phone" is true. False once a storage read or write threw (this store stops writing)
+   * or while `conflict` is true; true for an outbox that has never had to write.
+   */
+  readonly durable: boolean;
 }
 
 export interface OutboxDeps {
@@ -206,7 +211,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     return { ops, idMap: parsed.idMap };
   }
 
-  let state: OutboxState = { ...load(), online: isOnline(), conflict: false };
+  let state: OutboxState = { ...load(), online: isOnline(), conflict: false, durable: storageOk };
 
   function persist(): void {
     if (!storageOk || state.conflict) return;
@@ -221,6 +226,8 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
   function set(next: Partial<OutboxState>, save = true): void {
     state = { ...state, ...next };
     if (save) persist();
+    const durable = storageOk && !state.conflict;
+    if (durable !== state.durable) state = { ...state, durable };
     for (const listener of listeners) listener();
   }
 
@@ -634,11 +641,13 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       if (removed.length > 0) deps.onDiscarded?.(removed);
     },
     settle: (activeWorkoutId) => {
-      const ops = state.ops.filter((o) => o.workoutId === activeWorkoutId || o.status !== "failed");
+      // Spec 06.7 AC7: a workout with a finish op (any status) keeps every op and id-map entry; only landing,
+      // dropWorkout or its Discard take them away.
+      const finishing = new Set(state.ops.filter(isFinishOp).map((o) => o.workoutId));
+      const kept = (workoutId: string) => workoutId === activeWorkoutId || finishing.has(workoutId);
+      const ops = state.ops.filter((o) => kept(o.workoutId) || o.status !== "failed");
       const targeted = new Set(ops.flatMap((o) => (isSetOp(o) && "clientGeneratedId" in o.target ? [o.target.clientGeneratedId] : [])));
-      const idMap = Object.fromEntries(
-        Object.entries(state.idMap).filter(([key, e]) => e.workoutId === activeWorkoutId || targeted.has(key)),
-      );
+      const idMap = Object.fromEntries(Object.entries(state.idMap).filter(([key, e]) => kept(e.workoutId) || targeted.has(key)));
       if (ops.length !== state.ops.length || Object.keys(idMap).length !== Object.keys(state.idMap).length) {
         set({ ops, idMap });
       }
