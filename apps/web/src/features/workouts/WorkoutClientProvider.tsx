@@ -8,6 +8,8 @@ import { applyEditedCaches } from "../records/cache";
 import { withExerciseNotes, withSection, withSectionCleared, withSetRemoved, withSetUpserted } from "./cache";
 import { createDraftStores } from "./drafts/draftStore";
 import { createFinishLanding } from "./finishLanding";
+import { createLandedStore } from "./outbox/landedStore";
+import { viewing } from "./summaryViewing";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { createRestStores } from "./restStore";
 import { RestStoresContext } from "./useRestTimer";
@@ -119,6 +121,7 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
     const drafts = createDraftStores(adapter, userId);
     const restTimers = createRestStores(adapter, userId);
     const finishWaits = new Set<string>();
+    const landed = createLandedStore({ storage: adapter, userId });
     const outbox: Outbox = createOutbox({
       storage: adapter,
       rest,
@@ -151,7 +154,7 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       },
       onDiscarded: (ops) => applyDiscarded(queryClient, ops),
       // Spec 06.7 AC14: the one place a finish's landing effects run.
-      onFinishSynced: createFinishLanding({ queryClient, drafts, rest: restTimers, waiting: finishWaits }),
+      onFinishSynced: createFinishLanding({ queryClient, drafts, rest: restTimers, waiting: finishWaits, landed, viewing }),
     });
     const client = createQueuedWorkoutClient({
       rest,

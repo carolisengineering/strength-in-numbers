@@ -38,6 +38,32 @@ describe("17.6 AC3 — the heading counts lifts", () => {
   });
 });
 
+describe("06.7 AC27 / minor 476 — counted: the lifts the heading counts", () => {
+  it("is pinned beside each heading case", () => {
+    const three = workoutOf([lift("Bench Press"), lift("Overhead Press"), lift("Row")]);
+    expect(ledger([rec(three, 0, heaviest(190, 185)), rec(three, 1, heaviest(60, 57.5)), rec(three, 2, heaviest(80, 75))], three).counted).toBe(3);
+    const one = workoutOf([lift("Bench Press")]);
+    expect(ledger([rec(one, 0, heaviest(190, 185)), rec(one, 0, estimate(221.5, 215))], one).counted).toBe(1);
+    expect(ledger([rec(one, 0, heaviest(190, 185))], one).counted).toBe(1);
+    const firstBeside = workoutOf([lift("Bench Press"), lift("Triceps Pushdown")]);
+    expect(ledger([rec(firstBeside, 0, heaviest(190, 185)), rec(firstBeside, 1, heaviest(32.5, null))], firstBeside).counted).toBe(1);
+    expect(ledger([rec(three, 0, heaviest(190, 185)), rec(three, 1, heaviest(60, 57.5))], three, { section: "history" }).counted).toBe(2);
+  });
+  it("a value-only lift is drawn but never counted", () => {
+    const two = workoutOf([lift("Bench Press"), lift("Squat")]);
+    const l = ledger([rec(two, 0, heaviest(190, 185)), rec(two, 1, estimate(94.1, 94))], two);
+    expect(l.lifts).toHaveLength(2);
+    expect(l.counted).toBe(1);
+    const alone = workoutOf([lift("Bench Press")]);
+    expect(ledger([rec(alone, 0, estimate(94.1, 94))], alone).counted).toBe(0);
+  });
+  it("is 0 whenever the heading is null", () => {
+    const w = workoutOf([lift("Bench Press")]);
+    expect(ledger([rec(w, 0, heaviest(80, null))], w).counted).toBe(0);
+    expect(ledger([rec(w, 0, heaviest(100.017, 100))], w, { pref: "lb" }).counted).toBe(0);
+  });
+});
+
 describe("17.6 AC6 / 17.2 AC22 — a zero-gain estimate", () => {
   it("is dropped beside a beaten heaviest row", () => {
     const w = workoutOf([lift("Bench Press")]);
@@ -215,7 +241,7 @@ describe("17.6 AC13 — mixed lifts", () => {
 describe("17.6 AC14 / 17.2 AC16 / 17.2 AC24 — no set volume or timed rows", () => {
   it("set volume only, or no records, is an empty ledger", () => {
     const w = workoutOf([lift("Bench Press")]);
-    const empty = { heading: null, lifts: [], firsts: [], explainFirsts: false };
+    const empty = { heading: null, counted: 0, lifts: [], firsts: [], explainFirsts: false };
     expect(ledger([rec(w, 0, { recordType: "best_set_volume", value: 950, previousValue: 900, unit: "kg_reps" })], w)).toEqual(empty);
     expect(ledger([], w)).toEqual(empty);
   });

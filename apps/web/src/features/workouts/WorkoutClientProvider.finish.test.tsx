@@ -175,6 +175,81 @@ describe("06.7 AC14 — landing effects run in one place, once", () => {
   });
 });
 
+describe("06.7 AC27 — a landing off-screen is remembered for the one-time line (provider step 6)", () => {
+  const bench = { modality: "weight_reps" as const, name: "Bench", sets: [makeSet({ setNumber: 1, reps: 5, weight: 100, weightKg: 100 })] };
+  const squat = { modality: "weight_reps" as const, name: "Squat", sets: [makeSet({ setNumber: 1, reps: 5, weight: 140, weightKg: 140 })] };
+  const twoLifts = () => makeWorkoutDetail({ startedAt: STARTED, exercises: [bench, squat] });
+  const recordOn = (workout: WorkoutDetail, i: number, o: Record<string, unknown>) => {
+    const e = workout.exercises[i]!;
+    return makePersonalRecord({
+      exerciseId: e.exerciseId,
+      sourceExerciseId: e.exerciseId,
+      exerciseName: e.exerciseNameSnapshot,
+      sourceSetId: e.sets[0]!.id,
+      workoutId: workout.id,
+      unit: "kg",
+      ...o,
+    });
+  };
+  const heaviest = (value: number, previousValue: number) => ({ recordType: "heaviest_weight", value, previousValue });
+  const estimate = (value: number, previousValue: number) => ({ recordType: "best_est_1rm", value, previousValue });
+
+  function landing(workout: WorkoutDetail, isViewing = false) {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(WORKOUT_KEYS.active, workout);
+    const landed = { add: vi.fn() };
+    const land = createFinishLanding({ queryClient, waiting: new Set(), landed, viewing: () => isViewing });
+    return { land, landed };
+  }
+
+  it.each([
+    ["two records on one lift and one on another: 2 lifts, not 3 records", (w: WorkoutDetail) => [recordOn(w, 0, heaviest(105, 100)), recordOn(w, 0, estimate(120, 115)), recordOn(w, 1, heaviest(145, 140))], 2],
+    ["a set-volume record only: 0", (w: WorkoutDetail) => [recordOn(w, 0, { recordType: "best_set_volume", value: 600, previousValue: 500, unit: "kg_reps" })], 0],
+    ["one lift that rose beside a value-only lift: 1 (minor 476)", (w: WorkoutDetail) => [recordOn(w, 0, heaviest(105, 100)), recordOn(w, 1, estimate(94.1, 94))], 1],
+    ["only a value-only lift: 0 (minor 476)", (w: WorkoutDetail) => [recordOn(w, 1, estimate(94.1, 94))], 0],
+  ])("lifts is the summary heading's count — %s", (_name, records, lifts) => {
+    const workout = twoLifts();
+    const t = landing(workout);
+    t.land(opOf(workout), { outcome: "landed", updated: updatedOf(workout, records(workout)) });
+    expect(t.landed.add).toHaveBeenCalledWith({ workoutId: workout.id, lifts, how: "landed" });
+  });
+
+  it.each(["ours", "elsewhere"] as const)("%s stores lifts: null", (how) => {
+    const workout = twoLifts();
+    const t = landing(workout);
+    t.land(opOf(workout), { outcome: how, detail: { ...workout, endedAt: ENDED } });
+    expect(t.landed.add).toHaveBeenCalledWith({ workoutId: workout.id, lifts: null, how });
+  });
+
+  it("landed with no copy of the workout to count from stores lifts: null", () => {
+    const workout = twoLifts();
+    const queryClient = new QueryClient();
+    const landed = { add: vi.fn() };
+    createFinishLanding({ queryClient, waiting: new Set(), landed, viewing: () => false })(opOf(workout), {
+      outcome: "landed",
+      updated: updatedOf(workout, [recordOn(workout, 0, heaviest(105, 100))]),
+    });
+    expect(landed.add).toHaveBeenCalledWith({ workoutId: workout.id, lifts: null, how: "landed" });
+  });
+
+  it("writes no entry while that workout's summary is open", () => {
+    const workout = twoLifts();
+    const t = landing(workout, true);
+    t.land(opOf(workout), { outcome: "landed", updated: updatedOf(workout, []) });
+    expect(t.landed.add).not.toHaveBeenCalled();
+  });
+
+  it("the entry is written before the Hevy event (step 6, then 7)", () => {
+    const workout = twoLifts();
+    const t = landing(workout);
+    const order: string[] = [];
+    t.landed.add.mockImplementation(() => order.push("landed"));
+    onWorkoutFinished(() => order.push("emit"));
+    t.land(opOf(workout), { outcome: "landed", updated: updatedOf(workout, []) });
+    expect(order).toEqual(["landed", "emit"]);
+  });
+});
+
 describe("06.7 AC14 — finishEvents emits at most once per workout per page load", () => {
   it("a second emit for the same workout is dropped; another workout still emits", () => {
     const listener = vi.fn();

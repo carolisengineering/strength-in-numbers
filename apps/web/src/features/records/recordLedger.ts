@@ -43,6 +43,11 @@ export interface FirstTimeLine {
 export interface RecordLedger {
   /** Null when no lift rose: then there is no panel and no brass (AC13; AC6, minor 476). */
   readonly heading: string | null;
+  /**
+   * The lifts the heading counts: those with a row that rose (minor 476), 0 when `heading` is null. A value-only lift is
+   * drawn but never counted, so `lifts.length` is not the count. Spec 06.7's landed line reads it (AC27, D18).
+   */
+  readonly counted: number;
   /** The panel's lifts; empty when `heading` is null. */
   readonly lifts: readonly LedgerLift[];
   readonly firsts: readonly FirstTimeLine[];
@@ -75,8 +80,7 @@ const typeOrder = (r: PersonalRecord) => RECORD_TYPE_VALUES.indexOf(r.recordType
 /** AC6 (owner decision 2026-11-14, minor 476): a lift counts only when one of its rows rose. */
 const rose = (lift: LedgerLift): boolean => lift.rows.some((r) => r.gainText !== null);
 
-function headingOf(lifts: readonly LedgerLift[], section: LedgerSection): string | null {
-  const counted = lifts.filter(rose).length;
+function headingOf(lifts: readonly LedgerLift[], counted: number, section: LedgerSection): string | null {
   if (counted === 0) return null;
   const oneRow = lifts.length === 1 && lifts[0]!.rows.length === 1;
   const count = `${counted} ${counted === 1 ? "lift" : "lifts"}`;
@@ -138,10 +142,11 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
   // AC10 (17.2 AC25, D17): the workout's exercise order; a lift that can't be matched goes after, in name order.
   built.sort((a, b) => (a.order === b.order ? a.name.localeCompare(b.name, "en") : a.order - b.order));
   const drawn = built.flatMap((b) => (b.kind === "lift" ? [b.lift] : []));
-  const heading = headingOf(drawn, section);
+  const rising = drawn.filter(rose).length;
+  const heading = headingOf(drawn, rising, section);
   // Minor 476: with no panel, a value-only lift is gone; only a first-ever record it held stays, as its line.
   const lifts = heading === null ? [] : drawn;
   const firsts = built.flatMap((b) => (b.kind === "first" ? [b.first] : heading === null && b.first !== null ? [b.first] : []));
   const explainFirsts = firsts.some((f) => f.estimate) && !lifts.some((l) => l.hasEstimate);
-  return { heading, lifts, firsts, explainFirsts };
+  return { heading, counted: heading === null ? 0 : rising, lifts, firsts, explainFirsts };
 }
