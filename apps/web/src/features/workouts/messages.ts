@@ -12,16 +12,23 @@ export const MESSAGES = {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-export function unsavedMessage({ sets, notes, timerEntries = 0 }: Unsaved): string {
-  if (sets === 0 && notes === 0 && timerEntries === 0) return "Some changes haven't saved. If you sign out now they'll be lost.";
-  // "A", "A and B", or "A, B and C", in the order sets, notes, timer entries (Spec 10.7 AC39).
+export function unsavedMessage({ sets, notes, timerEntries = 0, workouts = 0 }: Unsaved): string {
+  if (sets === 0 && notes === 0 && timerEntries === 0 && workouts === 0) return "Some changes haven't saved. If you sign out now they'll be lost.";
+  // Spec 06.7 AC11: a waiting workout alone "hasn't sent" (it is saved on this phone, not in the cloud).
+  if (sets === 0 && notes === 0 && timerEntries === 0) {
+    return workouts === 1
+      ? "1 finished workout hasn't sent. If you sign out now it'll be lost."
+      : `${workouts} finished workouts haven't sent. If you sign out now they'll be lost.`;
+  }
+  // "A", "A and B", or "A, B and C", in the order finished workouts, sets, notes, timer entries (Spec 10.7 AC39).
   const parts = [
+    ...(workouts > 0 ? [plural(workouts, "finished workout", "finished workouts")] : []),
     ...(sets > 0 ? [plural(sets, "set", "sets")] : []),
     ...(notes > 0 ? [plural(notes, "note", "notes")] : []),
     ...(timerEntries > 0 ? [plural(timerEntries, "timer entry", "timer entries")] : []),
   ];
   const subject = parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)!}`;
-  const single = sets + notes + timerEntries === 1;
+  const single = sets + notes + timerEntries + workouts === 1;
   return single
     ? `${subject} hasn't saved. If you sign out now it'll be lost.`
     : `${subject} haven't saved. If you sign out now they'll be lost.`;

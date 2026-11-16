@@ -30,7 +30,7 @@ afterEach(() => {
   observability.reportError.mockReset();
 });
 
-describe("06.7 AC10 — the outbox knows whether 'saved on this phone' is true", () => {
+describe("06.7 AC10 — the outbox knows whether saved on this phone is true", () => {
   const rest = () => ({ createSet: vi.fn(never), updateSet: vi.fn(never), deleteSet: vi.fn(never), setExerciseNote: vi.fn(never), finish: vi.fn(never), getById: vi.fn(never) });
 
   it("durable is true for an outbox that has never had to write, and after a write that worked", () => {
