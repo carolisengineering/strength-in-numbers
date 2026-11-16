@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { onlineManager } from "@tanstack/react-query";
+import { USER_ID } from "../../test/catalogHarness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -23,7 +24,7 @@ import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutH
 import { card, changeTimeButton, logButton } from "../../test/sessionHelpers";
 import { HISTORY_KEYS } from "../history/queries";
 import { DRAFTS_KEY } from "./drafts/draftStore";
-import { OUTBOX_KEY } from "./outbox/outbox";
+import { outboxKey } from "./outbox/outbox";
 import { WORKOUT_KEYS } from "./queries";
 import { REST_KEY } from "./restStore";
 
@@ -113,14 +114,14 @@ describe("18.0 AC35 — live save", () => {
     online = false;
     window.dispatchEvent(new Event("offline"));
     await user.click(logButton("Squat"));
-    await waitFor(() => expect(localStorageAdapter().get(OUTBOX_KEY)).not.toBeNull());
+    await waitFor(() => expect(localStorageAdapter().get(outboxKey(USER_ID))).not.toBeNull());
     await waitFor(() => expect(localStorageAdapter().get(REST_KEY)).not.toBeNull());
     const reps = within(card("Squat")).getByLabelText("Reps");
     await user.clear(reps);
     await user.type(reps, "7");
     await waitFor(() => expect(localStorageAdapter().get(DRAFTS_KEY)).not.toBeNull());
     act(() => onlineManager.setOnline(true));
-    const before = [OUTBOX_KEY, DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k));
+    const before = [outboxKey(USER_ID), DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k));
     const requestsBefore = fake.requests.length;
 
     await changeTime(user, { day: "2026-10-16", time: "18:00" });
@@ -128,7 +129,7 @@ describe("18.0 AC35 — live save", () => {
     expect(patches(fake)).toEqual([{ startedAt: "2026-10-16T17:00:00.000Z", tzOffsetMinutes: 60 }]);
     expect(screen.getByText("Started Fri, Oct 16, 6:00 PM")).toBeInTheDocument();
     expect(screen.getByText(/Elapsed/)).toBeInTheDocument();
-    expect([OUTBOX_KEY, DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k))).toEqual(before);
+    expect([outboxKey(USER_ID), DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k))).toEqual(before);
     const later = fake.requests.slice(requestsBefore).filter((r) => r.method === "GET");
     expect(later.filter((r) => r.path === "/v1/workouts" || r.path.startsWith("/v1/progress") || r.path.startsWith("/v1/personal-records"))).toEqual([]);
     expect(screen.getByTestId("session-announcement")).toHaveTextContent("Time changed");

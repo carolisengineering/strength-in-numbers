@@ -108,3 +108,21 @@ describe("AC20 — a lost session clears user data (Spec 06.0)", () => {
     window.localStorage.clear();
   });
 });
+
+describe("06.7 AC9 — a lost session is the forced sign-out", () => {
+  it("onAuthLost keeps every outbox file and clears the rest of the user data", async () => {
+    window.localStorage.setItem("sin:workout:outbox:user-a", "{}");
+    window.localStorage.setItem("sin:workout:drafts", "{}");
+    window.localStorage.setItem("sin:catalog:v1:user-a", "{}");
+    server.use(http.get(`${BASE_URL}/v1/me`, () => new HttpResponse(null, { status: 401 })));
+
+    const { result } = renderHook(() => useApi());
+    await expect(result.current.get("/v1/me")).rejects.toBeInstanceOf(Error);
+
+    expect(mocks.logout).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem("sin:workout:outbox:user-a")).toBe("{}");
+    expect(window.localStorage.getItem("sin:workout:drafts")).toBeNull();
+    expect(window.localStorage.getItem("sin:catalog:v1:user-a")).toBeNull();
+    window.localStorage.clear();
+  });
+});

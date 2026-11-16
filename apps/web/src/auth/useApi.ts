@@ -37,7 +37,8 @@ export function useApi(): ApiClient {
           ? getAccessTokenSilently({ cacheMode: "off" })
           : getAccessTokenSilently(),
       onAuthLost: () => {
-        logoutAndClear(logout);
+        // Spec 06.7 AC9: a lost session keeps unsent workout data for the lifter's return.
+        logoutAndClear(logout, undefined, { kind: "forced" });
       },
     });
   }, [getAccessTokenSilently, logout]);

@@ -7,6 +7,8 @@ export interface Unsaved {
   notes: number;
   /** Spec 10.7 AC39: round and result entries; present only when there are any. */
   timerEntries?: number;
+  /** Spec 06.7 AC11: finished workouts waiting to send (a finish op in any status); present only when there are any. */
+  workouts?: number;
 }
 export interface GuardState {
   phase: GuardPhase;
@@ -54,13 +56,16 @@ export function createLogoutGuard(deps: { outbox: GuardOutbox; proceed: () => vo
 
   function count(): Unsaved {
     const ops = outbox.getState().ops;
-    const notes = ops.filter((o) => o.kind === "note").length;
-    // Spec 10.7 AC39: a timer entry is never a set.
-    const timerEntries = ops.filter((o) => o.kind === "round" || o.kind === "result").length;
-    const sets = ops.length - notes - timerEntries;
-    return timerEntries > 0 ? { sets, notes, timerEntries } : { sets, notes };
+    const of = (...kinds: string[]) => ops.filter((o) => kinds.includes(o.kind)).length;
+    // Each kind counts in its own bucket (Spec 06.7 AC11: never sets by subtraction; 10.7 AC39: a timer entry is never a set).
+    const unsaved: Unsaved = { sets: of("create", "update", "delete"), notes: of("note") };
+    const timerEntries = of("round", "result");
+    const workouts = of("finish");
+    if (timerEntries > 0) unsaved.timerEntries = timerEntries;
+    if (workouts > 0) unsaved.workouts = workouts;
+    return unsaved;
   }
-  const total = (u: Unsaved) => u.sets + u.notes + (u.timerEntries ?? 0);
+  const total = (u: Unsaved) => u.sets + u.notes + (u.timerEntries ?? 0) + (u.workouts ?? 0);
 
   function canSync(): boolean {
     const s = outbox.getState();

@@ -1834,7 +1834,13 @@ try {
       await page.getByRole("region", { name: "Main" }).scrollIntoViewIfNeeded();
       await shoot(page, device, "92-session-timed-heading", "Live timed section: the plan with its total, the round times, Log result, and Not saved yet for a queued entry (Spec 10.7 AC19, AC39)");
       // Drop the held entry so no later page sends it to a workout the harness no longer serves.
-      await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:outbox"); } catch { /* storage blocked */ } });
+      // Every outbox file: one per account since Spec 06.7 AC8, plus the legacy single file.
+      await page.evaluate(() => {
+        try {
+          const keys = Object.keys(window.localStorage).filter((k) => k === "sin:workout:outbox" || k.startsWith("sin:workout:outbox:"));
+          for (const k of keys) window.localStorage.removeItem(k);
+        } catch { /* storage blocked */ }
+      });
     });
     state.hangWrites = false;
     await tryStep("log result sheets", async () => {

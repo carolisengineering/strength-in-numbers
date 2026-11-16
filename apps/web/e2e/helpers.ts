@@ -57,7 +57,8 @@ export const EXERCISES = [
   { name: "Treadmill run", fields: { Distance: "2", Minutes: "12", Seconds: "0" }, shows: /2 (km|mi) · 12:00/ },
 ] as const;
 
-const OUTBOX_KEY = "sin:workout:outbox";
+/** Spec 06.7 AC8: the outbox is one file per account (`sin:workout:outbox:<userId>`), and the legacy single file. */
+const OUTBOX_PREFIX = "sin:workout:outbox";
 
 export function card(page: Page, exercise: string): Locator {
   return page.getByRole("article", { name: exercise, exact: true });
@@ -219,12 +220,19 @@ export async function waitSynced(page: Page, exerciseCard: Locator, expectedSets
  * Spec 06.3 §6.5 — the one place e2e reads browser storage: how many writes
  * the 06.2 outbox still holds. The key itself outlives a full sync (it keeps
  * the id map of the workout's synced sets), so count the ops, not the key.
+ * Since Spec 06.7 AC8 each account has its own file: count every outbox file.
  */
 export async function pendingOutboxOps(page: Page): Promise<number> {
-  return page.evaluate((key) => {
-    const raw = window.localStorage.getItem(key);
-    return raw === null ? 0 : (JSON.parse(raw) as { ops: unknown[] }).ops.length;
-  }, OUTBOX_KEY);
+  return page.evaluate((prefix) => {
+    let count = 0;
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key === null || (key !== prefix && !key.startsWith(`${prefix}:`))) continue;
+      const raw = window.localStorage.getItem(key);
+      if (raw !== null) count += (JSON.parse(raw) as { ops: unknown[] }).ops.length;
+    }
+    return count;
+  }, OUTBOX_PREFIX);
 }
 
 /**

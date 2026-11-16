@@ -40,9 +40,11 @@ export function useSession(): Session {
     sharedLogin(loginWithRedirect, `${pathname}${search}`);
   }, [loginWithRedirect, pathname, search]);
 
+  // Spec 06.7 AC9: the deliberate sign-out clears this lifter's unsent workout file, never another person's.
+  const userId = user?.id;
   const logout = useCallback(() => {
-    logoutAndClear(auth0Logout);
-  }, [auth0Logout]);
+    logoutAndClear(auth0Logout, undefined, userId === undefined ? undefined : { kind: "deliberate", userId });
+  }, [auth0Logout, userId]);
 
   return { user, isAuthenticated, login, logout };
 }

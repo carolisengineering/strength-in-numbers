@@ -1,5 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { onlineManager } from "@tanstack/react-query";
+import { USER_ID } from "../../../test/catalogHarness";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -23,7 +24,7 @@ import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { card, logButton, optionsButton } from "../../../test/sessionHelpers";
 import { DRAFTS_KEY } from "../drafts/draftStore";
-import { OUTBOX_KEY } from "../outbox/outbox";
+import { outboxKey } from "../outbox/outbox";
 import { WORKOUT_KEYS } from "../queries";
 import { REST_KEY } from "../restStore";
 
@@ -58,7 +59,7 @@ describe("18.0 AC21 — edit mode never touches the live session", () => {
     online = false;
     window.dispatchEvent(new Event("offline"));
     await user.click(logButton("Squat"));
-    await waitFor(() => expect(localStorageAdapter().get(OUTBOX_KEY)).not.toBeNull());
+    await waitFor(() => expect(localStorageAdapter().get(outboxKey(USER_ID))).not.toBeNull());
     await waitFor(() => expect(localStorageAdapter().get(REST_KEY)).not.toBeNull());
     const reps = within(card("Squat")).getByLabelText("Reps");
     await user.clear(reps);
@@ -69,7 +70,7 @@ describe("18.0 AC21 — edit mode never touches the live session", () => {
     act(() => onlineManager.setOnline(true));
     await act(() => router.navigate(`/app/history/${finished.id}/edit`));
     await screen.findByRole("heading", { level: 1, name: "Edit workout" });
-    const before = [OUTBOX_KEY, DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k));
+    const before = [outboxKey(USER_ID), DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k));
     const active = queryClient.getQueryData(WORKOUT_KEYS.active);
 
     await user.click(within(card("Bench Press")).getByRole("button", { name: /^2/ }));
@@ -94,7 +95,7 @@ describe("18.0 AC21 — edit mode never touches the live session", () => {
     await user.click(within(screen.getByRole("dialog", { name: "Remove Core?" })).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(announced()).toHaveTextContent("Section removed"));
 
-    expect([OUTBOX_KEY, DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k))).toEqual(before);
+    expect([outboxKey(USER_ID), DRAFTS_KEY, REST_KEY].map((k) => localStorageAdapter().get(k))).toEqual(before);
     expect(queryClient.getQueryData(WORKOUT_KEYS.active)).toBe(active);
     expect(fake.requests.filter((r) => r.method === "PATCH" && r.path.startsWith("/v1/sets/")).map((r) => r.path)).toEqual([`/v1/sets/${finished.exercises[0]!.sets[1]!.id}`]);
     expect(fake.requests.filter((r) => r.method === "POST" && r.path.endsWith("/sets"))).toEqual([]);

@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { segmented } from "../../test/controls";
+import { USER_ID } from "../../test/catalogHarness";
 import { onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,7 +24,7 @@ import { localStorageAdapter } from "../../storage/storage";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { OUTBOX_KEY } from "./outbox/outbox";
+import { outboxKey } from "./outbox/outbox";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -56,7 +57,7 @@ type Setup = Awaited<ReturnType<typeof setup>>;
 
 const sheet = () => within(screen.getByRole("dialog", { name: "Log result" }));
 const announcement = () => screen.getByTestId("session-announcement");
-const storedOps = () => JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops as { kind: string; status: string; round?: number; body: unknown }[];
+const storedOps = () => JSON.parse(localStorageAdapter().get(outboxKey(USER_ID)) ?? '{"ops":[]}').ops as { kind: string; status: string; round?: number; body: unknown }[];
 const sectionWrites = (fake: Setup["fake"]) => fake.requests.filter((r) => /round-times|\/result$/.test(r.path));
 const goOffline = () => {
   online = false;

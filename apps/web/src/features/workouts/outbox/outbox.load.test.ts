@@ -7,7 +7,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: observabilit
 import { memoryStorageAdapter } from "../../../storage/storage";
 import { createLogoutGuard } from "../logoutGuard";
 import { unsavedNotes, unsavedSets, type OutboxOp } from "./ops";
-import { createOutbox, OUTBOX_KEY, type OutboxDeps } from "./outbox";
+import { createOutbox, outboxKey, type OutboxDeps } from "./outbox";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const KEY2 = "30000000-0000-4000-8000-000000000002";
@@ -38,7 +38,7 @@ function todaysOps(): { createOp: OutboxOp; noteOp: OutboxOp } {
   const outbox = make({ storage: scratch });
   outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
   outbox.enqueueNote({ workoutId: "w", workoutExerciseId: "we", body: { notes: "Pause" } });
-  const [createOp, noteOp] = JSON.parse(scratch.get(OUTBOX_KEY)!).ops as OutboxOp[];
+  const [createOp, noteOp] = JSON.parse(scratch.get(outboxKey("u1"))!).ops as OutboxOp[];
   return { createOp: createOp!, noteOp: noteOp! };
 }
 /** A later bundle's op (Phase C's `round`), which this bundle does not know. */
@@ -48,7 +48,7 @@ const roundOp = (base: OutboxOp) => ({ ...base, id: "op-round", kind: "lap", sec
 function fileWithUnknown() {
   const { createOp, noteOp } = todaysOps();
   const storage = memoryStorageAdapter();
-  storage.set(OUTBOX_KEY, JSON.stringify({ v: 1, userId: "u1", ops: [createOp, roundOp(createOp), noteOp], idMap: {} }));
+  storage.set(outboxKey("u1"), JSON.stringify({ v: 1, userId: "u1", ops: [createOp, roundOp(createOp), noteOp], idMap: {} }));
   return { storage, createOp, noteOp };
 }
 
@@ -97,7 +97,7 @@ describe("10.7 AC66 — the outbox reads one op at a time", () => {
     const { storage } = fileWithUnknown();
     const outbox = make({ storage });
     outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body(KEY2) });
-    expect((JSON.parse(storage.get(OUTBOX_KEY)!) as { ops: OutboxOp[] }).ops.map((o) => o.kind)).toEqual(["create", "note", "create"]);
+    expect((JSON.parse(storage.get(outboxKey("u1"))!) as { ops: OutboxOp[] }).ops.map((o) => o.kind)).toEqual(["create", "note", "create"]);
   });
 
   it("reports once per load, with a static message and the static tag only", () => {
@@ -117,7 +117,7 @@ describe("10.7 AC66 — the outbox reads one op at a time", () => {
     expect(() => make({ storage })).not.toThrow();
     expect(make({ storage }).getState().ops.map((o) => o.kind)).toEqual(["create", "note"]);
     expect(observability.reportError).toHaveBeenCalledTimes(3);
-    expect(JSON.parse(storage.get(OUTBOX_KEY)!).ops.map((o: { kind: string }) => o.kind)).toEqual(["create", "lap", "note"]);
+    expect(JSON.parse(storage.get(outboxKey("u1"))!).ops.map((o: { kind: string }) => o.kind)).toEqual(["create", "lap", "note"]);
   });
 
   describe("still unreadable as today", () => {
@@ -129,10 +129,10 @@ describe("10.7 AC66 — the outbox reads one op at a time", () => {
       ["a bad envelope", ({ createOp }) => JSON.stringify({ v: 2, userId: "u1", ops: [createOp], idMap: {} })],
     ])("%s: loads nothing, removes the key, reports unreadable once", (_name, file) => {
       const storage = memoryStorageAdapter();
-      storage.set(OUTBOX_KEY, file(todaysOps()));
+      storage.set(outboxKey("u1"), file(todaysOps()));
       observability.reportError.mockReset();
       expect(make({ storage }).getState().ops).toEqual([]);
-      expect(storage.get(OUTBOX_KEY)).toBeNull();
+      expect(storage.get(outboxKey("u1"))).toBeNull();
       expect(observability.reportError).toHaveBeenCalledTimes(1);
       expect(observability.reportError).toHaveBeenCalledWith(expect.objectContaining({ message: "unreadable outbox" }), { source: "workout-storage" });
     });
@@ -145,11 +145,11 @@ describe("10.7 AC66 — the outbox reads one op at a time", () => {
     writer.enqueueUpdate({ workoutId: "w", workoutExerciseId: "we", target: { setId: "set-9" }, body: { reps: 9 } });
     writer.enqueueDelete({ workoutId: "w", workoutExerciseId: "we2", target: { setId: "set-8" } });
     writer.enqueueNote({ workoutId: "w", workoutExerciseId: "we", body: { notes: null } });
-    const file = JSON.parse(scratch.get(OUTBOX_KEY)!) as { ops: OutboxOp[]; idMap: Record<string, unknown> };
+    const file = JSON.parse(scratch.get(outboxKey("u1"))!) as { ops: OutboxOp[]; idMap: Record<string, unknown> };
     file.ops[0] = { ...file.ops[0]!, status: "sending" };
     file.idMap = { [KEY2]: { setId: "set-7", workoutId: "w" } };
     const storage = memoryStorageAdapter();
-    storage.set(OUTBOX_KEY, JSON.stringify(file));
+    storage.set(outboxKey("u1"), JSON.stringify(file));
     observability.reportError.mockReset();
     const state = make({ storage }).getState();
     // The golden: what the pre-change load() produced (sending → queued + attempted; all else as saved).

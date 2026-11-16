@@ -1,5 +1,6 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { USER_ID } from "../../test/catalogHarness";
 
 const auth = vi.hoisted(() => ({
   state: {
@@ -23,7 +24,7 @@ import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { finishButton, logButton, showOptions } from "../../test/sessionHelpers";
-import { OUTBOX_KEY } from "./outbox/outbox";
+import { LEGACY_OUTBOX_KEY, outboxKey } from "./outbox/outbox";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -130,7 +131,7 @@ describe("10.3 AC30 — offline, reload, other user", () => {
     await user.clear(sheet.getByLabelText("Note"));
     await user.type(sheet.getByLabelText("Note"), "Survives reload");
     await user.click(sheet.getByRole("button", { name: "Save" }));
-    expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY)!).ops).toEqual([expect.objectContaining({ kind: "note", body: { notes: "Survives reload" } })]);
+    expect(JSON.parse(localStorageAdapter().get(outboxKey(USER_ID))!).ops).toEqual([expect.objectContaining({ kind: "note", body: { notes: "Survives reload" } })]);
     cleanup();
     // A reload: new React tree and query cache, same browser storage. The API is reachable again (the screen has to
     // read the workout), but the browser still reports offline (`online` stays false), so the outbox holds the note.
@@ -143,22 +144,26 @@ describe("10.3 AC30 — offline, reload, other user", () => {
     expect(fake.requests.filter((r) => r.method === "PATCH")).toEqual([]);
     goOnline(fake);
     await waitFor(() => expect(fake.state.active!.exercises[0]!.notes).toBe("Survives reload"));
-    await waitFor(() => expect(localStorageAdapter().get(OUTBOX_KEY)).toBeNull());
+    await waitFor(() => expect(localStorageAdapter().get(outboxKey(USER_ID))).toBeNull());
   });
 
   it("another user's outbox file is ignored: nothing is shown or sent", async () => {
     const fake = createWorkoutFake({ active: makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "X", notes: "Server text", sets: [makeSet({ setNumber: 1 })] }] }) });
     prepareApp({ auth, fake });
     const exerciseId = fake.state.active!.exercises[0]!.id;
-    localStorageAdapter().set(
-      OUTBOX_KEY,
-      JSON.stringify({ v: 1, userId: "someone-else", idMap: {}, ops: [{ id: "x", kind: "note", workoutId: fake.state.active!.id, workoutExerciseId: exerciseId, userId: "someone-else", status: "queued", attempted: false, attempts: 0, nextAttemptAt: 0, enqueuedAt: 0, body: { notes: "THEIRS" } }] }),
-    );
+    const theirs = JSON.stringify({ v: 1, userId: "someone-else", idMap: {}, ops: [{ id: "x", kind: "note", workoutId: fake.state.active!.id, workoutExerciseId: exerciseId, userId: "someone-else", status: "queued", attempted: false, attempts: 0, nextAttemptAt: 0, enqueuedAt: 0, body: { notes: "THEIRS" } }] });
+    // Spec 06.7 AC8: where another person's file really lives (their own key), the old single file, and a stray copy
+    // under this lifter's key whose userId is theirs.
+    localStorageAdapter().set(outboxKey("someone-else"), theirs);
+    localStorageAdapter().set(LEGACY_OUTBOX_KEY, theirs);
+    localStorageAdapter().set(outboxKey(USER_ID), theirs);
     renderApp("/app/workouts");
     await screen.findByRole("heading", { name: "Workout" });
     expect(screen.getByText("Server text")).toBeInTheDocument();
     expect(screen.queryByText("THEIRS")).toBeNull();
     expect(fake.requests.filter((r) => r.method === "PATCH")).toEqual([]);
+    expect(localStorageAdapter().get(outboxKey("someone-else"))).toBe(theirs);
+    expect(localStorageAdapter().get(LEGACY_OUTBOX_KEY)).toBe(theirs);
   });
 
   it("logout clears a queued note (the sin:workout: prefix)", async () => {
@@ -167,9 +172,9 @@ describe("10.3 AC30 — offline, reload, other user", () => {
     const sheet = await openSheet(user, "Edit note for X");
     await user.type(sheet.getByLabelText("Note"), "!");
     await user.click(sheet.getByRole("button", { name: "Save" }));
-    expect(localStorageAdapter().get(OUTBOX_KEY)).not.toBeNull();
+    expect(localStorageAdapter().get(outboxKey(USER_ID))).not.toBeNull();
     clearUserData(localStorageAdapter());
-    expect(localStorageAdapter().get(OUTBOX_KEY)).toBeNull();
+    expect(localStorageAdapter().get(outboxKey(USER_ID))).toBeNull();
   });
 
   it("a 409 workout-finished on a note op fails it with the 06.2 copy and no set_sync_failed event; Discard empties the outbox", async () => {
@@ -182,7 +187,7 @@ describe("10.3 AC30 — offline, reload, other user", () => {
     expect(await card.findByText("Couldn't save")).toBeInTheDocument();
     expect(observability.track).not.toHaveBeenCalledWith("set_sync_failed", expect.anything());
     await user.click(card.getByRole("button", { name: /^Discard note / }));
-    expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]);
+    expect(JSON.parse(localStorageAdapter().get(outboxKey(USER_ID)) ?? '{"ops":[]}').ops).toEqual([]);
   });
 });
 

@@ -18,7 +18,8 @@ import {
   type SetSectionResult,
   type UpdateWorkoutSection,
 } from "@sin/core";
-import { ApiError, type ApiClient } from "../../api";
+import { ApiError, type ApiClient, type ApiRequestOptions } from "../../api";
+import type { ResponseSchema } from "../../api/client";
 
 /** The keys `updateWorkoutExercise` may send (Spec 10.1 AC11). Deliberately no `notes` (Spec 09 D22). */
 export interface WorkoutExercisePatch {
@@ -36,6 +37,11 @@ export interface WorkoutUpdate {
   readonly durationSeconds?: number | null;
 }
 
+/** Spec 06.7 AC5: the outbox's deadline. With a signal, the call goes through `api.request`, which hands it to `fetch`. */
+export interface SendOptions {
+  readonly signal?: AbortSignal;
+}
+
 /**
  * The REST seam for the workout screen (Spec 06.1 §6.1). React-free. Every write the screen makes
  * goes through this object so Spec 06.2 can replace it with a queue-backed one; the mutation hooks
@@ -44,24 +50,24 @@ export interface WorkoutUpdate {
 export interface WorkoutClient {
   /** `null` when there is no in-progress workout (the API answers 404). */
   getActive(): Promise<WorkoutDetail | null>;
-  getById(id: string): Promise<WorkoutDetail>;
+  getById(id: string, options?: SendOptions): Promise<WorkoutDetail>;
   start(body: CreateWorkout): Promise<Workout>;
   /** The workout plus `newRecords` (Spec 07.0 D12): parsed with `UpdatedWorkoutSchema` so Zod keeps it (Spec 08.0 AC5). */
-  finish(id: string, body: { endedAt: string; keepRoutine?: true }): Promise<UpdatedWorkout>;
+  finish(id: string, body: { endedAt: string; keepRoutine?: true }, options?: SendOptions): Promise<UpdatedWorkout>;
   deleteWorkout(id: string): Promise<void>;
   addExercise(workoutId: string, body: { exerciseId: string }): Promise<WorkoutExercise>;
   /** Spec 10.1 AC11: exactly the keys given go on the wire. No `notes` — a regroup must never overwrite a note copied from the routine (Spec 09 D22). */
   updateWorkoutExercise(id: string, body: WorkoutExercisePatch): Promise<WorkoutExercise>;
   moveExercise(id: string, position: number): Promise<WorkoutExercise>;
   removeExercise(id: string): Promise<void>;
-  createSet(workoutExerciseId: string, body: CreateSet): Promise<SetEntry>;
-  updateSet(id: string, body: UpdateSet): Promise<SetEntry>;
-  deleteSet(id: string): Promise<void>;
+  createSet(workoutExerciseId: string, body: CreateSet, options?: SendOptions): Promise<SetEntry>;
+  updateSet(id: string, body: UpdateSet, options?: SendOptions): Promise<SetEntry>;
+  deleteSet(id: string, options?: SendOptions): Promise<void>;
   /**
    * Spec 10.3 AC28: exactly { notes } goes on the wire. A separate method on purpose — WorkoutExercisePatch has no
    * `notes`, so a regroup can never overwrite a note (Spec 10.1 AC11).
    */
-  setExerciseNote(id: string, notes: string | null): Promise<WorkoutExercise>;
+  setExerciseNote(id: string, notes: string | null, options?: SendOptions): Promise<WorkoutExercise>;
   /** Spec 18.0 AC54: `PATCH /v1/workouts/{id}` with exactly the keys given. Online-only: the queued client passes it through. */
   updateWorkout(id: string, body: WorkoutUpdate): Promise<UpdatedWorkout>;
   /** Spec 10.6 AC6 / 10.7 AC15: `POST /v1/workouts/{id}/sections` with `{ name, notes?, timer? }`. Online-only (passed through). */
@@ -75,13 +81,13 @@ export interface WorkoutClient {
    */
   setExerciseSection(id: string, sectionId: string | null): Promise<WorkoutExercise>;
   /** Spec 10.7 AC34 / 09.5: one round's time, a keyed set (`{ seconds }` only). The queued client turns it into a `round` op. */
-  putRoundTime(sectionId: string, round: number, seconds: number): Promise<WorkoutSection>;
+  putRoundTime(sectionId: string, round: number, seconds: number, options?: SendOptions): Promise<WorkoutSection>;
   /** Clears one round (`204`, also when it was never recorded). */
-  deleteRoundTime(sectionId: string, round: number): Promise<void>;
+  deleteRoundTime(sectionId: string, round: number, options?: SendOptions): Promise<void>;
   /** The section's result, a keyed set with exactly the given keys. The queued client turns it into a `result` op. */
-  putResult(sectionId: string, body: SetSectionResult): Promise<WorkoutSection>;
+  putResult(sectionId: string, body: SetSectionResult, options?: SendOptions): Promise<WorkoutSection>;
   /** Clears the result (`204`). */
-  deleteResult(sectionId: string): Promise<void>;
+  deleteResult(sectionId: string, options?: SendOptions): Promise<void>;
 }
 
 /** Every id goes into the path as one encoded segment: a route id with `/`, `?` or `#` cannot change the endpoint. */
@@ -90,6 +96,17 @@ const seg = encodeURIComponent;
 export function createWorkoutClient(
   api: Pick<ApiClient, "get" | "post" | "patch" | "delete" | "request">,
 ): WorkoutClient {
+  /** One request; with a signal (the outbox's deadline, Spec 06.7 AC5) it goes through `request`, which passes it to `fetch`. */
+  function call<T>(method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE", path: string, body: unknown, schema: ResponseSchema<T> | undefined, options?: SendOptions): Promise<T> {
+    if (options?.signal !== undefined || method === "PUT") {
+      const init: ApiRequestOptions = { method, schema: schema as ResponseSchema<unknown> | undefined, ...(body !== undefined ? { body } : {}), ...(options?.signal ? { signal: options.signal } : {}) };
+      return api.request<T>(path, init);
+    }
+    if (method === "GET") return api.get(path, schema);
+    if (method === "POST") return api.post(path, body, schema);
+    if (method === "PATCH") return api.patch(path, body, schema);
+    return api.delete(path); // every DELETE here answers 204: no schema, as before
+  }
   const client: WorkoutClient = {
     async getActive() {
       try {
@@ -99,9 +116,9 @@ export function createWorkoutClient(
         throw error;
       }
     },
-    getById: (id) => api.get(`/v1/workouts/${seg(id)}`, WorkoutDetailSchema),
+    getById: (id, options) => call("GET", `/v1/workouts/${seg(id)}`, undefined, WorkoutDetailSchema, options),
     start: (body) => api.post("/v1/workouts", body, WorkoutSchema),
-    finish: (id, body) => api.patch(`/v1/workouts/${seg(id)}`, body, UpdatedWorkoutSchema),
+    finish: (id, body, options) => call("PATCH", `/v1/workouts/${seg(id)}`, body, UpdatedWorkoutSchema, options),
     deleteWorkout: async (id) => {
       await api.delete(`/v1/workouts/${seg(id)}`);
     },
@@ -116,13 +133,13 @@ export function createWorkoutClient(
     removeExercise: async (id) => {
       await api.delete(`/v1/workout-exercises/${seg(id)}`);
     },
-    createSet: (workoutExerciseId, body) =>
-      api.post(`/v1/workout-exercises/${seg(workoutExerciseId)}/sets`, body, SetEntrySchema),
-    updateSet: (id, body) => api.patch(`/v1/sets/${seg(id)}`, body, SetEntrySchema),
-    deleteSet: async (id) => {
-      await api.delete(`/v1/sets/${seg(id)}`);
+    createSet: (workoutExerciseId, body, options) =>
+      call("POST", `/v1/workout-exercises/${seg(workoutExerciseId)}/sets`, body, SetEntrySchema, options),
+    updateSet: (id, body, options) => call("PATCH", `/v1/sets/${seg(id)}`, body, SetEntrySchema, options),
+    deleteSet: async (id, options) => {
+      await call("DELETE", `/v1/sets/${seg(id)}`, undefined, undefined, options);
     },
-    setExerciseNote: (id, notes) => api.patch(`/v1/workout-exercises/${seg(id)}`, { notes }, WorkoutExerciseSchema),
+    setExerciseNote: (id, notes, options) => call("PATCH", `/v1/workout-exercises/${seg(id)}`, { notes }, WorkoutExerciseSchema, options),
     updateWorkout: (id, body) => {
       const wire: { -readonly [K in keyof WorkoutUpdate]: WorkoutUpdate[K] } = {};
       if (body.title !== undefined) wire.title = body.title;
@@ -151,19 +168,15 @@ export function createWorkoutClient(
     },
     setExerciseSection: (id, sectionId) =>
       api.patch(`/v1/workout-exercises/${seg(id)}`, { sectionId }, WorkoutExerciseSchema),
-    putRoundTime: (sectionId, round, seconds) =>
-      api.request<WorkoutSection>(`/v1/workout-sections/${seg(sectionId)}/round-times/${round}`, {
-        method: "PUT",
-        body: { seconds },
-        schema: WorkoutSectionSchema,
-      }),
-    deleteRoundTime: async (sectionId, round) => {
-      await api.delete(`/v1/workout-sections/${seg(sectionId)}/round-times/${round}`);
+    putRoundTime: (sectionId, round, seconds, options) =>
+      call("PUT", `/v1/workout-sections/${seg(sectionId)}/round-times/${round}`, { seconds }, WorkoutSectionSchema, options),
+    deleteRoundTime: async (sectionId, round, options) => {
+      await call("DELETE", `/v1/workout-sections/${seg(sectionId)}/round-times/${round}`, undefined, undefined, options);
     },
-    putResult: (sectionId, body) =>
-      api.request<WorkoutSection>(`/v1/workout-sections/${seg(sectionId)}/result`, { method: "PUT", body, schema: WorkoutSectionSchema }),
-    deleteResult: async (sectionId) => {
-      await api.delete(`/v1/workout-sections/${seg(sectionId)}/result`);
+    putResult: (sectionId, body, options) =>
+      call("PUT", `/v1/workout-sections/${seg(sectionId)}/result`, body, WorkoutSectionSchema, options),
+    deleteResult: async (sectionId, options) => {
+      await call("DELETE", `/v1/workout-sections/${seg(sectionId)}/result`, undefined, undefined, options);
     },
   };
   return client;

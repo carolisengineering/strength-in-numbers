@@ -25,7 +25,7 @@ import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
 import { deleteSetIn, finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
-import { OUTBOX_KEY } from "./outbox/outbox";
+import { outboxKey } from "./outbox/outbox";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -148,7 +148,7 @@ describe("06.2 AC13 — a reloaded tab keeps its queue", () => {
       body: { clientGeneratedId: key, weight: 60, weightUnit: "kg", reps, isComplete: true },
     });
     localStorageAdapter().set(
-      OUTBOX_KEY,
+      outboxKey(USER_ID),
       JSON.stringify({ v: 1, userId: USER_ID, ops: [op(landedKey, 4, true), op(pendingKey, 9, false)], idMap: {} }),
     );
 
@@ -158,7 +158,7 @@ describe("06.2 AC13 — a reloaded tab keeps its queue", () => {
     expect(card().getAllByRole("button", { name: /× 4/ })).toHaveLength(1);
     expect(card().getAllByRole("button", { name: /× 9/ })).toHaveLength(1);
     // Drained: no ops left (the id map keeps the key → server id entry on purpose, Review Focus 1).
-    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]));
+    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(outboxKey(USER_ID)) ?? '{"ops":[]}').ops).toEqual([]));
   });
 });
 
@@ -289,7 +289,7 @@ describe("06.2 AC17 — ending the workout cleans up", () => {
     const row = await failedRow();
     expect(observability.track).toHaveBeenCalledWith("set_sync_failed", { status: 409 });
     await user.click(within(row).getByRole("button", { name: /^Discard set / }));
-    expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]);
+    expect(JSON.parse(localStorageAdapter().get(outboxKey(USER_ID)) ?? '{"ops":[]}').ops).toEqual([]);
   });
 
   it("a refetch that finds no active workout drops that workout's ops (amended by 18.0 AC25: the 404'd op fails, then settle removes it)", async () => {
@@ -298,7 +298,7 @@ describe("06.2 AC17 — ending the workout cleans up", () => {
     await logSet(user, "5");
     fake.state.active = null; // deleted elsewhere while offline
     goOnline(fake); // the POST answers 404 ⇒ the op fails ⇒ refetch ⇒ no active workout ⇒ settle drops the failed op
-    await waitFor(() => expect(localStorageAdapter().get(OUTBOX_KEY)).toBeNull());
+    await waitFor(() => expect(localStorageAdapter().get(outboxKey(USER_ID))).toBeNull());
   });
 });
 
@@ -311,7 +311,7 @@ describe("18.0 AC25 / AC24 — a set logged offline lands on a workout finished 
     fake.state.finished.set(live.id, { ...live, endedAt: new Date().toISOString() });
     fake.state.active = null; // finished on another device while this phone was offline
     goOnline(fake);
-    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]));
+    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(outboxKey(USER_ID)) ?? '{"ops":[]}').ops).toEqual([]));
     expect(setPosts(fake)).toHaveLength(1);
     expect(fake.state.finished.get(live.id)!.exercises[0]!.sets.map((s) => s.reps)).toEqual([8, 5]);
   });
@@ -411,7 +411,7 @@ describe("06.2 AC12 — a stale /active read that lands after a sync does not hi
 describe("06.2 AC19 — the tab conflict notice", () => {
   it("shows the reload notice when another tab writes the outbox", async () => {
     await setup();
-    window.dispatchEvent(new StorageEvent("storage", { key: OUTBOX_KEY, newValue: "{}", storageArea: window.localStorage }));
+    window.dispatchEvent(new StorageEvent("storage", { key: outboxKey(USER_ID), newValue: "{}", storageArea: window.localStorage }));
     expect(await screen.findByText("This workout is open in another tab. Reload to continue here.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
   });

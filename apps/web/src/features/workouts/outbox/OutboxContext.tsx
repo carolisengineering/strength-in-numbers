@@ -3,7 +3,7 @@ import type { Outbox, OutboxState } from "./outbox";
 
 export const OutboxContext = createContext<Outbox | null>(null);
 
-const EMPTY: OutboxState = { ops: [], idMap: {}, online: true, conflict: false };
+const EMPTY: OutboxState = { ops: [], idMap: {}, online: true, conflict: false, durable: true };
 const noSubscribe = () => () => {};
 const emptyState = () => EMPTY;
 

@@ -8,7 +8,10 @@ import type { WorkoutExercise } from "@sin/core";
 import { ApiError } from "../../../api";
 import { memoryStorageAdapter } from "../../../storage/storage";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
-import { createOutbox, OUTBOX_KEY, type OutboxDeps } from "./outbox";
+import { createOutbox, outboxKey, type OutboxDeps } from "./outbox";
+/** Spec 06.7 AC5: every outbox send carries its deadline's signal. */
+const SIGNAL = { signal: expect.any(AbortSignal) };
+
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const exerciseRow = (id: string, notes: string | null): WorkoutExercise =>
@@ -49,7 +52,7 @@ describe("10.3 AC12 — draining note ops", () => {
     note(outbox, "left shoulder tight");
     await settle();
     expect(rest.setExerciseNote).toHaveBeenCalledTimes(1);
-    expect(rest.setExerciseNote).toHaveBeenCalledWith("we", "left shoulder tight");
+    expect(rest.setExerciseNote).toHaveBeenCalledWith("we", "left shoulder tight", SIGNAL);
     expect(outbox.getState().ops).toEqual([]);
     expect(onNoteSynced).toHaveBeenCalledWith(expect.objectContaining({ kind: "note" }), expect.objectContaining({ id: "we", notes: "left shoulder tight" }));
     expect(onSynced).not.toHaveBeenCalled();
@@ -66,7 +69,7 @@ describe("10.3 AC12 — draining note ops", () => {
     expect(ctx.rest.setExerciseNote).not.toHaveBeenCalled();
     ctx.setOnline(true);
     await ctx.outbox.drain();
-    expect(ctx.rest.setExerciseNote.mock.calls).toEqual([["we", "b"]]);
+    expect(ctx.rest.setExerciseNote.mock.calls).toEqual([["we", "b", SIGNAL]]);
   });
 
   it("a network failure keeps the op queued and retries with backoff", async () => {
@@ -99,7 +102,7 @@ describe("10.3 AC12 — draining note ops", () => {
     ctx.rest.createSet.mockRejectedValueOnce(api(422));
     ctx.setOnline(true);
     await ctx.outbox.drain();
-    expect(ctx.rest.setExerciseNote).toHaveBeenCalledWith("we", "a");
+    expect(ctx.rest.setExerciseNote).toHaveBeenCalledWith("we", "a", SIGNAL);
     expect(ctx.outbox.getState().ops.map((o) => [o.kind, o.status])).toEqual([["create", "failed"]]);
   });
 
@@ -111,7 +114,7 @@ describe("10.3 AC12 — draining note ops", () => {
     expect(ctx.outbox.getState().ops[0]).toMatchObject({ status: "failed" });
     note(ctx.outbox, "good");
     await settle();
-    expect(ctx.rest.setExerciseNote).toHaveBeenLastCalledWith("we", "good");
+    expect(ctx.rest.setExerciseNote).toHaveBeenLastCalledWith("we", "good", SIGNAL);
     expect(ctx.outbox.getState().ops).toEqual([]);
   });
 
@@ -139,13 +142,13 @@ describe("10.3 AC30 — persistence", () => {
     const second = setup({}, first.storage);
     expect(second.outbox.getState().ops).toHaveLength(1);
     await settle();
-    expect(second.rest.setExerciseNote.mock.calls).toEqual([["we", "kept"]]);
+    expect(second.rest.setExerciseNote.mock.calls).toEqual([["we", "kept", SIGNAL]]);
   });
 
   it("another user's file is ignored", () => {
     const storage = memoryStorageAdapter();
     const stored = { v: 1, userId: "someone-else", idMap: {}, ops: [{ id: "x", kind: "note", workoutId: "w", workoutExerciseId: "we", userId: "someone-else", status: "queued", attempted: false, attempts: 0, nextAttemptAt: 0, enqueuedAt: 0, body: { notes: "theirs" } }] };
-    storage.set(OUTBOX_KEY, JSON.stringify(stored));
+    storage.set(outboxKey("u1"), JSON.stringify(stored));
     const { outbox, rest } = setup({}, storage);
     expect(outbox.getState().ops).toEqual([]);
     expect(rest.setExerciseNote).not.toHaveBeenCalled();

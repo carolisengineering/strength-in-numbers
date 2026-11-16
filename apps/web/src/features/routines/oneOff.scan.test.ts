@@ -32,8 +32,14 @@ describe("10.5 AC18 — the request keys stay where they belong", () => {
     expect(code(routines["./validateDraft.ts"]!)).not.toMatch(/oneOff/);
   });
 
-  it("`keepRoutine` appears only in ActiveSession, the finish hook and the workout client", () => {
-    expect(using(workoutsAndRecords, /\bkeepRoutine\b/)).toEqual(["../workouts/ActiveSession.tsx", "../workouts/useWorkoutMutations.ts", "../workouts/workoutClient.ts"]);
+  it("`keepRoutine` appears only in ActiveSession, the finish hook, the workout client and the outbox's finish op", () => {
+    // Spec 06.7 §4: the finish op stores exactly the PATCH body, so its schema names the key.
+    expect(using(workoutsAndRecords, /\bkeepRoutine\b/)).toEqual([
+      "../workouts/ActiveSession.tsx",
+      "../workouts/outbox/ops.ts",
+      "../workouts/useWorkoutMutations.ts",
+      "../workouts/workoutClient.ts",
+    ]);
   });
 });
 

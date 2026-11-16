@@ -6,7 +6,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: observabilit
 
 import { memoryStorageAdapter, type StorageAdapter } from "../../../storage/storage";
 import type { OutboxOp } from "./ops";
-import { createOutbox, OUTBOX_KEY, type OutboxDeps } from "./outbox";
+import { createOutbox, outboxKey, type OutboxDeps } from "./outbox";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const KEY2 = "30000000-0000-4000-8000-000000000002";
@@ -65,9 +65,9 @@ describe("06.2 AC7 — the outbox survives a reload", () => {
   it("a new store over the same storage restores ops; a 'sending' op comes back queued and attempted", () => {
     const storage = memoryStorageAdapter();
     make({ storage }).enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
-    const saved = JSON.parse(storage.get(OUTBOX_KEY)!);
+    const saved = JSON.parse(storage.get(outboxKey("u1"))!);
     saved.ops[0].status = "sending";
-    storage.set(OUTBOX_KEY, JSON.stringify(saved));
+    storage.set(outboxKey("u1"), JSON.stringify(saved));
 
     const second = make({ storage });
     expect(second.getState().ops[0]).toMatchObject({ kind: "create", status: "queued", attempted: true, body: { reps: 8 } });
@@ -78,7 +78,7 @@ describe("06.2 AC7 — the outbox survives a reload", () => {
     const outbox = make({ storage });
     outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
     outbox.discard(outbox.getState().ops[0]!.id);
-    expect(storage.get(OUTBOX_KEY)).toBeNull();
+    expect(storage.get(outboxKey("u1"))).toBeNull();
   });
 
   it("a storage write failure reports once, keeps working in memory, never throws", () => {
@@ -110,15 +110,15 @@ describe("06.2 AC7 — the outbox survives a reload", () => {
   });
 
   it("an unreadable value is dropped and reported once, never thrown (Review Focus 5)", () => {
-    const storage = memoryStorageAdapter({ [OUTBOX_KEY]: "{not json" });
+    const storage = memoryStorageAdapter({ [outboxKey("u1")]: "{not json" });
     const outbox = make({ storage });
     expect(outbox.getState().ops).toEqual([]);
-    expect(storage.get(OUTBOX_KEY)).toBeNull();
+    expect(storage.get(outboxKey("u1"))).toBeNull();
     expect(observability.reportError).toHaveBeenCalledTimes(1);
   });
 
   it("a well-formed value of the wrong shape is dropped too", () => {
-    const storage = memoryStorageAdapter({ [OUTBOX_KEY]: JSON.stringify({ v: 1, userId: "u1", ops: [{ kind: "create" }], idMap: {} }) });
+    const storage = memoryStorageAdapter({ [outboxKey("u1")]: JSON.stringify({ v: 1, userId: "u1", ops: [{ kind: "create" }], idMap: {} }) });
     expect(make({ storage }).getState().ops).toEqual([]);
     expect(observability.reportError).toHaveBeenCalledTimes(1);
   });
@@ -140,9 +140,9 @@ describe("06.2 AC8 — ops belong to one user", () => {
   it("a file whose ops claim this user under another user's file id is still dropped", () => {
     const storage = memoryStorageAdapter();
     make({ storage }).enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
-    const saved = JSON.parse(storage.get(OUTBOX_KEY)!);
+    const saved = JSON.parse(storage.get(outboxKey("u1"))!);
     saved.userId = "someone-else";
-    storage.set(OUTBOX_KEY, JSON.stringify(saved));
+    storage.set(outboxKey("u1"), JSON.stringify(saved));
     expect(make({ storage }).getState().ops).toEqual([]);
   });
 });
@@ -249,7 +249,7 @@ describe("18.0 AC25 — settle keeps unsent ops of other workouts", () => {
   it("drops an id-map entry of another workout no op needs, keeps one a kept op targets, keeps the active one's", () => {
     const storage = memoryStorageAdapter();
     storage.set(
-      OUTBOX_KEY,
+      outboxKey("u1"),
       JSON.stringify({
         v: 1,
         userId: "u1",

@@ -24,7 +24,7 @@ import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../../test/wo
 import { createWorkoutFake } from "../../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../../test/workoutHarness";
 import { addSetButton, card, deleteSetIn, editDoneButton, openEditFromSummary } from "../../../test/sessionHelpers";
-import { OUTBOX_KEY } from "../outbox/outbox";
+import { outboxKey } from "../outbox/outbox";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -120,7 +120,7 @@ describe("18.0 AC23 — no request burst; the summary is fresh", () => {
     const { workout } = setup();
     const key = "30000000-0000-4000-8000-0000000000f2";
     localStorageAdapter().set(
-      OUTBOX_KEY,
+      outboxKey(USER_ID),
       JSON.stringify({
         v: 1,
         userId: USER_ID,
