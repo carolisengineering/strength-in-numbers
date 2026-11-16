@@ -139,3 +139,20 @@ describe("AC20 — useSession().logout clears user data (Spec 06.0)", () => {
     window.localStorage.clear();
   });
 });
+
+describe("06.7 AC9 — useSession().logout is the deliberate sign-out", () => {
+  it("clears the signed-in user's outbox file and the legacy one, and keeps another user's", async () => {
+    window.localStorage.setItem(`sin:workout:outbox:${ME.id}`, "{}");
+    window.localStorage.setItem("sin:workout:outbox:someone-else", "{}");
+    window.localStorage.setItem("sin:workout:outbox", "{}");
+    const { result } = renderSession();
+    await waitFor(() => expect(result.current.user?.id).toBe(ME.id));
+
+    result.current.logout();
+
+    expect(window.localStorage.getItem(`sin:workout:outbox:${ME.id}`)).toBeNull();
+    expect(window.localStorage.getItem("sin:workout:outbox")).toBeNull();
+    expect(window.localStorage.getItem("sin:workout:outbox:someone-else")).toBe("{}");
+    window.localStorage.clear();
+  });
+});
