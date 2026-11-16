@@ -1,5 +1,8 @@
 import type { Unsaved } from "./logoutGuard";
 
+// Spec 06.7 AC33: the offline-finish copy lives in its own file and is re-exported here, the workouts copy file.
+export * from "./outbox/finishMessages";
+
 /** The only source of the sign-out guard's text (Spec 06.5 AC22). N is the only dynamic value, an integer. */
 export const MESSAGES = {
   syncingTitle: "Saving your sets…",

@@ -1,13 +1,37 @@
 import type { SetEntry, WorkoutDetail, WorkoutSection } from "@sin/core";
 import type { WorkoutClient } from "../workoutClient";
+import { FINISH_WAIT_MS, waitingFinishOf, withQueuedFinish } from "./finish";
 import type { Outbox } from "./outbox";
 import { matches, project } from "./project";
+
+/**
+ * Spec 06.7 AC2, minor 613: a write to a workout whose finish is waiting was refused by the outbox. The screens never
+ * offer one; if one gets through, it fails loudly instead of looking saved.
+ */
+export class WorkoutFinishingError extends Error {
+  constructor() {
+    super("workout is finishing: write refused");
+    this.name = "WorkoutFinishingError";
+  }
+}
+
+/** Throws when the outbox refused the write. */
+function queued(accepted: boolean): void {
+  if (!accepted) throw new WorkoutFinishingError();
+}
 
 export interface QueuedClientDeps {
   rest: WorkoutClient;
   outbox: Outbox;
   /** The cached active workout (already projected), read from TanStack Query by the provider. */
   cached: () => WorkoutDetail | null | undefined;
+  /** Spec 06.7 AC16: the cached `["workouts","detail",id]`, so the summary of a waiting finish needs no request. */
+  cachedDetail?: (id: string) => WorkoutDetail | undefined;
+  /**
+   * Spec 06.7 AC14: finish op ids a tap is waiting on, within `FINISH_WAIT_MS`. The provider's landing effects read it:
+   * a finish that lands in that wait was never shown as "saved on this phone" (`workout_finished.queued` is false).
+   */
+  finishWaits?: Set<string>;
 }
 
 /**
@@ -15,7 +39,7 @@ export interface QueuedClientDeps {
  * what the screen should show; reads overlay the outbox; everything else is the REST client's. A set
  * write for a workout that is not cached (not reachable from the session screen) falls back to REST.
  */
-export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClientDeps): WorkoutClient {
+export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail, finishWaits }: QueuedClientDeps): WorkoutClient {
   const view = (workout: WorkoutDetail) => project(workout, outbox.getState()).workout;
 
   /**
@@ -45,11 +69,42 @@ export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClient
       return server === null ? null : view(server);
     },
 
+    /**
+     * Spec 06.7 AC16: while a finish waits, the summary reads the finished copy — the cached one (no request) or the
+     * server's — with the outbox overlay and the op's `endedAt`. A failure of that read rejects as it is: no half-built workout.
+     */
+    async getById(id, options) {
+      if (!waitingFinishOf(id, outbox.getState().ops)) return rest.getById(id, options);
+      const active = cached();
+      const copy = cachedDetail?.(id) ?? (active?.id === id ? active : undefined) ?? (await rest.getById(id, options));
+      return withQueuedFinish(view(copy), outbox.getState().ops);
+    },
+
+    /**
+     * Spec 06.7 AC13, §6.3: enqueue the finish (persisted before `durable` is read), then wait up to `FINISH_WAIT_MS`
+     * for it to land, unless the outbox knows the browser is offline. Never rejects for the send's sake: that is the op's.
+     */
+    async finishOrQueue(id, body, meta) {
+      const opId = outbox.enqueueFinish({ workoutId: id, body, meta });
+      const refused = () => outbox.getState().ops.some((o) => o.id === opId && o.status === "failed");
+      const queued = (reason: "offline" | "slow") => ({ status: "queued" as const, reason, durable: outbox.getState().durable });
+      // An earlier failed write of the workout blocks the finish at once (AC2): that is a refusal, offline or not.
+      if (refused()) return { status: "refused" };
+      if (!outbox.getState().online) return queued("offline");
+      finishWaits?.add(opId);
+      try {
+        if ((await outbox.whenFinishSettles(opId, FINISH_WAIT_MS)) === "landed") return { status: "landed" };
+        return refused() ? { status: "refused" } : queued("slow");
+      } finally {
+        finishWaits?.delete(opId);
+      }
+    },
+
     async createSet(workoutExerciseId, body) {
       const workout = cached();
       if (!workout?.exercises.some((e) => e.id === workoutExerciseId)) return rest.createSet(workoutExerciseId, body);
       const clientGeneratedId = body.clientGeneratedId ?? crypto.randomUUID();
-      outbox.enqueueCreate({ workoutId: workout.id, workoutExerciseId, body: { ...body, clientGeneratedId } });
+      queued(outbox.enqueueCreate({ workoutId: workout.id, workoutExerciseId, body: { ...body, clientGeneratedId } }));
       const target = { clientGeneratedId };
       return rowIn(view(workout), (s) => matches(s, target, outbox.getState().idMap));
     },
@@ -59,14 +114,14 @@ export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClient
       const exercise = workout ? exerciseOfSet(workout, id) : undefined;
       if (!workout || !exercise) return rest.updateSet(id, body);
       const target = outbox.targetFor(id);
-      outbox.enqueueUpdate({ workoutId: workout.id, workoutExerciseId: exercise.id, target, body });
+      queued(outbox.enqueueUpdate({ workoutId: workout.id, workoutExerciseId: exercise.id, target, body }));
       return rowIn(view(workout), (s) => s.id === id || matches(s, target, outbox.getState().idMap));
     },
 
     async setExerciseNote(id, notes) {
       const workout = cached();
       if (!workout?.exercises.some((e) => e.id === id)) return rest.setExerciseNote(id, notes);
-      outbox.enqueueNote({ workoutId: workout.id, workoutExerciseId: id, body: { notes } });
+      queued(outbox.enqueueNote({ workoutId: workout.id, workoutExerciseId: id, body: { notes } }));
       return view(workout).exercises.find((e) => e.id === id)!;
     },
 
@@ -74,7 +129,7 @@ export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClient
       const workout = cached();
       const exercise = workout ? exerciseOfSet(workout, id) : undefined;
       if (!workout || !exercise) return rest.deleteSet(id);
-      outbox.enqueueDelete({ workoutId: workout.id, workoutExerciseId: exercise.id, target: outbox.targetFor(id) });
+      queued(outbox.enqueueDelete({ workoutId: workout.id, workoutExerciseId: exercise.id, target: outbox.targetFor(id) }));
     },
 
     // Spec 10.7 AC34: a timer entry on a section of the cached workout is queued and resolves at once with the
@@ -82,27 +137,27 @@ export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClient
     async putRoundTime(sectionId, round, seconds) {
       const workout = workoutWithSection(sectionId);
       if (!workout) return rest.putRoundTime(sectionId, round, seconds);
-      outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds } });
+      queued(outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds } }));
       return projectedSection(workout, sectionId);
     },
 
     async deleteRoundTime(sectionId, round) {
       const workout = workoutWithSection(sectionId);
       if (!workout) return rest.deleteRoundTime(sectionId, round);
-      outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds: null } });
+      queued(outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds: null } }));
     },
 
     async putResult(sectionId, body) {
       const workout = workoutWithSection(sectionId);
       if (!workout) return rest.putResult(sectionId, body);
-      outbox.enqueueResult({ workoutId: workout.id, sectionId, body });
+      queued(outbox.enqueueResult({ workoutId: workout.id, sectionId, body }));
       return projectedSection(workout, sectionId);
     },
 
     async deleteResult(sectionId) {
       const workout = workoutWithSection(sectionId);
       if (!workout) return rest.deleteResult(sectionId);
-      outbox.enqueueResult({ workoutId: workout.id, sectionId, body: null });
+      queued(outbox.enqueueResult({ workoutId: workout.id, sectionId, body: null }));
     },
   };
 

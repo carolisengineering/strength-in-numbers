@@ -217,6 +217,7 @@ function PreviewBody({
     if (outcome === null) return;
     if (outcome.kind === "started") goToWorkouts();
     else if (outcome.kind === "resumed") goToWorkouts({ notice: "routine-not-applied" });
+    else if (outcome.kind === "blocked") return; // Spec 06.7 AC18: the message is shown from Phase B2
     else if (outcome.failure.kind === "not-found") {
       // Forget the routine only once this preview unmounts: cleared earlier, a list refetch could land
       // first and flash this screen's own "gone" state before the navigation renders.

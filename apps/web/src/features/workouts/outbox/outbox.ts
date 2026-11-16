@@ -20,6 +20,7 @@ import {
   isFinishOp,
   isSectionOp,
   isSetOp,
+  OutboxOpSchema,
   parseOutboxFile,
   sameTarget,
   type CreateOp,
@@ -118,17 +119,22 @@ interface SectionWriteTarget {
 export interface Outbox {
   getState(): OutboxState;
   subscribe(listener: () => void): () => void;
-  enqueueCreate(input: SetWriteTarget & { body: CreateSet & { clientGeneratedId: string } }): void;
-  enqueueUpdate(input: SetWriteTarget & { target: OpTarget; body: UpdateSet }): void;
-  enqueueDelete(input: SetWriteTarget & { target: OpTarget }): void;
-  /** Spec 10.3: queue one exercise's note (`null` clears it). Newer text replaces a never-sent op for the same exercise. */
-  enqueueNote(input: SetWriteTarget & { body: { notes: string | null } }): void;
-  /** Spec 10.7 AC34: queue one round's final time (`null` clears it). AC35 decides whether it replaces the last op. */
-  enqueueRound(input: SectionWriteTarget & { round: number; body: { seconds: number | null } }): void;
-  /** Spec 10.7 AC34: queue the section's result (`null` clears it). */
-  enqueueResult(input: SectionWriteTarget & { body: SetSectionResult | null }): void;
   /**
-   * Spec 06.7 AC2: queue the workout's finish and return its op id. A queued or sending finish of the workout is kept
+   * The `enqueue*` writes return `false` when refused: the workout has a waiting finish (Spec 06.7 AC2, minor 613), so
+   * nothing was queued and the caller must not show it as saved.
+   */
+  enqueueCreate(input: SetWriteTarget & { body: CreateSet & { clientGeneratedId: string } }): boolean;
+  enqueueUpdate(input: SetWriteTarget & { target: OpTarget; body: UpdateSet }): boolean;
+  enqueueDelete(input: SetWriteTarget & { target: OpTarget }): boolean;
+  /** Spec 10.3: queue one exercise's note (`null` clears it). Newer text replaces a never-sent op for the same exercise. */
+  enqueueNote(input: SetWriteTarget & { body: { notes: string | null } }): boolean;
+  /** Spec 10.7 AC34: queue one round's final time (`null` clears it). AC35 decides whether it replaces the last op. */
+  enqueueRound(input: SectionWriteTarget & { round: number; body: { seconds: number | null } }): boolean;
+  /** Spec 10.7 AC34: queue the section's result (`null` clears it). */
+  enqueueResult(input: SectionWriteTarget & { body: SetSectionResult | null }): boolean;
+  /**
+   * Spec 06.7 AC2: queue the workout's finish and return its op id. An op that doesn't fit `OutboxOpSchema` throws (a
+   * programming error, minor 614): written, it would fail the whole file on the next load. A queued or sending finish of the workout is kept
    * (its id is returned); a failed one is replaced by a fresh op. It sends once no other op of its workout is queued.
    */
   enqueueFinish(input: { workoutId: string; body: FinishOp["body"]; meta: FinishMeta }): string;
@@ -301,17 +307,19 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
   const hasFinish = (workoutId: string) => state.ops.some((o) => isFinishOp(o) && o.workoutId === workoutId);
 
   let refusedReported = false;
-  function enqueue(op: OutboxOp): void {
+  function enqueue(op: OutboxOp): boolean {
     if (finishPending(op.workoutId)) {
-      // Spec 06.7 AC2: nothing joins a workout that is finishing; the screens never offer it, so this is a defensive no-op.
+      // Spec 06.7 AC2: nothing joins a workout that is finishing; the screens never offer it, so this is a defensive
+      // refusal, said to the caller (minor 613) and reported once.
       if (!refusedReported) {
         refusedReported = true;
         reportError(new Error("outbox write refused: the workout is finishing"), { source: "workout-outbox" });
       }
-      return;
+      return false;
     }
     set({ ops: combine(state.ops, op) });
     void drain();
+    return true;
   }
 
   // Spec 06.7 §6.3: who waits for which finish, and the finishes that landed in this page load.
@@ -465,6 +473,11 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
    */
   function fail(op: OutboxOp, failure: OpFailure, error: unknown): void {
     const index = state.ops.findIndex((o) => o.id === op.id);
+    // Minor 616: a finish dropped or discarded mid-send is gone; its late refusal has no one left to tell.
+    if (index === -1 && isFinishOp(op)) {
+      settleFinish(op.id, "pending");
+      return;
+    }
     // Rollback-only since 07.4 (Spec 18.0 AC26): no op can meet `workout-finished` unless the API is rolled back.
     const finished = !isFinishOp(op) && failure.status === 409 && failure.type === "workout-finished";
     const key = op.kind === "create" ? op.target : null;
@@ -620,6 +633,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
         body: input.body,
         meta: input.meta,
       };
+      OutboxOpSchema.parse(op); // minor 614: throws before anything is written
       // A failed finish is replaced: the new op goes to the end of the queue, after everything else of the workout.
       set({ ops: [...state.ops.filter((o) => o !== existing), op] });
       blockFinishes(null);

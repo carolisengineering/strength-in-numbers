@@ -35,6 +35,7 @@ export function fakeClient(overrides: Partial<WorkoutClient> = {}): WorkoutClien
     getById: unexpected("getById"),
     start: unexpected("start"),
     finish: unexpected("finish"),
+    finishOrQueue: unexpected("finishOrQueue"),
     deleteWorkout: unexpected("deleteWorkout"),
     addExercise: unexpected("addExercise"),
     updateWorkoutExercise: unexpected("updateWorkoutExercise"),

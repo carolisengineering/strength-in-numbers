@@ -11,6 +11,8 @@ export interface WorkoutFinishedEvent {
 type Listener = (e: WorkoutFinishedEvent) => void;
 
 const listeners = new Set<Listener>();
+/** Spec 06.7 AC14: workouts already emitted on this page load, so a `409` replay (or a second path) can't emit twice. */
+const emitted = new Set<string>();
 
 /** Subscribe; returns the unsubscribe. */
 export function onWorkoutFinished(listener: Listener): () => void {
@@ -21,6 +23,8 @@ export function onWorkoutFinished(listener: Listener): () => void {
 }
 
 export function emitWorkoutFinished(e: WorkoutFinishedEvent): void {
+  if (emitted.has(e.workoutId)) return;
+  emitted.add(e.workoutId);
   for (const listener of [...listeners]) {
     try {
       listener(e);
@@ -30,7 +34,13 @@ export function emitWorkoutFinished(e: WorkoutFinishedEvent): void {
   }
 }
 
-/** Test-only. */
+/** Test-only: forgets which workouts have emitted, as a new page load would; listeners stay. */
+export function __forgetEmittedForTests(): void {
+  emitted.clear();
+}
+
+/** Test-only: forgets the listeners and which workouts have emitted. */
 export function __resetFinishListeners(): void {
   listeners.clear();
+  emitted.clear();
 }

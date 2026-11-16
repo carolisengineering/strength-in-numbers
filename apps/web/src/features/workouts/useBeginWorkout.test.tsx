@@ -11,6 +11,12 @@ import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../test/w
 import { makeWorkoutDetail } from "../../test/workoutFixtures";
 import { WorkoutSchema } from "@sin/core";
 import { useBeginWorkout } from "./useBeginWorkout";
+import type { ReactNode } from "react";
+import { memoryStorageAdapter } from "../../storage/storage";
+import { START_BLOCKED_MESSAGE } from "./messages";
+import { createOutbox } from "./outbox/outbox";
+import { OutboxContext } from "./outbox/OutboxContext";
+import type { FinishOp } from "./outbox/ops";
 
 afterEach(() => {
   observability.track.mockReset();
@@ -89,5 +95,56 @@ describe("10.0 AC13 — useBeginWorkout keeps the idempotent start", () => {
     const start = vi.fn().mockRejectedValue(conflict("exercise-retired"));
     const { result } = setup(start, { routineId: routineId(1) });
     await act(async () => expect(await result.current.begin()).toMatchObject({ kind: "failed", failure: { kind: "exercise-retired" } }));
+  });
+});
+
+describe("06.7 AC18 — starting is blocked while a finish waits", () => {
+  const finishOp = (status: FinishOp["status"]): FinishOp => ({
+    id: "finish-1",
+    workoutId: "w-finished",
+    userId: "u1",
+    status,
+    attempted: false,
+    attempts: 0,
+    nextAttemptAt: 0,
+    enqueuedAt: 0,
+    kind: "finish",
+    body: { endedAt: "2026-11-08T10:15:00.000Z" },
+    meta: { startedAt: "2026-11-08T09:00:00.000Z", exerciseCount: 1, setCount: 1, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false },
+  });
+
+  function setupWithFinish(start: ReturnType<typeof vi.fn>, status: FinishOp["status"] | null, options?: { routineId?: string }) {
+    const qc = makeQueryClient();
+    const client = fakeClient({ start, getActive: async () => null });
+    const outbox = createOutbox({ storage: memoryStorageAdapter(), rest: client, userId: "u1", isOnline: () => false });
+    if (status) outbox.__setForTests([finishOp(status)]);
+    const Base = wrapperWith(qc, client);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <Base>
+        <OutboxContext.Provider value={outbox}>{children}</OutboxContext.Provider>
+      </Base>
+    );
+    return renderHook(() => useBeginWorkout(options), { wrapper });
+  }
+
+  it.each([
+    ["the Start screen's", undefined],
+    ["a routine preview's", { routineId: routineId(2) }],
+  ])("%s Start returns blocked with no request while a finish op exists, in any status", async (_name, options) => {
+    for (const status of ["queued", "sending", "failed"] as const) {
+      const start = vi.fn().mockResolvedValue(workout);
+      const { result, unmount } = setupWithFinish(start, status, options);
+      await act(async () => expect(await result.current.begin()).toEqual({ kind: "blocked", message: START_BLOCKED_MESSAGE }));
+      expect(start).not.toHaveBeenCalled();
+      unmount();
+    }
+    expect(observability.track).not.toHaveBeenCalled();
+  });
+
+  it("with no finish op it starts as before", async () => {
+    const start = vi.fn().mockResolvedValue(workout);
+    const { result } = setupWithFinish(start, null);
+    await act(async () => expect(await result.current.begin()).toEqual({ kind: "started" }));
+    expect(start).toHaveBeenCalledOnce();
   });
 });
