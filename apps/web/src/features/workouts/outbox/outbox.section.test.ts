@@ -9,6 +9,9 @@ import { memoryStorageAdapter } from "../../../storage/storage";
 import { makeSet, makeTimedSection } from "../../../test/workoutFixtures";
 import { roundTimeIssues, type RoundTime } from "@sin/core";
 import { createOutbox, OUTBOX_KEY, type OutboxDeps } from "./outbox";
+/** Spec 06.7 AC5: every outbox send carries its deadline's signal. */
+const SIGNAL = { signal: expect.any(AbortSignal) };
+
 
 const api = (status: number, slug = "about:blank") =>
   new ApiError({ status, type: slug === "about:blank" ? slug : `https://strengthinnumbers.app/problems/${slug}`, title: "t", requestId: "req" });
@@ -69,11 +72,11 @@ describe("10.7 AC37 — draining round and result ops", () => {
     expect(c.onSectionSynced).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "round", round: 1 }), expect.objectContaining({ id: S }), false);
     round(c, 1, null);
     await settle();
-    expect(c.rest.deleteRoundTime).toHaveBeenCalledWith(S, 1);
+    expect(c.rest.deleteRoundTime).toHaveBeenCalledWith(S, 1, SIGNAL);
     expect(c.onSectionSynced).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "round", body: { seconds: null } }), null, false);
     result(c, null);
     await settle();
-    expect(c.rest.deleteResult).toHaveBeenCalledWith(S);
+    expect(c.rest.deleteResult).toHaveBeenCalledWith(S, SIGNAL);
     expect(c.outbox.getState().ops).toEqual([]);
   });
 

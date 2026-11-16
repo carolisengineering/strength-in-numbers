@@ -1,9 +1,9 @@
 import type { CreateSet, SetEntry, SetSectionResult, UpdateSet, WorkoutExercise, WorkoutSection } from "@sin/core";
-import { ApiError } from "../../../api";
+import { ApiError, newRequestId } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { track } from "../../../observability/track";
 import { watchExternalWrites, type StorageAdapter } from "../../../storage/storage";
-import type { WorkoutClient } from "../workoutClient";
+import type { SendOptions, WorkoutClient } from "../workoutClient";
 import { backoffMs, classify, failureOf } from "./classify";
 import {
   combine,
@@ -21,6 +21,8 @@ import {
 } from "./ops";
 
 export const OUTBOX_KEY = "sin:workout:outbox";
+/** Spec 06.7 AC5: a send that has not answered by now is a network failure (retried with the backoff). */
+export const SEND_TIMEOUT_MS = 20_000;
 /** An op that takes longer than this from enqueue to the server is tracked (`set_sync_delayed`). */
 const DELAYED_MS = 2000;
 
@@ -259,26 +261,47 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     return state.idMap[target.clientGeneratedId]?.setId ?? null;
   }
 
-  async function call(op: OutboxOp): Promise<SetEntry | WorkoutExercise | WorkoutSection | null> {
-    if (op.kind === "note") return rest.setExerciseNote(op.workoutExerciseId, op.body.notes);
-    if (op.kind === "create") return rest.createSet(op.workoutExerciseId, op.body);
+  async function call(op: OutboxOp, options: SendOptions): Promise<SetEntry | WorkoutExercise | WorkoutSection | null> {
+    if (op.kind === "note") return rest.setExerciseNote(op.workoutExerciseId, op.body.notes, options);
+    if (op.kind === "create") return rest.createSet(op.workoutExerciseId, op.body, options);
     // Spec 10.7 AC37: a timer entry is a keyed set or clear on its section; a clear answers 204.
     if (op.kind === "round") {
-      if (op.body.seconds !== null) return need(rest.putRoundTime)(op.sectionId, op.round, op.body.seconds);
-      await need(rest.deleteRoundTime)(op.sectionId, op.round);
+      if (op.body.seconds !== null) return need(rest.putRoundTime)(op.sectionId, op.round, op.body.seconds, options);
+      await need(rest.deleteRoundTime)(op.sectionId, op.round, options);
       return null;
     }
     if (op.kind === "result") {
-      if (op.body !== null) return need(rest.putResult)(op.sectionId, op.body);
-      await need(rest.deleteResult)(op.sectionId);
+      if (op.body !== null) return need(rest.putResult)(op.sectionId, op.body, options);
+      await need(rest.deleteResult)(op.sectionId, options);
       return null;
     }
     if (op.kind === "finish") throw new Error("outbox: a finish op is not sendable yet");
     const id = resolveSetId(op.target);
     if (id === null) throw new UnresolvedTarget();
-    if (op.kind === "update") return rest.updateSet(id, op.body);
-    await rest.deleteSet(id);
+    if (op.kind === "update") return rest.updateSet(id, op.body, options);
+    await rest.deleteSet(id, options);
     return null;
+  }
+
+  /**
+   * Spec 06.7 AC5: one attempt with a deadline. The signal aborts the request at `SEND_TIMEOUT_MS`, and the race ends
+   * the attempt even when something ignores the signal (a hung token fetch). The race settles once, so a reply that
+   * arrives after the deadline is never seen: the op is already back in the queue and its replay is safe (06.2's key).
+   */
+  async function attempt<T>(run: (options: SendOptions) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      deadline = setTimeout(() => {
+        controller.abort();
+        reject(ApiError.network(newRequestId(), new Error("outbox send timed out")));
+      }, SEND_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([run({ signal: controller.signal }), timedOut]);
+    } finally {
+      clearTimeout(deadline);
+    }
   }
 
   function succeed(op: OutboxOp, result: SetEntry | WorkoutExercise | WorkoutSection | null, gone = false): void {
@@ -330,7 +353,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     const attempts = op.attempts + 1;
     patchOp(op.id, { status: "sending", attempted: true, attempts });
     try {
-      succeed(op, await call(op));
+      succeed(op, await attempt((options) => call(op, options)));
     } catch (error) {
       if (error instanceof UnresolvedTarget) {
         fail(op, { status: 0, type: "unresolved", requestId: null }, error);

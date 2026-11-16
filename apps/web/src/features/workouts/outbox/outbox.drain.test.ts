@@ -10,6 +10,9 @@ import { memoryStorageAdapter } from "../../../storage/storage";
 import { makeSet } from "../../../test/workoutFixtures";
 import { deferred } from "../../../test/workoutHarness";
 import { createOutbox, type OutboxDeps } from "./outbox";
+/** Spec 06.7 AC5: every outbox send carries its deadline's signal. */
+const SIGNAL = { signal: expect.any(AbortSignal) };
+
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const KEY2 = "30000000-0000-4000-8000-000000000002";
@@ -121,7 +124,7 @@ describe("06.2 AC4 — one op in flight, first in, first out", () => {
     outbox.enqueueUpdate({ workoutId: "w", workoutExerciseId: "we", target: { clientGeneratedId: KEY }, body: { reps: 9 } });
     gate.resolve(makeSet({ id: SERVER, clientGeneratedId: KEY }));
     await settle();
-    expect(rest.updateSet).toHaveBeenCalledWith(SERVER, { reps: 9 });
+    expect(rest.updateSet).toHaveBeenCalledWith(SERVER, { reps: 9 }, SIGNAL);
     expect(outbox.getState().idMap[KEY]).toEqual({ setId: SERVER, workoutId: "w" });
   });
 
@@ -171,7 +174,7 @@ describe("06.2 AC3 — lost response, then an edit: the server ends at the edite
     await settle();
     expect(rest.createSet).toHaveBeenCalledTimes(2);
     expect(rest.createSet.mock.calls[1]![1]).toMatchObject({ clientGeneratedId: KEY, reps: 8 });
-    expect(rest.updateSet).toHaveBeenCalledWith(SERVER, { reps: 9 });
+    expect(rest.updateSet).toHaveBeenCalledWith(SERVER, { reps: 9 }, SIGNAL);
     expect(outbox.getState().ops).toEqual([]);
   });
 });
