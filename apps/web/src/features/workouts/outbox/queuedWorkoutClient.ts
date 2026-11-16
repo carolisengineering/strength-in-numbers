@@ -4,6 +4,22 @@ import { FINISH_WAIT_MS, waitingFinishOf, withQueuedFinish } from "./finish";
 import type { Outbox } from "./outbox";
 import { matches, project } from "./project";
 
+/**
+ * Spec 06.7 AC2, minor 613: a write to a workout whose finish is waiting was refused by the outbox. The screens never
+ * offer one; if one gets through, it fails loudly instead of looking saved.
+ */
+export class WorkoutFinishingError extends Error {
+  constructor() {
+    super("workout is finishing: write refused");
+    this.name = "WorkoutFinishingError";
+  }
+}
+
+/** Throws when the outbox refused the write. */
+function queued(accepted: boolean): void {
+  if (!accepted) throw new WorkoutFinishingError();
+}
+
 export interface QueuedClientDeps {
   rest: WorkoutClient;
   outbox: Outbox;
@@ -84,7 +100,7 @@ export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail, 
       const workout = cached();
       if (!workout?.exercises.some((e) => e.id === workoutExerciseId)) return rest.createSet(workoutExerciseId, body);
       const clientGeneratedId = body.clientGeneratedId ?? crypto.randomUUID();
-      outbox.enqueueCreate({ workoutId: workout.id, workoutExerciseId, body: { ...body, clientGeneratedId } });
+      queued(outbox.enqueueCreate({ workoutId: workout.id, workoutExerciseId, body: { ...body, clientGeneratedId } }));
       const target = { clientGeneratedId };
       return rowIn(view(workout), (s) => matches(s, target, outbox.getState().idMap));
     },
@@ -94,14 +110,14 @@ export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail, 
       const exercise = workout ? exerciseOfSet(workout, id) : undefined;
       if (!workout || !exercise) return rest.updateSet(id, body);
       const target = outbox.targetFor(id);
-      outbox.enqueueUpdate({ workoutId: workout.id, workoutExerciseId: exercise.id, target, body });
+      queued(outbox.enqueueUpdate({ workoutId: workout.id, workoutExerciseId: exercise.id, target, body }));
       return rowIn(view(workout), (s) => s.id === id || matches(s, target, outbox.getState().idMap));
     },
 
     async setExerciseNote(id, notes) {
       const workout = cached();
       if (!workout?.exercises.some((e) => e.id === id)) return rest.setExerciseNote(id, notes);
-      outbox.enqueueNote({ workoutId: workout.id, workoutExerciseId: id, body: { notes } });
+      queued(outbox.enqueueNote({ workoutId: workout.id, workoutExerciseId: id, body: { notes } }));
       return view(workout).exercises.find((e) => e.id === id)!;
     },
 
@@ -109,7 +125,7 @@ export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail, 
       const workout = cached();
       const exercise = workout ? exerciseOfSet(workout, id) : undefined;
       if (!workout || !exercise) return rest.deleteSet(id);
-      outbox.enqueueDelete({ workoutId: workout.id, workoutExerciseId: exercise.id, target: outbox.targetFor(id) });
+      queued(outbox.enqueueDelete({ workoutId: workout.id, workoutExerciseId: exercise.id, target: outbox.targetFor(id) }));
     },
 
     // Spec 10.7 AC34: a timer entry on a section of the cached workout is queued and resolves at once with the
@@ -117,27 +133,27 @@ export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail, 
     async putRoundTime(sectionId, round, seconds) {
       const workout = workoutWithSection(sectionId);
       if (!workout) return rest.putRoundTime(sectionId, round, seconds);
-      outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds } });
+      queued(outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds } }));
       return projectedSection(workout, sectionId);
     },
 
     async deleteRoundTime(sectionId, round) {
       const workout = workoutWithSection(sectionId);
       if (!workout) return rest.deleteRoundTime(sectionId, round);
-      outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds: null } });
+      queued(outbox.enqueueRound({ workoutId: workout.id, sectionId, round, body: { seconds: null } }));
     },
 
     async putResult(sectionId, body) {
       const workout = workoutWithSection(sectionId);
       if (!workout) return rest.putResult(sectionId, body);
-      outbox.enqueueResult({ workoutId: workout.id, sectionId, body });
+      queued(outbox.enqueueResult({ workoutId: workout.id, sectionId, body }));
       return projectedSection(workout, sectionId);
     },
 
     async deleteResult(sectionId) {
       const workout = workoutWithSection(sectionId);
       if (!workout) return rest.deleteResult(sectionId);
-      outbox.enqueueResult({ workoutId: workout.id, sectionId, body: null });
+      queued(outbox.enqueueResult({ workoutId: workout.id, sectionId, body: null }));
     },
   };
 

@@ -1,5 +1,5 @@
 import { RETIME_MESSAGES } from "@sin/core";
-import { ApiError } from "../../../api";
+import { ApiError, SESSION_EXPIRED_TITLE } from "../../../api";
 import type { OpFailure, OutboxOp } from "./ops";
 
 /** `reconcile` (Spec 06.7 AC3): a finish met `409 workout-finished`; the outbox re-reads the workout to decide. */
@@ -26,6 +26,9 @@ export function classify(kind: OutboxOp["kind"], error: unknown, context: { fini
   if (error.isNetworkError) return "retry";
   const { status } = error;
   if (kind === "finish") {
+    // Minor 617: a lost session (a double 401, or no token at all) is about to sign the lifter out; the forced sign-out
+    // keeps the file (AC9), so the finish waits for the same lifter instead of failing in memory.
+    if (status === 401 || (status === 0 && error.title === SESSION_EXPIRED_TITLE)) return "retry";
     // Spec 06.7 AC3: a replay of a finish the server already applied (or another device's finish) is reconciled by a read.
     if (status === 409 && error.type === "workout-finished") return "reconcile";
     if (status === 422 && isFutureEndedAt(error)) return "retry";
