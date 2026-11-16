@@ -20,6 +20,8 @@ export const isUserDataKey = (key: string): boolean =>
 export const OUTBOX_FILE_PREFIX = "sin:workout:outbox:";
 /** Spec 06.7 AC9: a per-account outbox file (never the legacy single file `sin:workout:outbox`). */
 export const isOutboxFile = (key: string): boolean => key.startsWith(OUTBOX_FILE_PREFIX);
+/** The single outbox file of releases before Spec 06.7: adopted into the per-account file on the outbox's first load. */
+export const LEGACY_OUTBOX_FILE = "sin:workout:outbox";
 
 /**
  * Remove every user-scoped key — for every user, not only the current one — except those `keep` keeps (Spec 06.7

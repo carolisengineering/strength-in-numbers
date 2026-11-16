@@ -11,7 +11,7 @@ import type {
 import { ApiError, newRequestId } from "../../../api";
 import { reportError } from "../../../observability/reportError";
 import { track } from "../../../observability/track";
-import { OUTBOX_FILE_PREFIX } from "../../../storage/clearUserData";
+import { LEGACY_OUTBOX_FILE, OUTBOX_FILE_PREFIX } from "../../../storage/clearUserData";
 import { watchExternalWrites, type StorageAdapter } from "../../../storage/storage";
 import type { SendOptions, WorkoutClient } from "../workoutClient";
 import { backoffMs, classify, failureOf } from "./classify";
@@ -36,7 +36,7 @@ import {
 /** Spec 06.7 AC8: one outbox file per account, so a forced sign-out can keep it and another person never reads it. */
 export const outboxKey = (userId: string): string => `${OUTBOX_FILE_PREFIX}${userId}`;
 /** The single file of releases before 06.7: read once, for adoption into the per-user key, and never written again. */
-export const LEGACY_OUTBOX_KEY = "sin:workout:outbox";
+export const LEGACY_OUTBOX_KEY = LEGACY_OUTBOX_FILE;
 /** Spec 06.7 AC5: a send that has not answered by now is a network failure (retried with the backoff). */
 export const SEND_TIMEOUT_MS = 20_000;
 /** An op that takes longer than this from enqueue to the server is tracked (`set_sync_delayed`). */

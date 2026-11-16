@@ -452,7 +452,7 @@ describe("06.7 AC2, AC3 — whenFinishSettles", () => {
     expect(order).toEqual(["synced", "landed"]);
   });
 
-  it("resolves pending at the timeout, and the request is not cancelled", async () => {
+  it("resolves pending at the timeout, and the request is not canceled", async () => {
     const t = setup();
     t.outbox.start();
     const id = t.outbox.enqueueFinish(finishInput());

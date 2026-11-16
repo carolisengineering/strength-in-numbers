@@ -1,6 +1,6 @@
 import type { Auth0ContextInterface } from "@auth0/auth0-react";
 
-import { clearUserData, isOutboxFile, OUTBOX_FILE_PREFIX } from "../storage/clearUserData";
+import { clearUserData, isOutboxFile, LEGACY_OUTBOX_FILE, OUTBOX_FILE_PREFIX } from "../storage/clearUserData";
 import { blockUserDataWrites, localStorageAdapter, type StorageAdapter } from "../storage/storage";
 
 export type Auth0Logout = Auth0ContextInterface["logout"];
@@ -14,7 +14,8 @@ export type LogoutMode = { kind: "forced" } | { kind: "deliberate"; userId: stri
 
 function keepFor(mode: LogoutMode | undefined): ((key: string) => boolean) | undefined {
   if (mode === undefined) return undefined;
-  if (mode.kind === "forced") return isOutboxFile;
+  // A legacy file is kept too: a session lost before the outbox loaded (and adopted it) must not lose its sets.
+  if (mode.kind === "forced") return (key) => key === LEGACY_OUTBOX_FILE || isOutboxFile(key);
   const own = `${OUTBOX_FILE_PREFIX}${mode.userId}`;
   return (key) => isOutboxFile(key) && key !== own;
 }

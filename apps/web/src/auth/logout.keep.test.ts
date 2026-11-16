@@ -47,7 +47,7 @@ describe("06.7 AC9 — clearUserData takes a keep predicate", () => {
 });
 
 describe("06.7 AC9 — a forced sign-out keeps unsent workout data; a deliberate one clears it", () => {
-  it("forced: keeps every per-account outbox file, clears drafts, rest, catalog, recents, the Hevy key and the legacy file, before Auth0", () => {
+  it("forced: keeps every outbox file (per-account and legacy), clears drafts, rest, catalog, recents and the Hevy key, before Auth0", () => {
     const storage = memoryStorageAdapter(everyKind());
     let keysAtLogout: string[] = [];
     const auth0Logout = vi.fn(() => {
@@ -55,8 +55,15 @@ describe("06.7 AC9 — a forced sign-out keeps unsent workout data; a deliberate
       return Promise.resolve();
     });
     logoutAndClear(auth0Logout, storage, { kind: "forced" });
-    expect(keysAtLogout).toEqual([outboxKey("u1"), outboxKey("u2"), ...KEPT_ALWAYS].sort());
+    expect(keysAtLogout).toEqual([outboxKey("u1"), outboxKey("u2"), LEGACY_OUTBOX_KEY, ...KEPT_ALWAYS].sort());
     expect(auth0Logout).toHaveBeenCalledWith({ logoutParams: { returnTo: window.location.origin } });
+  });
+
+  it("forced: keeps a legacy file not yet adopted (the session ended before the outbox loaded), so its sets aren't lost", () => {
+    const storage = memoryStorageAdapter({ [LEGACY_OUTBOX_KEY]: "legacy", "sin:workout:drafts": "{}" });
+    logoutAndClear(vi.fn(() => Promise.resolve()), storage, { kind: "forced" });
+    expect(storage.get(LEGACY_OUTBOX_KEY)).toBe("legacy");
+    expect(storage.get("sin:workout:drafts")).toBeNull();
   });
 
   it("deliberate: clears the signed-in user's file and the legacy file, keeps other users' files (O1)", () => {
