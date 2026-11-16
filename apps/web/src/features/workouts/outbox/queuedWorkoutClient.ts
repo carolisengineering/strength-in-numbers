@@ -1,5 +1,6 @@
 import type { SetEntry, WorkoutDetail, WorkoutSection } from "@sin/core";
 import type { WorkoutClient } from "../workoutClient";
+import { FINISH_WAIT_MS, waitingFinishOf, withQueuedFinish } from "./finish";
 import type { Outbox } from "./outbox";
 import { matches, project } from "./project";
 
@@ -8,6 +9,8 @@ export interface QueuedClientDeps {
   outbox: Outbox;
   /** The cached active workout (already projected), read from TanStack Query by the provider. */
   cached: () => WorkoutDetail | null | undefined;
+  /** Spec 06.7 AC16: the cached `["workouts","detail",id]`, so the summary of a waiting finish needs no request. */
+  cachedDetail?: (id: string) => WorkoutDetail | undefined;
 }
 
 /**
@@ -15,7 +18,7 @@ export interface QueuedClientDeps {
  * what the screen should show; reads overlay the outbox; everything else is the REST client's. A set
  * write for a workout that is not cached (not reachable from the session screen) falls back to REST.
  */
-export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClientDeps): WorkoutClient {
+export function createQueuedWorkoutClient({ rest, outbox, cached, cachedDetail }: QueuedClientDeps): WorkoutClient {
   const view = (workout: WorkoutDetail) => project(workout, outbox.getState()).workout;
 
   /**
@@ -43,6 +46,28 @@ export function createQueuedWorkoutClient({ rest, outbox, cached }: QueuedClient
       const server = await rest.getActive();
       outbox.settle(server?.id ?? null);
       return server === null ? null : view(server);
+    },
+
+    /**
+     * Spec 06.7 AC16: while a finish waits, the summary reads the finished copy — the cached one (no request) or the
+     * server's — with the outbox overlay and the op's `endedAt`. A failure of that read rejects as it is: no half-built workout.
+     */
+    async getById(id, options) {
+      if (!waitingFinishOf(id, outbox.getState().ops)) return rest.getById(id, options);
+      const active = cached();
+      const copy = cachedDetail?.(id) ?? (active?.id === id ? active : undefined) ?? (await rest.getById(id, options));
+      return withQueuedFinish(view(copy), outbox.getState().ops);
+    },
+
+    /**
+     * Spec 06.7 AC13, §6.3: enqueue the finish (persisted before `durable` is read), then wait up to `FINISH_WAIT_MS`
+     * for it to land, unless the outbox knows the browser is offline. Never rejects for the send's sake: that is the op's.
+     */
+    async finishOrQueue(id, body, meta) {
+      const opId = outbox.enqueueFinish({ workoutId: id, body, meta });
+      const queued = (reason: "offline" | "slow") => ({ status: "queued" as const, reason, durable: outbox.getState().durable });
+      if (!outbox.getState().online) return queued("offline");
+      return (await outbox.whenFinishSettles(opId, FINISH_WAIT_MS)) === "landed" ? { status: "landed" } : queued("slow");
     },
 
     async createSet(workoutExerciseId, body) {

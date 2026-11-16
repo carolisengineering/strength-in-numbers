@@ -151,6 +151,7 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       rest,
       outbox,
       cached: () => queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active),
+      cachedDetail: (id) => queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id)),
     });
     return {
       outbox,

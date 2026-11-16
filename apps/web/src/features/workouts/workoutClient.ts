@@ -20,6 +20,7 @@ import {
 } from "@sin/core";
 import { ApiError, type ApiClient, type ApiRequestOptions } from "../../api";
 import type { ResponseSchema } from "../../api/client";
+import type { FinishMeta } from "./outbox/ops";
 
 /** The keys `updateWorkoutExercise` may send (Spec 10.1 AC11). Deliberately no `notes` (Spec 09 D22). */
 export interface WorkoutExercisePatch {
@@ -43,6 +44,12 @@ export interface SendOptions {
 }
 
 /**
+ * Spec 06.7 AC13: what a Finish tap became. `landed`: the cloud has it (the landing effects have run). `queued`: it is
+ * saved on this phone and sends later; `durable` is false when the phone couldn't save it (keep the page open).
+ */
+export type FinishOutcome = { status: "landed" } | { status: "queued"; reason: "offline" | "slow"; durable: boolean };
+
+/**
  * The REST seam for the workout screen (Spec 06.1 §6.1). React-free. Every write the screen makes
  * goes through this object so Spec 06.2 can replace it with a queue-backed one; the mutation hooks
  * never call `api.*` directly.
@@ -54,6 +61,11 @@ export interface WorkoutClient {
   start(body: CreateWorkout): Promise<Workout>;
   /** The workout plus `newRecords` (Spec 07.0 D12): parsed with `UpdatedWorkoutSchema` so Zod keeps it (Spec 08.0 AC5). */
   finish(id: string, body: { endedAt: string; keepRoutine?: true }, options?: SendOptions): Promise<UpdatedWorkout>;
+  /**
+   * Spec 06.7 AC13: finish, or queue the finish. Resolves; rejects only for a programming error (a network, timeout or
+   * server failure is the op's, AC3). The REST client (the edit client, which never queues) wraps `finish`.
+   */
+  finishOrQueue(id: string, body: { endedAt: string; keepRoutine?: true }, meta: FinishMeta): Promise<FinishOutcome>;
   deleteWorkout(id: string): Promise<void>;
   addExercise(workoutId: string, body: { exerciseId: string }): Promise<WorkoutExercise>;
   /** Spec 10.1 AC11: exactly the keys given go on the wire. No `notes` — a regroup must never overwrite a note copied from the routine (Spec 09 D22). */
@@ -119,6 +131,10 @@ export function createWorkoutClient(
     getById: (id, options) => call("GET", `/v1/workouts/${seg(id)}`, undefined, WorkoutDetailSchema, options),
     start: (body) => api.post("/v1/workouts", body, WorkoutSchema),
     finish: (id, body, options) => call("PATCH", `/v1/workouts/${seg(id)}`, body, UpdatedWorkoutSchema, options),
+    finishOrQueue: async (id, body) => {
+      await client.finish(id, body);
+      return { status: "landed" };
+    },
     deleteWorkout: async (id) => {
       await api.delete(`/v1/workouts/${seg(id)}`);
     },
