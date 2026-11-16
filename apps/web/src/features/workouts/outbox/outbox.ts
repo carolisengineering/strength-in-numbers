@@ -32,7 +32,10 @@ import {
   type SectionOp,
 } from "./ops";
 
-export const OUTBOX_KEY = "sin:workout:outbox";
+/** Spec 06.7 AC8: one outbox file per account, so a forced sign-out can keep it and another person never reads it. */
+export const outboxKey = (userId: string): string => `sin:workout:outbox:${userId}`;
+/** The single file of releases before 06.7: read once, for adoption into the per-user key, and never written again. */
+export const LEGACY_OUTBOX_KEY = "sin:workout:outbox";
 /** Spec 06.7 AC5: a send that has not answered by now is a network failure (retried with the backoff). */
 export const SEND_TIMEOUT_MS = 20_000;
 /** An op that takes longer than this from enqueue to the server is tracked (`set_sync_delayed`). */
@@ -177,15 +180,18 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     reportError(error, { source: "workout-storage" });
   };
 
-  function load(): { ops: readonly OutboxOp[]; idMap: IdMap } {
+  const key = outboxKey(userId);
+
+  /** Read and parse one file: `"absent"`, or `"bad"` when unreadable (reported, and the unreadable value removed: nobody can use it). */
+  function readFile(fileKey: string): NonNullable<ReturnType<typeof parseOutboxFile>> | "absent" | "bad" {
     let raw: string | null;
     try {
-      raw = storage.get(OUTBOX_KEY);
+      raw = storage.get(fileKey);
     } catch (error) {
       reportStorage(error);
-      return EMPTY;
+      return "bad";
     }
-    if (raw === null) return EMPTY;
+    if (raw === null) return "absent";
     let parsed: ReturnType<typeof parseOutboxFile>;
     try {
       parsed = parseOutboxFile(JSON.parse(raw));
@@ -195,20 +201,46 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     if (parsed === null) {
       reportError(new Error("unreadable outbox"), { source: "workout-storage" });
       try {
-        storage.remove(OUTBOX_KEY);
+        storage.remove(fileKey);
       } catch {
         // Ignored either way: the value is not read again.
       }
-      return EMPTY;
+      return "bad";
     }
     // Spec 10.7 AC66: ops of a kind this bundle doesn't know are left out (the next persist drops them); said once,
     // statically — never their contents or how many.
     if (parsed.skipped > 0) reportError(new Error("outbox ops of an unknown kind skipped"), { source: "workout-storage" });
-    if (parsed.userId !== userId) return EMPTY;
-    const ops = parsed.ops
+    return parsed;
+  }
+
+  const ownOps = (parsed: NonNullable<ReturnType<typeof parseOutboxFile>>): { ops: readonly OutboxOp[]; idMap: IdMap } => ({
+    ops: parsed.ops
       .filter((op) => op.userId === userId)
-      .map((op) => (op.status === "sending" ? { ...op, status: "queued" as const, attempted: true } : op));
-    return { ops, idMap: parsed.idMap };
+      .map((op) => (op.status === "sending" ? { ...op, status: "queued" as const, attempted: true } : op)),
+    idMap: parsed.idMap,
+  });
+
+  /**
+   * Spec 06.7 AC8: the per-user file; if absent, a legacy file of this user is adopted (written to the per-user key,
+   * then removed; a failed write leaves it). Another user's legacy file is left alone. An existing per-user file wins
+   * and nothing merges. A corrupt file drops that key only.
+   */
+  function load(): { ops: readonly OutboxOp[]; idMap: IdMap } {
+    const own = readFile(key);
+    if (own === "bad") return EMPTY;
+    if (own !== "absent") return own.userId === userId ? ownOps(own) : EMPTY;
+    const legacy = readFile(LEGACY_OUTBOX_KEY);
+    if (legacy === "bad" || legacy === "absent" || legacy.userId !== userId) return EMPTY;
+    const adopted = ownOps(legacy);
+    try {
+      if (legacy.ops.length > 0 || Object.keys(legacy.idMap).length > 0) {
+        storage.set(key, JSON.stringify({ v: 1, userId, ops: legacy.ops, idMap: legacy.idMap }));
+      }
+      storage.remove(LEGACY_OUTBOX_KEY);
+    } catch (error) {
+      reportStorage(error);
+    }
+    return adopted;
   }
 
   let state: OutboxState = { ...load(), online: isOnline(), conflict: false, durable: storageOk };
@@ -216,8 +248,8 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
   function persist(): void {
     if (!storageOk || state.conflict) return;
     try {
-      if (state.ops.length === 0 && Object.keys(state.idMap).length === 0) storage.remove(OUTBOX_KEY);
-      else storage.set(OUTBOX_KEY, JSON.stringify({ v: 1, userId, ops: state.ops, idMap: state.idMap }));
+      if (state.ops.length === 0 && Object.keys(state.idMap).length === 0) storage.remove(key);
+      else storage.set(key, JSON.stringify({ v: 1, userId, ops: state.ops, idMap: state.idMap }));
     } catch (error) {
       reportStorage(error);
     }
@@ -678,7 +710,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       window.addEventListener("online", onOnline);
       window.addEventListener("offline", onOffline);
       document.addEventListener("visibilitychange", onVisible);
-      const unwatch = watchExternalWrites(OUTBOX_KEY, () => {
+      const unwatch = watchExternalWrites(key, () => {
         clearTimer();
         set({ conflict: true }, false);
       });

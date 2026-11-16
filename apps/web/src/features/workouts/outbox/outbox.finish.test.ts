@@ -9,7 +9,7 @@ import { ApiError } from "../../../api";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { memoryStorageAdapter, type StorageAdapter } from "../../../storage/storage";
 import type { FinishMeta, FinishOp, OutboxOp } from "./ops";
-import { createOutbox, OUTBOX_KEY, SEND_TIMEOUT_MS, type OutboxDeps } from "./outbox";
+import { createOutbox, outboxKey, SEND_TIMEOUT_MS, type OutboxDeps } from "./outbox";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const KEY2 = "30000000-0000-4000-8000-000000000002";
@@ -369,7 +369,7 @@ describe("06.7 AC4 — a replay sends the same finish", () => {
   it("a 'sending' finish on load becomes queued and attempted, sends the same body, and its 409 reconciles as ours", async () => {
     const storage: StorageAdapter = memoryStorageAdapter();
     const op = finishOpOf("w", { status: "sending", attempted: true, attempts: 1, body: { endedAt: ENDED, keepRoutine: true } });
-    storage.set(OUTBOX_KEY, JSON.stringify({ v: 1, userId: "u1", ops: [op], idMap: {} }));
+    storage.set(outboxKey("u1"), JSON.stringify({ v: 1, userId: "u1", ops: [op], idMap: {} }));
     const t = setup({ storage, isOnline: () => false });
     expect(t.outbox.getState().ops[0]).toMatchObject({ status: "queued", attempted: true });
 

@@ -23,7 +23,7 @@ import { API_BASE_URL, USER_ID } from "../../test/catalogHarness";
 import { makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { OUTBOX_KEY } from "./outbox/outbox";
+import { outboxKey } from "./outbox/outbox";
 import { unsavedTimerEntries } from "./outbox/ops";
 import { WORKOUT_KEYS } from "./queries";
 
@@ -43,7 +43,7 @@ let seq = 0;
 /** Queued, never-sent timer entries for one section, as a reloaded tab would find them. */
 function seedSectionOps(workoutId: string, sectionId: string, entries: Seed[]) {
   localStorageAdapter().set(
-    OUTBOX_KEY,
+    outboxKey(USER_ID),
     JSON.stringify({
       v: 1,
       userId: USER_ID,
@@ -63,7 +63,7 @@ function seedSectionOps(workoutId: string, sectionId: string, entries: Seed[]) {
     }),
   );
 }
-const storedOps = () => JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops as { kind: string; status: string }[];
+const storedOps = () => JSON.parse(localStorageAdapter().get(outboxKey(USER_ID)) ?? '{"ops":[]}').ops as { kind: string; status: string }[];
 const AMRAP12: SectionTimer = { format: "amrap", capSeconds: 720 };
 
 async function boot(timer: SectionTimer | null, roundTimes: { round: number; seconds: number }[], entries: (w: WorkoutDetail) => [string, Seed[]]) {

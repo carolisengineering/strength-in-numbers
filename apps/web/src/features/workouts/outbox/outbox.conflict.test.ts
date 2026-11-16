@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { memoryStorageAdapter } from "../../../storage/storage";
-import { createOutbox, OUTBOX_KEY } from "./outbox";
+import { createOutbox, outboxKey } from "./outbox";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 afterEach(() => vi.restoreAllMocks());
@@ -13,7 +13,7 @@ describe("06.2 AC19 — two tabs cannot corrupt the outbox", () => {
     const outbox = createOutbox({ storage, rest, userId: "u1", isOnline: () => false });
     const stop = outbox.start();
 
-    window.dispatchEvent(new StorageEvent("storage", { key: OUTBOX_KEY, newValue: "{}", storageArea: window.localStorage }));
+    window.dispatchEvent(new StorageEvent("storage", { key: outboxKey("u1"), newValue: "{}", storageArea: window.localStorage }));
     expect(outbox.getState().conflict).toBe(true);
 
     const writes = setSpy.mock.calls.length;
@@ -27,7 +27,7 @@ describe("06.2 AC19 — two tabs cannot corrupt the outbox", () => {
   it("after stop() another tab's write is ignored", () => {
     const outbox = createOutbox({ storage: memoryStorageAdapter(), rest: { createSet: vi.fn(), updateSet: vi.fn(), deleteSet: vi.fn(), setExerciseNote: vi.fn() }, userId: "u1" });
     outbox.start()();
-    window.dispatchEvent(new StorageEvent("storage", { key: OUTBOX_KEY, newValue: "{}", storageArea: window.localStorage }));
+    window.dispatchEvent(new StorageEvent("storage", { key: outboxKey("u1"), newValue: "{}", storageArea: window.localStorage }));
     expect(outbox.getState().conflict).toBe(false);
   });
 });

@@ -8,7 +8,7 @@ import { ApiError } from "../../../api";
 import { memoryStorageAdapter } from "../../../storage/storage";
 import { makeSet, makeTimedSection } from "../../../test/workoutFixtures";
 import { roundTimeIssues, type RoundTime } from "@sin/core";
-import { createOutbox, OUTBOX_KEY, type OutboxDeps } from "./outbox";
+import { createOutbox, outboxKey, type OutboxDeps } from "./outbox";
 /** Spec 06.7 AC5: every outbox send carries its deadline's signal. */
 const SIGNAL = { signal: expect.any(AbortSignal) };
 
@@ -205,9 +205,9 @@ describe("10.7 AC41 — reload restores section ops", () => {
     first.setOnline(false);
     round(first, 2, 515);
     first.stop();
-    const saved = JSON.parse(storage.get(OUTBOX_KEY)!);
+    const saved = JSON.parse(storage.get(outboxKey("u1"))!);
     saved.ops[0].status = "sending";
-    storage.set(OUTBOX_KEY, JSON.stringify(saved));
+    storage.set(outboxKey("u1"), JSON.stringify(saved));
     const second = createOutbox({ storage, rest: first.rest, userId: "u1", isOnline: () => false });
     expect(second.getState().ops[0]).toMatchObject({ kind: "round", round: 2, body: { seconds: 515 }, status: "queued", attempted: true });
     const stranger = createOutbox({ storage, rest: first.rest, userId: "u2", isOnline: () => false });

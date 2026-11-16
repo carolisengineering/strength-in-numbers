@@ -8,7 +8,7 @@ import type { WorkoutExercise } from "@sin/core";
 import { ApiError } from "../../../api";
 import { memoryStorageAdapter } from "../../../storage/storage";
 import { makeSet, makeWorkoutDetail } from "../../../test/workoutFixtures";
-import { createOutbox, OUTBOX_KEY, type OutboxDeps } from "./outbox";
+import { createOutbox, outboxKey, type OutboxDeps } from "./outbox";
 /** Spec 06.7 AC5: every outbox send carries its deadline's signal. */
 const SIGNAL = { signal: expect.any(AbortSignal) };
 
@@ -148,7 +148,7 @@ describe("10.3 AC30 — persistence", () => {
   it("another user's file is ignored", () => {
     const storage = memoryStorageAdapter();
     const stored = { v: 1, userId: "someone-else", idMap: {}, ops: [{ id: "x", kind: "note", workoutId: "w", workoutExerciseId: "we", userId: "someone-else", status: "queued", attempted: false, attempts: 0, nextAttemptAt: 0, enqueuedAt: 0, body: { notes: "theirs" } }] };
-    storage.set(OUTBOX_KEY, JSON.stringify(stored));
+    storage.set(outboxKey("u1"), JSON.stringify(stored));
     const { outbox, rest } = setup({}, storage);
     expect(outbox.getState().ops).toEqual([]);
     expect(rest.setExerciseNote).not.toHaveBeenCalled();

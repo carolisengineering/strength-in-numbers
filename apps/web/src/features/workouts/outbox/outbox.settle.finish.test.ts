@@ -5,7 +5,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: vi.fn() }));
 
 import { memoryStorageAdapter } from "../../../storage/storage";
 import type { FinishOp, OpFailure, OutboxOp } from "./ops";
-import { createOutbox, OUTBOX_KEY } from "./outbox";
+import { createOutbox, outboxKey } from "./outbox";
 
 const KEY = "30000000-0000-4000-8000-000000000001";
 const KEY2 = "30000000-0000-4000-8000-000000000002";
@@ -27,7 +27,7 @@ const failed = <T extends OutboxOp>(op: T): T => ({ ...op, status: "failed", fai
 
 function withIdMap(idMap: Record<string, { setId: string; workoutId: string }>) {
   const storage = memoryStorageAdapter();
-  storage.set(OUTBOX_KEY, JSON.stringify({ v: 1, userId: "u1", ops: [], idMap }));
+  storage.set(outboxKey("u1"), JSON.stringify({ v: 1, userId: "u1", ops: [], idMap }));
   return createOutbox({ storage, rest: rest(), userId: "u1", isOnline: () => false });
 }
 

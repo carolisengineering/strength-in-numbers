@@ -7,7 +7,7 @@ vi.mock("../../../observability/reportError", () => ({ reportError: observabilit
 import type { UpdatedWorkout } from "@sin/core";
 import { makeWorkoutDetail } from "../../../test/workoutFixtures";
 import { memoryStorageAdapter, type StorageAdapter } from "../../../storage/storage";
-import { createOutbox, OUTBOX_KEY } from "./outbox";
+import { createOutbox, outboxKey } from "./outbox";
 
 const META = { startedAt: "2026-11-08T09:00:00.000Z", exerciseCount: 1, setCount: 3, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false };
 const ENDED = "2026-11-08T10:15:00.000Z";
@@ -70,7 +70,7 @@ describe("06.7 AC10 — the outbox knows whether 'saved on this phone' is true",
   it("durable is false while conflict is true (another tab wrote the file)", () => {
     const outbox = createOutbox({ storage: memoryStorageAdapter(), rest: rest(), userId: "u1", isOnline: () => false });
     const stop = outbox.start();
-    window.dispatchEvent(new StorageEvent("storage", { key: OUTBOX_KEY, newValue: "{}", storageArea: window.localStorage }));
+    window.dispatchEvent(new StorageEvent("storage", { key: outboxKey("u1"), newValue: "{}", storageArea: window.localStorage }));
     expect(outbox.getState().conflict).toBe(true);
     expect(outbox.getState().durable).toBe(false);
     stop();

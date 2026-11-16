@@ -19,7 +19,7 @@ import { USER_ID } from "../../test/catalogHarness";
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
-import { OUTBOX_KEY } from "./outbox/outbox";
+import { outboxKey } from "./outbox/outbox";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -35,7 +35,7 @@ type Fake = ReturnType<typeof createWorkoutFake>;
 /** A queued, never-sent set create for `workoutExerciseId`, as a reloaded tab would find it. */
 function seedQueuedCreate(workoutId: string, workoutExerciseId: string) {
   localStorageAdapter().set(
-    OUTBOX_KEY,
+    outboxKey(USER_ID),
     JSON.stringify({
       v: 1,
       userId: USER_ID,
@@ -80,7 +80,7 @@ describe("18.0 AC24 — a late op on a workout that is not active refreshes its 
     expect(gets(fake, `/v1/workouts/${finished.id}`)).toBe(1);
     online = true;
     window.dispatchEvent(new Event("online"));
-    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]));
+    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(outboxKey(USER_ID)) ?? '{"ops":[]}').ops).toEqual([]));
     await waitFor(() => expect(gets(fake, `/v1/workouts/${finished.id}`)).toBe(2));
     await waitFor(() => expect(gets(fake, "/v1/personal-records", `?workoutId=${finished.id}`)).toBe(2));
     expect(fake.state.finished.get(finished.id)!.exercises[0]!.sets).toHaveLength(2);
@@ -94,7 +94,7 @@ describe("18.0 AC24 — a late op on a workout that is not active refreshes its 
     renderApp("/app/workouts");
     await screen.findByRole("heading", { name: "Workout" });
     // The active workout keeps its id-map entry, so the file stays; its op list empties.
-    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]));
+    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(outboxKey(USER_ID)) ?? '{"ops":[]}').ops).toEqual([]));
     expect(fake.state.active!.exercises[0]!.sets).toHaveLength(2);
     expect(fake.requests.some((r) => r.method === "GET" && r.path === `/v1/workouts/${active.id}`)).toBe(false);
   });
@@ -111,7 +111,7 @@ describe("18.0 AC24 — a late op on a workout that is not active refreshes its 
     await waitFor(() => expect(listReads()).toBe(1));
     online = true;
     window.dispatchEvent(new Event("online"));
-    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(OUTBOX_KEY) ?? '{"ops":[]}').ops).toEqual([]));
+    await waitFor(() => expect(JSON.parse(localStorageAdapter().get(outboxKey(USER_ID)) ?? '{"ops":[]}').ops).toEqual([]));
     expect(fake.state.active!.exercises[0]!.sets).toHaveLength(2);
     expect(listReads()).toBe(1);
     expect(fake.requests.some((r) => r.method === "GET" && r.path === `/v1/workouts/${active.id}`)).toBe(false);
