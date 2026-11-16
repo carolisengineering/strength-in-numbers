@@ -24,7 +24,7 @@ import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { finishButton, logButton, showOptions } from "../../test/sessionHelpers";
-import { outboxKey } from "./outbox/outbox";
+import { LEGACY_OUTBOX_KEY, outboxKey } from "./outbox/outbox";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -151,15 +151,19 @@ describe("10.3 AC30 — offline, reload, other user", () => {
     const fake = createWorkoutFake({ active: makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "X", notes: "Server text", sets: [makeSet({ setNumber: 1 })] }] }) });
     prepareApp({ auth, fake });
     const exerciseId = fake.state.active!.exercises[0]!.id;
-    localStorageAdapter().set(
-      outboxKey(USER_ID),
-      JSON.stringify({ v: 1, userId: "someone-else", idMap: {}, ops: [{ id: "x", kind: "note", workoutId: fake.state.active!.id, workoutExerciseId: exerciseId, userId: "someone-else", status: "queued", attempted: false, attempts: 0, nextAttemptAt: 0, enqueuedAt: 0, body: { notes: "THEIRS" } }] }),
-    );
+    const theirs = JSON.stringify({ v: 1, userId: "someone-else", idMap: {}, ops: [{ id: "x", kind: "note", workoutId: fake.state.active!.id, workoutExerciseId: exerciseId, userId: "someone-else", status: "queued", attempted: false, attempts: 0, nextAttemptAt: 0, enqueuedAt: 0, body: { notes: "THEIRS" } }] });
+    // Spec 06.7 AC8: where another person's file really lives (their own key), the old single file, and a stray copy
+    // under this lifter's key whose userId is theirs.
+    localStorageAdapter().set(outboxKey("someone-else"), theirs);
+    localStorageAdapter().set(LEGACY_OUTBOX_KEY, theirs);
+    localStorageAdapter().set(outboxKey(USER_ID), theirs);
     renderApp("/app/workouts");
     await screen.findByRole("heading", { name: "Workout" });
     expect(screen.getByText("Server text")).toBeInTheDocument();
     expect(screen.queryByText("THEIRS")).toBeNull();
     expect(fake.requests.filter((r) => r.method === "PATCH")).toEqual([]);
+    expect(localStorageAdapter().get(outboxKey("someone-else"))).toBe(theirs);
+    expect(localStorageAdapter().get(LEGACY_OUTBOX_KEY)).toBe(theirs);
   });
 
   it("logout clears a queued note (the sin:workout: prefix)", async () => {

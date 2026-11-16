@@ -202,6 +202,17 @@ describe("06.7 AC2 — at most one finish per workout, and it sends last", () =>
     expect(t.rest.finish).not.toHaveBeenCalled();
   });
 
+  it("a failed op stored without a failure (the field is optional) still blocks the finish, so it never waits forever", async () => {
+    const storage = memoryStorageAdapter();
+    const failedSet = { id: "c", workoutId: "w", workoutExerciseId: "we", userId: "u1", status: "failed", attempted: true, attempts: 1, nextAttemptAt: 0, enqueuedAt: 0, kind: "create", target: { clientGeneratedId: KEY }, body: setBody() };
+    storage.set(outboxKey("u1"), JSON.stringify({ v: 1, userId: "u1", ops: [failedSet, finishOpOf("w")], idMap: {} }));
+    const t = setup({ storage });
+    t.outbox.start();
+    await flush();
+    expect(finishOf(t.outbox.getState().ops)).toMatchObject({ status: "failed", failure: { status: 0, type: "unknown", requestId: null, blockedBy: "c" } });
+    expect(t.onFinishFailed).toHaveBeenCalledTimes(1);
+  });
+
   it("ops of another workout never hold or fail the finish", async () => {
     const t = setup();
     t.outbox.start();

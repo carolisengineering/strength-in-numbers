@@ -47,7 +47,7 @@ class UnresolvedTarget extends Error {}
 
 /** A REST method a timer entry or a finish needs; a client without it is a wiring mistake (a set-only test stub). */
 function need<F>(method: F | undefined): F {
-  if (method === undefined) throw new Error("outbox: the REST client has no timer-entry methods");
+  if (method === undefined) throw new Error("outbox: the REST client lacks a timer-entry or finish method");
   return method;
 }
 
@@ -446,8 +446,10 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     const ops = state.ops.map((o) => {
       if (!isFinishOp(o) || o.status === "failed") return o;
       const root = state.ops.find((r) => !isFinishOp(r) && r.workoutId === o.workoutId && r.status === "failed");
-      if (!root?.failure) return o;
-      const next: FinishOp = { ...o, status: "failed", failure: { ...root.failure, blockedBy: root.id } };
+      if (!root) return o;
+      // `failure` is optional in the file: a failed op without one must still block, or the finish would wait forever.
+      const failure = root.failure ?? { status: 0, type: "unknown", requestId: null };
+      const next: FinishOp = { ...o, status: "failed", failure: { ...failure, blockedBy: root.id } };
       blocked.push(next);
       return next;
     });
