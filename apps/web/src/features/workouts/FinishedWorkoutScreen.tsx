@@ -118,11 +118,15 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   const { waiting } = useWaitingFinish(workout.id);
   // Spec 06.7 AC34: arriving from a Finish tap that saved it on the phone, focus goes to the heading (the message
   // under it is a polite region, read after).
+  // The tap's reason is read once and then cleared: a browser router keeps it in history state, so a reload or Back
+  // would otherwise say "no signal" again and move focus again (final review). Later wording comes from the outbox.
   const location = useLocation();
-  const fromTap = (location.state as { saved?: string } | null)?.saved !== undefined;
+  const [tapped] = useState(() => (location.state as { saved?: "offline" | "slow" } | null)?.saved);
   const titleRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    if (fromTap) titleRef.current?.focus();
+    if (tapped === undefined) return;
+    titleRef.current?.focus();
+    void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
   }, []);
   const home = SECTION_HOME[section];
@@ -156,7 +160,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       {workout.title !== null && hasOwnTitle(workout) ? <WorkoutText text={workout.title} variant="title" /> : null}
       <p className={styles.meta}>{date}</p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
-      <SavedMessage workoutId={workout.id} endedAt={endedAt} waiting={waiting} />
+      <SavedMessage workoutId={workout.id} endedAt={endedAt} waiting={waiting} tapped={tapped} />
       {/* Spec 17.6 AC21: records, stats, workout notes, exercises, the Hevy block, then the routine note. Spec 06.7 AC24:
           no records and no Hevy while the finish waits — the cloud doesn't have it yet. */}
       {waiting ? null : <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} section={section} />}
@@ -234,11 +238,9 @@ function SummaryTop({ home, waiting, children }: { home: { to: string; label: st
  * online wording from the outbox). Once a finish this screen saw waiting lands: "Sent to the cloud.", or
  * `SAVED_ELSEWHERE` when the server's end time isn't the one this phone sent.
  */
-function SavedMessage({ workoutId, endedAt, waiting }: { workoutId: string; endedAt: string; waiting: boolean }) {
+function SavedMessage({ workoutId, endedAt, waiting, tapped }: { workoutId: string; endedAt: string; waiting: boolean; tapped: "offline" | "slow" | undefined }) {
   const { durable, online } = useOutboxState();
   const { op } = useWaitingFinish(workoutId);
-  const location = useLocation();
-  const tapped = (location.state as { saved?: "offline" | "slow" } | null)?.saved;
   const [sentAt, setSentAt] = useState<string | null>(waiting ? (op?.body.endedAt ?? null) : null);
   useEffect(() => {
     if (waiting && op) setSentAt(op.body.endedAt);

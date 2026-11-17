@@ -83,7 +83,10 @@ describe("06.7 AC15 — a finish with no signal is not treated as in the cloud",
     await user.click(within(dialog()).getByRole("button", { name: "Finish" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
-    expect(router.state.location.state).toEqual({ saved: "offline" });
+    // Final review: the summary reads the tap's reason once and clears it, so a reload (a browser router keeps
+    // history state) or Back words the message from the outbox instead of a stale "no signal".
+    await waitFor(() => expect(router.state.location.state ?? null).toBeNull());
+    expect(screen.getByTestId("finish-saved")).toHaveTextContent("There's no signal");
     expect(events()).toContain("workout_finish_queued");
     expect(observability.track).toHaveBeenCalledWith("workout_finish_queued", { reason: "offline" });
     expect(events()).not.toContain("workout_finished");

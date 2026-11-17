@@ -167,3 +167,39 @@ describe("06.7 AC29 — Review Focus 3 and 4: a set refused behind a waiting fin
     await screen.findByRole("heading", { level: 1, name: "Workout summary" });
   });
 });
+
+describe("06.7 AC29 — final review: the blocked banner counts sets, not ops", () => {
+  async function seeded(ops: (w: { id: string; exercises: { id: string }[] }) => unknown[]) {
+    const active = makeWorkoutDetail({ exercises: oneSet });
+    const fake = createWorkoutFake({ active });
+    prepareApp({ auth, fake });
+    localStorageAdapter().set(outboxKey(USER_ID), JSON.stringify({ v: 1, userId: USER_ID, idMap: {}, ops: ops(active) }));
+    renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+  }
+  const base = (w: { id: string }, id: string) => ({ id, workoutId: w.id, userId: USER_ID, status: "failed", attempted: true, attempts: 1, nextAttemptAt: 0, enqueuedAt: 0, failure: { status: 422, type: "validation-error", requestId: "r" } });
+  const KEY = "30000000-0000-4000-8000-0000000000a1";
+  const finishBlockedBy = (w: { id: string; startedAt?: string }, root: string) => ({
+    ...base(w, "finish-op"),
+    kind: "finish",
+    failure: { status: 422, type: "validation-error", requestId: "r", blockedBy: root },
+    body: { endedAt: "2026-10-02T11:00:00.000Z" },
+    meta: { startedAt: "2026-10-02T10:00:00.000Z", exerciseCount: 1, setCount: 2, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false },
+  });
+
+  it("a set created and then edited, refused together (two ops), reads one set", async () => {
+    await seeded((w) => [
+      { ...base(w, "c1"), kind: "create", workoutExerciseId: w.exercises[0]!.id, target: { clientGeneratedId: KEY }, body: { clientGeneratedId: KEY, weight: 60, weightUnit: "kg", reps: 5, isComplete: true } },
+      { ...base(w, "u1"), kind: "update", workoutExerciseId: w.exercises[0]!.id, target: { clientGeneratedId: KEY }, body: { reps: 6 } },
+      finishBlockedBy(w, "c1"),
+    ]);
+    expect(await banner()).toHaveTextContent(`${REFUSED_LEAD} ${refusedBlocked(1)}`);
+  });
+
+  it("a refused note (no set) never says a set couldn't be saved", async () => {
+    await seeded((w) => [{ ...base(w, "n1"), kind: "note", workoutExerciseId: w.exercises[0]!.id, body: { notes: "x" } }, finishBlockedBy(w, "n1")]);
+    const alert = await banner();
+    expect(alert).toHaveTextContent(`${REFUSED_LEAD} ${REFUSED_OTHER}`);
+    expect(alert).not.toHaveTextContent(/sets? couldn't be saved/);
+  });
+});

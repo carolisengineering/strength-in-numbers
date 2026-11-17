@@ -134,6 +134,12 @@ export function useDiscardUnsentWorkout(): (workoutId: string) => void {
       drafts?.clearWorkout(workoutId);
       rest?.clearWorkout(workoutId);
       queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(workoutId), exact: true });
+      // Final review: the server no longer has it, so a cached live copy is stale — drop it and ask again (null, or
+      // the server's other active workout), never fall back to showing it as in progress.
+      if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workoutId) {
+        queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, null);
+      }
+      void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
       track("workout_discarded", { phase: "unsent", setCount });
     },
     [drafts, outbox, queryClient, rest],

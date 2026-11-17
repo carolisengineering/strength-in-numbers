@@ -21,7 +21,7 @@ import { API_BASE_URL, USER_ID } from "../../test/catalogHarness";
 import { server } from "../../test/msw/server";
 import { catalog } from "../../test/routineFixtures";
 import { makeRoutine, makeRoutineItem, makeSet, makeWorkoutDetail, routineId } from "../../test/workoutFixtures";
-import { createWorkoutFake } from "../../test/workoutFake";
+import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { formatStartedAt } from "./format";
 import { GONE_BODY, GONE_CONFIRM, GONE_DISCARD, GONE_TITLE, KEEP_OPEN, START_BLOCKED_MESSAGE, WAITING_OFFLINE, WAITING_ONLINE, landedLine, waitingTitle } from "./messages";
@@ -142,6 +142,24 @@ describe("06.7 AC30 — the gone card", () => {
     const dialog = within(screen.getByRole("dialog", { name: GONE_CONFIRM }));
     await user.click(dialog.getByRole("button", { name: "Discard" }));
     await waitFor(() => expect(storedOps()).toEqual([]));
+  });
+
+  it("final review: a live tap refused with a 404, then Discard: Start, never the deleted workout as in progress", async () => {
+    const w = workoutOf();
+    const fake = createWorkoutFake({ active: w });
+    prepareApp({ auth, fake });
+    const { user } = renderApp("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    // Deleted on another device: the server no longer has it.
+    fake.state.active = null;
+    fake.failNext({ method: "PATCH", path: /^\/v1\/workouts\/[^/]+$/ }, () => problemResponse(404, "not-found"));
+    await user.click(screen.getAllByRole("button", { name: "Finish workout" }).at(-1)!);
+    await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
+    const card = within(await screen.findByRole("region", { name: GONE_TITLE }));
+    await user.click(card.getByRole("button", { name: GONE_DISCARD }));
+    await user.click(within(screen.getByRole("dialog", { name: GONE_CONFIRM })).getByRole("button", { name: "Discard" }));
+    expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Workout" })).toBeNull();
   });
 
   it.each([

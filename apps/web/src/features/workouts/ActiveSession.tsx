@@ -768,9 +768,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     refusedOp === null
       ? null
       : refusedOp.failure?.blockedBy !== undefined
-        ? refused > 0
+        ? failedCount > 0
           ? "blocked"
-          : "other" // the blocking write was discarded: nothing left to point at (minor 621)
+          : "other" // no refused set to point at: the blocking write was a note or timer entry, or was discarded (minor 621)
         : refusedOp.failure?.status === 409 && refusedOp.failure.type === "incomplete-working-sets"
           ? "incomplete"
           : refusedOp.failure?.status === 422
@@ -800,7 +800,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       ? null
       : `${REFUSED_LEAD} ${
           refusedKind === "blocked"
-            ? refusedBlocked(refused)
+            ? refusedBlocked(failedCount) // sets, not ops: a create and its edit are one row
             : refusedKind === "incomplete"
               ? flaggedIds.size > 0
                 ? refusedIncomplete(flaggedIds.size)
