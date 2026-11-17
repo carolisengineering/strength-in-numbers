@@ -1,5 +1,5 @@
-import { hashKey, type QueryClient, type QueryKey } from "@tanstack/react-query";
-import type { PersonalRecord } from "@sin/core";
+import { hashKey, type InfiniteData, type QueryClient, type QueryKey } from "@tanstack/react-query";
+import type { PersonalRecord, WorkoutHistoryResponse } from "@sin/core";
 import { EXERCISE_KEYS } from "../exercises/keys";
 import { HEVY_KEYS } from "../hevy/keys";
 import { HISTORY_KEYS } from "../history/queries";
@@ -55,10 +55,19 @@ export function removeWhenUnobserved(queryClient: QueryClient, queryKey: QueryKe
   });
 }
 
-/** The cache effects of deleting a finished workout: its records go; another workout may regain one. */
+/**
+ * The cache effects of deleting a finished workout: its records go; another workout may regain one. Its History row
+ * also leaves the cached list at once (Spec 17.12 AC18): at desktop widths the list stays mounted beside the summary,
+ * and its first row picks the workout the pane opens next, so it must not be the deleted one while the re-read
+ * (`invalidateOthers`) is out or after it fails.
+ */
 export function applyDeletedCaches(queryClient: QueryClient, workoutId: string): void {
   const own = RECORDS_KEYS.forWorkout(workoutId);
   removeWhenUnobserved(queryClient, own);
+  // Before the invalidation: a later `setQueryData` would clear its stale flag, and the list wouldn't be re-read.
+  queryClient.setQueryData<InfiniteData<WorkoutHistoryResponse>>(HISTORY_KEYS.list, (data) =>
+    data === undefined ? data : { ...data, pages: data.pages.map((page) => ({ ...page, items: page.items.filter((row) => row.id !== workoutId) })) },
+  );
   invalidateOthers(queryClient, own);
 }
 

@@ -22,10 +22,12 @@ export function useHistoryClient(): HistoryClient {
  * `GET /v1/workouts`, page by page (Spec 08.0 §6.3). Page 1 sends no cursor; each next page sends the
  * previous page's `next`, opaque; `null` ends the list. No own `staleTime` (D9).
  */
-export function useHistoryList() {
+/** `enabled: false` reads the cache without fetching (Spec 17.12: History's layout route below 64rem). */
+export function useHistoryList({ enabled = true }: { enabled?: boolean } = {}) {
   const client = useHistoryClient();
   return useInfiniteQuery({
     queryKey: HISTORY_KEYS.list,
+    enabled,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => client.listWorkouts(pageParam === undefined ? {} : { cursor: pageParam }),
     getNextPageParam: (last) => last.next ?? undefined,
