@@ -91,12 +91,14 @@
 
 /* A screen with a bottom action bar: whatever gets focus or is scrolled into view stops above the bar, not
    behind it (WCAG 2.4.11). */
-.main:has([data-action-bar]) {
+.main:has([data-action-bar]),
+.main [data-pane]:has([data-action-bar]) {
   scroll-padding-bottom: var(--action-bar-clearance);
 }
 
 /* Spec 17.4 AC13: the workout screen's bar is taller. */
-.main:has([data-session-bar]) {
+.main:has([data-session-bar]),
+.main [data-pane]:has([data-session-bar]) {
   scroll-padding-bottom: var(--session-bar-clearance);
 }
 

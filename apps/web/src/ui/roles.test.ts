@@ -48,6 +48,8 @@ const SIGNAL_ALLOWED = [
   "features/hevy/AutoPushSetting.module.css",
   // Spec 17.8 AC8: "Ready" is the "do this next" state of the current-set panel, the same role as EntryRow (17.1 D12).
   "features/workouts/RestReadout.module.css",
+  // Spec 17.12 AC19: a selected list row is a selection, as a checked chip is.
+  "ui/selectedRow.module.css",
 ];
 // Spec 17.2 AC35: the record cards join the records block and the History badge.
 // Spec 17.6 AC18: the record ledger panel (heading, gains, tint).

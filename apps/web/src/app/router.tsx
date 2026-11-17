@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 
 import { Callback } from "../auth/Callback";
-import { HistoryScreen } from "../features/history/HistoryScreen";
+import { HistoryIndex, HistoryPanes, HistoryWorkout, HistoryWorkoutEdit } from "../features/history/HistoryPanes";
 import { HevyRoute } from "../features/hevy/HevyRoute";
 import { HevyScreen } from "../features/hevy/HevyScreen";
 import { HevyImportRoute } from "../features/hevy/import/HevyImportRoute";
@@ -50,9 +50,9 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app/workouts/routines/import/edit                                > ImportLayout > the editor (Spec 10.4 Phase C)
  *   /app/workouts/routines/:id                                        > RoutinePreview (Spec 10.0)
  *   /app/workouts/routines/:id/edit                                   > RoutineEditor, edit (Spec 10.0)
- *   /app/history/:id                                                  > FinishedWorkoutScreen section="history" (Spec 08.0)
- *   /app/history/:id/edit                                             > EditWorkoutScreen section="history" (Spec 18.0)
- *   /app/history                                                      > HistoryScreen  protected (Spec 08.0)
+ *   /app/history/:id                                                  > HistoryPanes > FinishedWorkoutScreen section="history" (Spec 08.0, 17.12)
+ *   /app/history/:id/edit                                             > HistoryPanes > EditWorkoutScreen section="history" (Spec 18.0, 17.12)
+ *   /app/history                                                      > HistoryPanes > HistoryIndex: HistoryScreen, or at 64rem the newest summary (Spec 08.0, 17.12)
  *   /app/exercises                                                    > ExercisesLayout > AllExercises (Spec 18.2)
  *   /app/exercises/records                                            > ExercisesLayout > RecordsView (Spec 18.2; outranks :id)
  *   /app/exercises/:id                                                > ExerciseScreen, keyed by id (Spec 18.2)
@@ -128,9 +128,16 @@ export const routes: RouteObject[] = [
               },
               { path: "workouts/routines/:id", element: <RoutinePreviewRoute /> },
               { path: "workouts/routines/:id/edit", element: <RoutineEditorRoute mode="edit" /> },
-              { path: "history", element: <HistoryScreen /> },
-              { path: "history/:id", element: <FinishedWorkoutScreen section="history" /> },
-              { path: "history/:id/edit", element: <EditWorkoutScreen section="history" /> },
+              {
+                // Spec 17.12 Phase B: one layout route, so at desktop widths the list sits beside the open workout.
+                path: "history",
+                element: <HistoryPanes />,
+                children: [
+                  { index: true, element: <HistoryIndex /> },
+                  { path: ":id", element: <HistoryWorkout /> },
+                  { path: ":id/edit", element: <HistoryWorkoutEdit /> },
+                ],
+              },
               {
                 path: "exercises",
                 element: <ExercisesLayout />,

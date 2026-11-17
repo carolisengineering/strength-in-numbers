@@ -47,11 +47,14 @@ export const SECTION_HOME: Record<SummarySection, { to: string; label: string }>
 /**
  * A finished workout, read-only (Spec 06.1 §5.7, D18), and the only way to undo a mistaken Finish
  * (delete it — Spec 05.0 §6.5's one exemption from immutability). Spec 08.0 reuses this screen as
- * `/app/history/:id` (`section="history"`) and adds the records the workout holds.
+ * `/app/history/:id` (`section="history"`) and adds the records the workout holds. `workoutId` wins over the
+ * route's `:id` (Spec 17.12 AC15): History's index passes the newest workout's id at desktop widths, where
+ * `/app/history` has no id of its own.
  */
-export function FinishedWorkoutScreen({ section = "workouts" }: { section?: SummarySection }) {
+export function FinishedWorkoutScreen({ section = "workouts", workoutId }: { section?: SummarySection; workoutId?: string }) {
   const home = SECTION_HOME[section];
-  const { id = "" } = useParams();
+  const params = useParams();
+  const id = workoutId ?? params.id ?? "";
   const detail = useWorkoutDetail(id);
   const queryClient = useQueryClient();
   const finished = detail.data !== undefined && detail.data.endedAt !== null;
@@ -305,6 +308,7 @@ function DeleteWorkoutControl({
   showButton: boolean;
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const del = useDeleteWorkout();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<{ text: string; requestId: string | null } | null>(null);
@@ -317,7 +321,9 @@ function DeleteWorkoutControl({
     try {
       await del.mutateAsync({ id: workoutId, phase: "finished", setCount });
       setOpen(false);
-      void navigate(afterDelete);
+      // Spec 17.12 AC18: at desktop widths `/app/history` shows its newest workout itself, so a delete from there is
+      // already where it lands: replace, or Back would land on the same page again.
+      void navigate(afterDelete, { replace: pathname === afterDelete });
     } catch (caught) {
       setOpen(false);
       reportUnexpected("discard", caught);

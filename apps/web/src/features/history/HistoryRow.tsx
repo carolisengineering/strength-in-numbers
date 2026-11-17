@@ -1,6 +1,8 @@
 import { Link } from "react-router";
 import type { UnitPreference, WorkoutSummary } from "@sin/core";
 import { TrophyIcon } from "../../ui/icons";
+import { usePane } from "../../ui/paneContext";
+import selection from "../../ui/selectedRow.module.css";
 import { formatVolumeKg } from "../units/format";
 import { historyTimedLines } from "../sectionTimer/timedSectionLine";
 import { timedMore } from "../sectionTimer/timerCopy";
@@ -17,10 +19,16 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
   const volume = workout.totalVolume === null ? "" : ` · ${formatVolumeKg(workout.totalVolume, unitPreference)}`;
   // Spec 10.7 AC21: scored timed sections only, so a row with none (or only unscored ones) is unchanged.
   const timed = historyTimedLines(workout.timedSections);
+  // Spec 17.12 AC16: the workout open in the detail pane beside the list.
+  const selected = usePane().selectedId === workout.id;
 
   return (
-    <Link className={styles.row} to={`/app/history/${encodeURIComponent(workout.id)}`}>
-      <span className={styles.top}>
+    <Link
+      className={selected ? `${styles.row} ${selection.selected}` : styles.row}
+      to={`/app/history/${encodeURIComponent(workout.id)}`}
+      aria-current={selected ? "page" : undefined}
+    >
+      <span className={styles.top} data-row-title="">
         <span className={styles.date}>
           {formatLocalDate(workout.localDate)}
           {label === null ? null : ` · ${label}`}

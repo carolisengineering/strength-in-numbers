@@ -1,0 +1,13 @@
+/*
+ * Spec 17.12 AC16, M3: the selected row of a list pane (History; Exercises and Routines in Phases C and D). The
+ * signal wash and a heavier title line, so the cue is not color alone; the row also carries aria-current="page".
+ * A row marks its title line with data-row-title. Two classes, so it outranks a row's own one-class background
+ * whatever the stylesheets' load order (the Segmented / Select trick).
+ */
+.selected.selected {
+  background: var(--color-signal-soft);
+}
+
+.selected.selected [data-row-title] {
+  font-weight: 700;
+}

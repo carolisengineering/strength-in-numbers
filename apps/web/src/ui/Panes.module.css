@@ -1,0 +1,26 @@
+/*
+ * Spec 17.12 §6.3: below 64rem the wrappers draw nothing of their own, so the phone renders exactly today's screen.
+ */
+.root,
+.slot {
+  display: contents;
+}
+
+/* At desktop widths: the list pane and the detail pane, under one cap, each its own scroller. Screen pads itself
+   (--screen-pad), so the panes add no padding. */
+@media (min-width: 64rem) {
+  .root[data-wide] {
+    display: grid;
+    grid-template-columns: var(--pane-list-width) minmax(0, 1fr);
+    gap: var(--space-6);
+    max-width: var(--content-max-wide);
+    margin-inline: auto;
+    height: 100%;
+  }
+
+  .root[data-wide] > .slot {
+    display: block;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}

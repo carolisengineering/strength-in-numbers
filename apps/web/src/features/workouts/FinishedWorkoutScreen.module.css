@@ -73,6 +73,11 @@
   gap: var(--space-3);
 }
 
+/* Spec 17.12 AC17: in a detail pane the back link draws nothing, so the menu keeps its place at the row's end. */
+.topRow > :last-child {
+  margin-inline-start: auto;
+}
+
 /* Spec 10.1 AC24: the same bracket, target line and notes as the active screen, read-only. */
 .slot {
   position: relative;
