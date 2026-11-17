@@ -508,7 +508,8 @@ describe("a delete never re-reads the workout it deleted", () => {
 
     const deleted = fake.requests.findIndex((r) => r.method === "DELETE");
     expect(deleted).toBeGreaterThanOrEqual(0);
-    const reread = fake.requests.slice(deleted).filter((r) => r.method === "GET" && r.path === `/v1/workouts/${workout.id}`);
+    // Nothing reads the deleted workout again: not its detail, not its records (code review).
+    const reread = fake.requests.slice(deleted + 1).filter((r) => `${r.path}${r.search}`.includes(workout.id));
     expect(reread).toEqual([]);
     // The outbox read the seeded id map and `dropWorkout` took the entry out, so the re-render above really happened.
     expect(stored()).not.toContain(workout.id);

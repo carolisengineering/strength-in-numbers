@@ -1,3 +1,4 @@
+import { QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { makeQueryClient } from "../../test/workoutHarness";
 import { makePersonalRecord } from "../../test/workoutFixtures";
@@ -5,7 +6,7 @@ import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
 import { EXERCISE_KEYS } from "../exercises/keys";
 import { HEVY_KEYS } from "../hevy/keys";
-import { applyDeletedCaches, applyEditedCaches, applyFinishedCaches, applyImportedCaches } from "./cache";
+import { applyDeletedCaches, applyEditedCaches, applyFinishedCaches, applyImportedCaches, removeWhenUnobserved } from "./cache";
 import { RECORDS_KEYS } from "./queries";
 
 const W = "40000000-0000-4000-8000-000000000001";
@@ -146,5 +147,55 @@ describe("20.1 AC24 — applyImportedCaches", () => {
     for (const key of [HEVY_KEYS.templates, HEVY_KEYS.user("user-1"), ["me"]]) {
       expect(invalidated(qc, key)).toBe(false);
     }
+  });
+});
+
+// The browser smoke after #341: a delete must not make a screen that still shows the workout re-read it.
+describe("removeWhenUnobserved — a deleted workout's queries go once nothing shows them", () => {
+  const KEY = RECORDS_KEYS.forWorkout(W);
+  const find = (qc: ReturnType<typeof makeQueryClient>) => qc.getQueryCache().find({ queryKey: KEY, exact: true });
+
+  it("removes an unobserved query at once", () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(KEY, []);
+    removeWhenUnobserved(qc, KEY);
+    expect(find(qc)).toBeUndefined();
+  });
+
+  it("keeps an observed query, data and all, with no fetch, until its last observer leaves", () => {
+    const qc = makeQueryClient();
+    let fetches = 0;
+    const options = {
+      queryKey: KEY,
+      queryFn: () => {
+        fetches += 1;
+        return Promise.resolve([]);
+      },
+      staleTime: Infinity,
+    };
+    qc.setQueryData(KEY, []);
+    const first = new QueryObserver(qc, options);
+    const second = new QueryObserver(qc, options);
+    const stopFirst = first.subscribe(() => {});
+    const stopSecond = second.subscribe(() => {});
+
+    removeWhenUnobserved(qc, KEY);
+    const kept = find(qc);
+    expect(kept?.state.data).toEqual([]);
+    // A re-render of the screen still showing it reads the same query: nothing is fetched.
+    first.setOptions(options);
+    expect(fetches).toBe(0);
+
+    stopFirst();
+    expect(find(qc)).toBe(kept);
+    stopSecond();
+    expect(find(qc)).toBeUndefined();
+    expect(fetches).toBe(0);
+  });
+
+  it("does nothing for a query that isn't cached", () => {
+    const qc = makeQueryClient();
+    expect(() => removeWhenUnobserved(qc, KEY)).not.toThrow();
+    expect(find(qc)).toBeUndefined();
   });
 });

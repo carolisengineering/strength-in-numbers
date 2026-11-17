@@ -1,4 +1,4 @@
-import { hashKey, type QueryClient } from "@tanstack/react-query";
+import { hashKey, type QueryClient, type QueryKey } from "@tanstack/react-query";
 import type { PersonalRecord } from "@sin/core";
 import { EXERCISE_KEYS } from "../exercises/keys";
 import { HEVY_KEYS } from "../hevy/keys";
@@ -31,10 +31,34 @@ export function applyFinishedCaches(
   void queryClient.invalidateQueries({ queryKey: ROUTINE_KEYS.all });
 }
 
+/**
+ * Removes the query at exactly `queryKey`, but not while a screen still observes it: then it stays, data and all, and
+ * goes when its last observer leaves. A removed query that is still observed is rebuilt and fetched on the screen's
+ * next render, so a delete would re-read the workout it just deleted (a 404, and a spinner then Not found) whenever
+ * anything re-rendered that screen before the navigation (the browser smoke after #341: the outbox's readers).
+ */
+export function removeWhenUnobserved(queryClient: QueryClient, queryKey: QueryKey): void {
+  const cache = queryClient.getQueryCache();
+  const query = cache.find({ queryKey, exact: true });
+  if (query === undefined) return;
+  if (query.getObserversCount() === 0) {
+    cache.remove(query);
+    return;
+  }
+  const unsubscribe = cache.subscribe((event) => {
+    if (event.query !== query) return;
+    if (event.type === "removed") unsubscribe();
+    else if (event.type === "observerRemoved" && query.getObserversCount() === 0) {
+      unsubscribe();
+      cache.remove(query);
+    }
+  });
+}
+
 /** The cache effects of deleting a finished workout: its records go; another workout may regain one. */
 export function applyDeletedCaches(queryClient: QueryClient, workoutId: string): void {
   const own = RECORDS_KEYS.forWorkout(workoutId);
-  queryClient.removeQueries({ queryKey: own, exact: true });
+  removeWhenUnobserved(queryClient, own);
   invalidateOthers(queryClient, own);
 }
 

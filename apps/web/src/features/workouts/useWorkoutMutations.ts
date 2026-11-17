@@ -18,7 +18,7 @@ import type {
 } from "@sin/core";
 import { ignoreNotFound } from "../../api";
 import { track } from "../../observability/track";
-import { applyDeletedCaches } from "../records/cache";
+import { applyDeletedCaches, removeWhenUnobserved } from "../records/cache";
 import { useDraftStores } from "./drafts/DraftStoreContext";
 import { useOutbox } from "./outbox/OutboxContext";
 import { waitingFinishOf, withQueuedFinish } from "./outbox/finish";
@@ -159,19 +159,17 @@ export function useDeleteWorkout(): UseMutationResult<
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteWorkout(id)),
-    onSuccess: async (_void, { id, phase, setCount }) => {
+    onSuccess: (_void, { id, phase, setCount }) => {
       drafts?.clearWorkout(id); // Spec 06.5 AC10
       rest?.clearWorkout(id); // Spec 17.1 AC47
       outbox?.dropWorkout(id); // Spec 18.0 AC25: an op for a workout the lifter just deleted must not be sent
+      // The summary still shows this workout until the caller navigates, and re-renders meanwhile (`dropWorkout`
+      // notifies the outbox's readers, `useWaitingFinish` among them): its detail goes once it unmounts.
+      removeWhenUnobserved(queryClient, WORKOUT_KEYS.detail(id));
       // An in-progress workout has no records and no History row (Spec 08.0 AC8).
       if (phase === "finished") applyDeletedCaches(queryClient, id);
       track("workout_discarded", { phase, setCount });
-      await queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
-      // Last, right before the caller navigates away: the summary and the edit screen still observe this detail, and
-      // they re-render while the active read is out (`dropWorkout` notifies the outbox's readers, `useWaitingFinish`
-      // among them). Removed any earlier, that re-render would re-read the deleted workout: a 404, and a spinner then
-      // Not found on the screen (the browser smoke after #341).
-      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(id) });
+      return queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
     },
   });
 }
