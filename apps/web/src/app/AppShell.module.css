@@ -3,8 +3,9 @@
  * main, and a bottom-anchored nav. The nav sits in the lower third of a phone
  * held one-handed (DESIGN §1.2); every target is at least --tap-target-min in
  * both axes, and the nav's bottom padding clears the iOS home indicator via
- * env(safe-area-inset-bottom). Bottom nav at every width (Q24) — wide screens
- * only cap the content measure.
+ * env(safe-area-inset-bottom). Bottom nav below 64rem (Q24, amended by Spec 17.12):
+ * 48rem to 64rem only caps the content measure; at 64rem and wider a side rail
+ * replaces the header and the nav (`data-layout="wide"`, set by useIsDesktop).
  */
 .shell {
   display: grid;
@@ -44,9 +45,12 @@
 }
 
 /* Spec 17.13 AC18: typing has the screen; the header steps aside, as the nav does, so the frame above the keypad is
-   all <main> (a sheet is a top-layer dialog sized on its own). The real status-bar check is on the phone (AC24). */
-:global(:root[data-keyboard="open"]) .header {
-  display: none;
+   all <main> (a sheet is a top-layer dialog sized on its own). The real status-bar check is on the phone (AC24).
+   Below 64rem only (Spec 17.12 AC8): a tablet in landscape keeps its rail while typing. */
+@media not all and (min-width: 64rem) {
+  :global(:root[data-keyboard="open"]) .header {
+    display: none;
+  }
 }
 
 .headerTitle {
@@ -115,9 +119,11 @@
 }
 
 /* Typing has the bottom of the screen: the nav steps aside, as native tab bars
-   do, so the action bar sits right on the keyboard (#206). */
-:global(:root[data-keyboard="open"]) .nav {
-  display: none;
+   do, so the action bar sits right on the keyboard (#206). Below 64rem only (Spec 17.12 AC8). */
+@media not all and (min-width: 64rem) {
+  :global(:root[data-keyboard="open"]) .nav {
+    display: none;
+  }
 }
 
 .navTarget {
@@ -166,5 +172,113 @@
     width: 100%;
     max-width: var(--measure-max);
     margin-inline: auto;
+  }
+}
+
+/* Spec 17.12: the side rail, at 64rem and wider (mockup row 4). The app name, the four sections stacked, and the
+   signed-in user at the bottom. No new color: the current item is teal and bold on the signal wash (M1). */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-3) var(--space-3);
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-line);
+}
+
+.railName {
+  padding: 0 var(--space-3) var(--space-6);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.railTarget {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-min);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.railLabel {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Where you are: teal, and bold so the cue is not color alone (Spec 17.0 D4), on the signal wash (Spec 17.12 M1). */
+.railTarget[aria-current="page"] {
+  color: var(--color-signal);
+  font-weight: 700;
+  background: var(--color-signal-soft);
+}
+
+/* The signed-in user, pinned to the rail's bottom; a long name ellipsizes and never widens the rail. */
+.railUser {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-target-min);
+  margin-top: auto;
+  padding: var(--space-3) var(--space-3) 0;
+  border-top: 1px solid var(--color-line);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.railUserName {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Spec 17.12 AC6: hidden (ui/VisuallyHidden) until it has keyboard focus, then drawn over the rail's top. Two classes
+   outrank the hidden class whatever the load order. */
+.skipLink.skipLink:focus-visible {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 1;
+  width: auto;
+  height: auto;
+  padding: var(--space-2) var(--space-3);
+  overflow: visible;
+  clip-path: none;
+  white-space: nowrap;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-signal);
+  font-weight: 700;
+}
+
+@media (min-width: 64rem) {
+  /* One row: the rail, then <main> filling the rest (AC7). Screens cap themselves at --measure-max (Screen.tsx). */
+  .shell[data-layout="wide"] {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .shell[data-layout="wide"] .rail {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .shell[data-layout="wide"] .main {
+    grid-row: 1;
+    grid-column: 2;
+    max-width: none;
+    margin-inline: 0;
   }
 }
