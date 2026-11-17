@@ -65,6 +65,24 @@ afterEach(() => {
   observability.reportError.mockReset();
 });
 
+describe("06.7 AC14 — an active read in flight at landing can't bring the workout back (minor 627)", () => {
+  it("the landing cancels it, so the live copy it read never overwrites the null", async () => {
+    const t = setup();
+    let release!: (w: WorkoutDetail) => void;
+    // A refetch (reconnect or focus) that read the server before the finish committed.
+    void t.queryClient.fetchQuery({
+      queryKey: WORKOUT_KEYS.active,
+      queryFn: () => new Promise<WorkoutDetail>((resolve) => (release = resolve)),
+      staleTime: 0,
+    });
+    t.land(opOf(t.workout), { outcome: "landed", updated: updatedOf(t.workout) });
+    expect(t.queryClient.getQueryData(WORKOUT_KEYS.active)).toBeNull();
+    release(t.workout);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(t.queryClient.getQueryData(WORKOUT_KEYS.active)).toBeNull();
+  });
+});
+
 describe("06.7 AC14 — landing effects run in one place, once", () => {
   it("landed: §6.6's effects run in order, and the Hevy event goes last, with every cache already seeded", () => {
     const t = setup();
@@ -292,7 +310,8 @@ describe("06.7 AC14 — Review Focus 1: the effects have run before a waiting ta
       active: queryClient.getQueryData(WORKOUT_KEYS.active),
     }));
     stop();
-    expect(seen).toEqual({ r: { status: "landed" }, detail: ENDED, records: [], active: null });
+    // Minor 632: while the tap waits, the landing leaves the active entry; the tap's summary clears it (06.4 D1).
+    expect(seen).toEqual({ r: { status: "landed" }, detail: ENDED, records: [], active: workout });
     expect(propsOf("workout_finished")).toMatchObject({ queued: false });
     expect(propsOf("workout_finished")).not.toHaveProperty("waitedMs");
     expect(waiting.size).toBe(0);

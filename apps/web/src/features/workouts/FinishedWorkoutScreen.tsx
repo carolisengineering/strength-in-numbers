@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import type { WorkoutDetail } from "@sin/core";
 
 import { BackLink } from "../../ui/BackLink";
@@ -28,6 +28,11 @@ import { useDeleteWorkout } from "./useWorkoutMutations";
 import styles from "./FinishedWorkoutScreen.module.css";
 import { SetText, WarmupMark } from "./WarmupMark";
 import { hasOwnTitle, WorkoutText } from "./WorkoutText";
+import { EDIT_AFTER_SEND, NOT_DURABLE, SAVED_ELSEWHERE, SAVED_OFFLINE, SAVED_SLOW, SENT } from "./messages";
+import { useLandedStore } from "./outbox/LandedStoreContext";
+import { useOutboxState } from "./outbox/OutboxContext";
+import { useViewingSummary } from "./summaryViewing";
+import { useWaitingFinish } from "./useWaitingFinish";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -50,6 +55,15 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
   const detail = useWorkoutDetail(id);
   const queryClient = useQueryClient();
   const finished = detail.data !== undefined && detail.data.endedAt !== null;
+  // Spec 06.7 AC27: while this summary is open, a landing updates it in place and leaves no one-time line; opening it
+  // by any route takes that workout's line away.
+  useViewingSummary(id);
+  // Spec 06.7 AC29: a refused finish leaves the workout live; the summary can't stay on it.
+  const refusedHere = useWaitingFinish(id).failed;
+  const landed = useLandedStore();
+  useEffect(() => {
+    landed?.clearWorkout(id);
+  }, [landed, id]);
 
   useEffect(() => {
     if (detail.error) reportUnexpected("load-workout", detail.error);
@@ -65,6 +79,7 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
     }
   }, [finished, id, queryClient]);
 
+  if (refusedHere) return <Navigate to="/app/workouts" replace />;
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 
   // Minors 235, 238: the load error is classified once, as on the edit screen. A gone workout is gone even with a
@@ -99,6 +114,21 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
 function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedAt: string; section: SummarySection }) {
   const { data: me } = useMe();
   const navigate = useNavigate();
+  // Spec 06.7 AC24: "is it in the cloud" comes from the ops, never from `endedAt` (§6.11).
+  const { waiting } = useWaitingFinish(workout.id);
+  // Spec 06.7 AC34: arriving from a Finish tap that saved it on the phone, focus goes to the heading (the message
+  // under it is a polite region, read after).
+  // The tap's reason is read once and then cleared: a browser router keeps it in history state, so a reload or Back
+  // would otherwise say "no signal" again and move focus again (final review). Later wording comes from the outbox.
+  const location = useLocation();
+  const [tapped] = useState(() => (location.state as { saved?: "offline" | "slow" } | null)?.saved);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (tapped === undefined) return;
+    titleRef.current?.focus();
+    void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
   const home = SECTION_HOME[section];
   const date = formatLocalDate(workout.localDate);
   const setCount = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
@@ -107,10 +137,11 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   return (
     <Screen
       title="Workout summary"
+      titleRef={titleRef}
       titleSmall={hasOwnTitle(workout)}
       leadFill
       lead={
-        <SummaryTop home={home}>
+        <SummaryTop home={home} waiting={waiting}>
           {(open) => (
             <>
               {/* Spec 17.6 AC22 (D7): Edit workout is a menu item above Delete; navigation only, no request. */}
@@ -129,8 +160,10 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
       {workout.title !== null && hasOwnTitle(workout) ? <WorkoutText text={workout.title} variant="title" /> : null}
       <p className={styles.meta}>{date}</p>
       {workout.routineName === null ? null : <p className={styles.meta}>From routine: {workout.routineName}</p>}
-      {/* Spec 17.6 AC21: records, stats, workout notes, exercises, the Hevy block, then the routine note. */}
-      <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} section={section} />
+      <SavedMessage workoutId={workout.id} endedAt={endedAt} waiting={waiting} tapped={tapped} />
+      {/* Spec 17.6 AC21: records, stats, workout notes, exercises, the Hevy block, then the routine note. Spec 06.7 AC24:
+          no records and no Hevy while the finish waits — the cloud doesn't have it yet. */}
+      {waiting ? null : <PersonalRecordsBlock workoutId={workout.id} unitPreference={me?.unitPreference ?? "kg"} workout={workout} section={section} />}
       <FinishStats stats={finishStatsFor(workout, endedAt)} unitPreference={me?.unitPreference ?? "kg"} />
       {workout.notes === null ? null : (
         <section className={styles.workoutNotes} aria-label="Workout notes">
@@ -160,7 +193,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
         })}
       </div>
       {/* Spec 17.6 AC24 (D7): after the exercises, unchanged; the owner's only (renders nothing for anyone else). */}
-      <HevyWorkoutSection workout={workout} />
+      {waiting ? null : <HevyWorkoutSection workout={workout} />}
       {/* Spec 17.6 AC23: last, as plain text under a muted label, only when set. */}
       {workout.routineNotes ? (
         <section className={styles.workoutNotes} aria-label="Routine note">
@@ -178,18 +211,51 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
  * session's menu (Spec 17.1 D13: an inline disclosure, no popover). Only the item follows `open`: the control's
  * dialog, notice and in-flight lock stay mounted, so closing the menu never drops a failure or a pending delete.
  */
-function SummaryTop({ home, children }: { home: { to: string; label: string }; children: (open: boolean) => ReactNode }) {
+function SummaryTop({ home, waiting, children }: { home: { to: string; label: string }; waiting: boolean; children: (open: boolean) => ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div className={styles.top}>
       <div className={styles.topRow}>
         <BackLink to={home.to} label={home.label} />
-        <Button variant="secondary" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-          Workout menu
-        </Button>
+        {/* Spec 06.7 AC24: no Workout menu (Edit, Delete) while the finish waits; the line says when it comes back. */}
+        {waiting ? (
+          <p className={styles.editAfterSend}>{EDIT_AFTER_SEND}</p>
+        ) : (
+          <Button variant="secondary" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+            Workout menu
+          </Button>
+        )}
       </div>
-      {children(open)}
+      {waiting ? null : children(open)}
     </div>
+  );
+}
+
+/**
+ * Spec 06.7 AC23, AC25, AC28, AC34, D15: one polite status region, mounted from first paint and kept across the change
+ * of state, so each change is announced once. While the finish waits: the saved-on-phone message (`NOT_DURABLE` when
+ * the phone can't keep it, re-read live; else the tap's reason from the router state, or — after a reload — offline or
+ * online wording from the outbox). Once a finish this screen saw waiting lands: "Sent to the cloud.", or
+ * `SAVED_ELSEWHERE` when the server's end time isn't the one this phone sent.
+ */
+function SavedMessage({ workoutId, endedAt, waiting, tapped }: { workoutId: string; endedAt: string; waiting: boolean; tapped: "offline" | "slow" | undefined }) {
+  const { durable, online } = useOutboxState();
+  const { op } = useWaitingFinish(workoutId);
+  const [sentAt, setSentAt] = useState<string | null>(waiting ? (op?.body.endedAt ?? null) : null);
+  useEffect(() => {
+    if (waiting && op) setSentAt(op.body.endedAt);
+  }, [waiting, op]);
+  let text = "";
+  if (waiting) {
+    const reason = tapped ?? (online ? "slow" : "offline");
+    text = !durable ? NOT_DURABLE : reason === "slow" ? SAVED_SLOW : SAVED_OFFLINE;
+  } else if (sentAt !== null) {
+    text = Date.parse(endedAt) === Date.parse(sentAt) ? SENT : SAVED_ELSEWHERE;
+  }
+  return (
+    <p className={styles.saved} role="status" data-testid="finish-saved">
+      {text}
+    </p>
   );
 }
 

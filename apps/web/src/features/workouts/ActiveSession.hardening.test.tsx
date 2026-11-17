@@ -35,7 +35,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { useState } from "react";
 import { createMemoryRouter, RouterProvider, type RouteObject } from "react-router";
-import type { Exercise, WorkoutDetail } from "@sin/core";
+import type { Exercise } from "@sin/core";
 import { http, HttpResponse } from "msw";
 import { routes } from "../../app/router";
 import { API_BASE_URL } from "../../test/catalogHarness";
@@ -115,7 +115,6 @@ async function setupHosted(exercises: ExerciseSpec[]) {
   return { fake, router, queryClient, user: userEvent.setup() };
 }
 
-const ACTIVE_URL = `${API_BASE_URL}/v1/workouts/active`;
 const activeReads = (fake: ReturnType<typeof createWorkoutFake>) =>
   fake.requests.filter((r) => r.method === "GET" && r.path === "/v1/workouts/active").length;
 
@@ -293,14 +292,13 @@ describe("06.4 AC8 — the carried-over one-line notices can be dismissed", () =
 
   it("the gone notice on the Start screen can be dismissed", async () => {
     const { fake, user } = await setup(oneSet);
-    // Reach the gone path through Finish (06.2: a queued set write fails on its row instead).
-    const active = fake.state.active!;
-    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
-    fake.state.finished.set(active.id, { ...active, endedAt: null }); // getById: "not finished" ⇒ gone
+    // Reach the gone path through a structure write (06.2: a queued set write fails on its row; Spec 06.7: a finish
+    // the server no longer has is a refused op, AC30's gone card).
+    fake.failNext({ method: "DELETE", path: /\/workout-exercises\// }, () => problemResponse(409, "workout-finished"));
     fake.state.active = null;
-
-    await user.click(finishButton());
-    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
+    await user.click(optionsButton("X"));
+    await user.click(within(screen.getByRole("article", { name: "X" })).getByRole("button", { name: "Remove exercise" }));
+    await user.click(within(await screen.findByRole("dialog", { name: /^Remove X/ })).getByRole("button", { name: "Remove" }));
     expect(await screen.findByText("That workout was already finished or removed.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Dismiss" }));
@@ -322,66 +320,9 @@ describe("06.4 AC8 — the carried-over one-line notices can be dismissed", () =
 });
 
 // ---- AC9 ----------------------------------------------------------------------------------------
-
-describe("06.4 AC9 — a diagnosis interrupted by the next set write is corrected by retrying Finish", () => {
-  it("interim banner from the old copy, then the server's list, then a fresh diagnosis flags the real set", async () => {
-    const { fake, user, queryClient } = await setup(oneSet);
-    // Another client adds an incomplete working set this screen has not seen.
-    const active = fake.state.active!;
-    const exercise = active.exercises[0]!;
-    const hidden = makeSet({
-      setNumber: 2,
-      workoutExerciseId: exercise.id,
-      weight: null,
-      weightUnit: null,
-      reps: 8,
-      isComplete: false,
-    });
-    fake.state.active = { ...active, exercises: [{ ...exercise, sets: [...exercise.sets, hidden] }] };
-
-    // The diagnosis re-read is held open…
-    const gate = deferred<void>();
-    server.use(
-      http.get(
-        ACTIVE_URL,
-        async () => {
-          await gate.promise;
-          return HttpResponse.json(fake.state.active);
-        },
-        { once: true },
-      ),
-    );
-    await user.click(finishButton());
-    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-
-    // …and a set logged meanwhile cancels it (06.1 AC11).
-    const x = within(screen.getByRole("article", { name: "X" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Finish workout?" })).not.toBeInTheDocument());
-    await user.click(logButton("X"));
-
-    // The banner is computed from the pre-refetch copy: no ids to flag, so the fallback.
-    expect(await screen.findByRole("alert")).toHaveTextContent("Some sets are incomplete — reload and check your sets.");
-    expect(screen.queryByText("Needs data")).not.toBeInTheDocument();
-
-    // The I1 re-read after the set write lands: the list is the server's (set 1, the hidden set 2, the new set 3).
-    await waitFor(() => expect(x.getAllByRole("button", { name: /^\d/ })).toHaveLength(3));
-    gate.resolve();
-
-    // Finish again: the 409 again, diagnosed from fresh data.
-    await waitFor(() => expect(finishButton()).toBeEnabled());
-    await user.click(finishButton());
-    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-
-    expect(await screen.findByText("1 working set is missing data. Fix or delete them, then finish again.")).toBeInTheDocument();
-    const flagged = x.getAllByText("Needs data");
-    expect(flagged).toHaveLength(1);
-    expect(flagged[0]!.closest("button")).toHaveTextContent(/– × 8/);
-    // No flagged row is one the cache holds as complete.
-    const cached = queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.active)!;
-    const flaggedSet = cached.exercises[0]!.sets.find((s) => s.id === hidden.id)!;
-    expect(flaggedSet.isComplete).toBe(false);
-  });
-});
+// Retired by Spec 06.7 (B2): the server-side diagnosis re-read and its race with a set write are gone. AC17 checks the
+// projected workout before any request; a server `409 incomplete-working-sets` is a refused finish op, whose banner and
+// flagged rows (after a re-read) are AC29's, in ActiveSession.refused.test.tsx.
 
 // ---- AC10 ---------------------------------------------------------------------------------------
 
@@ -477,21 +418,8 @@ describe("06.4 AC3 — scroll-into-view uses a ref, on the first flagged row onl
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
   });
 
-  it("scrolls to a flagged set this screen had not seen, which arrives with the diagnosis re-read", async () => {
-    const { fake, user } = await setup(oneSet);
-    // Another client adds an incomplete working set; this screen's copy has only the complete one.
-    const active = fake.state.active!;
-    const exercise = active.exercises[0]!;
-    const hidden = { ...incompleteSet(2), workoutExerciseId: exercise.id };
-    fake.state.active = { ...active, exercises: [{ ...exercise, sets: [...exercise.sets, hidden] }] };
-
-    await user.click(finishButton());
-    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-
-    const row = (await screen.findByText("Needs data")).closest("button");
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
-    expect(scrolled[0]).toBe(row);
-  });
+  // "Scrolls to a flagged set this screen had not seen" moved to ActiveSession.refused.test.tsx (Spec 06.7 AC29): the
+  // set arrives with the refused finish's re-read now, not with a diagnosis after a 409 at the tap.
 
   it("fixing the first flagged row does not scroll again to the next one", async () => {
     const { user } = await setup([

@@ -1,8 +1,9 @@
 /**
- * Spec 20.2 AC24: a tiny synchronous bus that both finish paths (`useFinishWorkout`'s `onSuccess` and
- * `ActiveSession`'s `409 workout-finished` recovery) emit to, after the caches are seeded. Hevy's auto-push listens;
+ * Spec 20.2 AC24: a tiny synchronous bus the finish emits to, after the caches are seeded. Hevy's auto-push listens;
  * the finish code never imports `features/hevy/`. A listener owns its errors: one that throws is swallowed here and
- * never stops the others or the finish.
+ * never stops the others or the finish. Since Spec 06.7 B2 the one emitter is the provider's landing effects
+ * (`finishLanding.ts`, a scan pins it); the emit-once set stays as a cheap guard for a page that lives across a replay
+ * (minor 634).
  */
 export interface WorkoutFinishedEvent {
   workoutId: string;

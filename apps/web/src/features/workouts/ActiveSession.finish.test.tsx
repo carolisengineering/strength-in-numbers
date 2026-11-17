@@ -131,7 +131,8 @@ describe("AC26 — Finish: confirm and success", () => {
     expect(patches(fake)).toHaveLength(1);
   });
 
-  it("Finish waits for a set write that is not saved yet (06.2 AC16)", async () => {
+  // Amended by Spec 06.7 AC21 (2026-11-16): queued writes no longer hold Finish; a refused one does. (06.2 AC16)
+  it("Finish stays enabled while a set write is not saved yet: the finish sends after it", async () => {
     const { fake, user } = await setup();
     fake.setOffline(true); // the send fails at the network and is retried
     const row = within(screen.getByRole("article", { name: "X" }));
@@ -140,10 +141,8 @@ describe("AC26 — Finish: confirm and success", () => {
 
     await user.click(logButton("X"));
 
-    expect(finishButton()).toBeDisabled();
-    fake.setOffline(false);
-    await user.click(await screen.findByRole("button", { name: "Retry now" }));
-    await waitFor(() => expect(finishButton()).toBeEnabled());
+    expect(await screen.findByText("1 set not saved yet")).toBeInTheDocument();
+    expect(finishButton()).toBeEnabled();
   });
 });
 
@@ -202,79 +201,38 @@ describe("AC27 — 409 incomplete-working-sets", () => {
     await waitFor(() => expect(screen.queryByText("Needs data")).not.toBeInTheDocument());
   });
 
-  it("a set with reps: 0 is never flagged", async () => {
-    const { fake, user } = await setup([
-      { modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: 60, reps: 0 })] },
-    ]);
-    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "incomplete-working-sets"));
-    await user.click(finishButton());
-    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-
-    // The server disagreed with the client's scan: the generic banner, not a wrong flag.
-    expect(await screen.findByRole("alert")).toHaveTextContent("Some sets are incomplete — reload and check your sets.");
-    expect(screen.queryByText("Needs data")).not.toBeInTheDocument();
-    expect(finishButton()).toBeEnabled(); // Finish stays usable
-  });
+  // Moved (Spec 06.7 B2): the server disagreeing with the local check is now a refused finish op; its banner is AC29's.
 });
 
 describe("AC28 — other finish outcomes", () => {
-  it("409 workout-finished then GET /workouts/{id} with endedAt set is treated as success", async () => {
+  it("06.7 AC3 — 409 workout-finished whose re-read is finished elsewhere is treated as saved", async () => {
     const { fake, user, router } = await setup();
     const id = fake.state.active!.id;
     fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
-    // The first attempt actually landed (or another tab finished it): the server now has it finished.
-    fake.state.finished.set(id, { ...fake.state.active!, endedAt: new Date().toISOString() });
+    // Another device finished it a minute ago: the server now has it finished, with that device's end time.
+    fake.state.finished.set(id, { ...fake.state.active!, endedAt: new Date(Date.now() - 60_000).toISOString() });
     fake.state.active = null;
     await user.click(finishButton());
 
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`));
-    expect(observability.track).toHaveBeenCalledWith(
-      "workout_finished",
-      expect.objectContaining({ viaReplay: true }),
-    );
+    expect(observability.track).toHaveBeenCalledWith("workout_finish_elsewhere", {});
   });
 
-  it("422 says the device clock looks wrong", async () => {
-    const { fake, user } = await setup();
-    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () =>
-      problemResponse(422, "validation-error", { errors: [{ path: "endedAt", message: "Before startedAt" }] }),
-    );
-    await user.click(finishButton());
+  // The 422 clock refusal and the 404 gone path are a refused finish op since Spec 06.7: ActiveSession.refused.test.tsx
+  // (AC29) and WorkoutsScreen.waiting.test.tsx (AC30's gone card).
 
-    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Your device clock looks wrong — check the date and time, then try again.",
-    );
-  });
-
-  it("404 takes the gone path", async () => {
-    const { fake, user } = await setup();
-    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(404, "not-found"));
-    fake.state.active = null;
-    await user.click(finishButton());
-
-    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-
-    expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("That workout was already finished or removed.");
-  });
-
-  it("a network failure says so with the request id, and the retry works", async () => {
+  it("06.7 AC13 — a network failure is retried by the outbox within the wait, then lands: no banner, the summary opens", async () => {
     const { fake, user, router } = await setup();
     const id = fake.state.active!.id;
     fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => HttpResponse.error());
     await user.click(finishButton());
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
 
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("You're offline — try again when you have signal"); // 06.2 AC15
-    expect(alert).toHaveTextContent(/Request ID: /);
-    await user.click(within(alert).getByRole("button", { name: "Try again" }));
-
-    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`));
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`), { timeout: 4000 });
+    expect(router.state.location.state ?? null).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(patches(fake)).toHaveLength(2);
   });
 });
@@ -348,7 +306,8 @@ describe("AC29 — discard and the gone path", () => {
 
     expect(await row.findByText("Couldn't save")).toBeInTheDocument();
     expect(finishButton()).toBeDisabled();
-    expect(screen.getByText("1 set not saved yet")).toBeInTheDocument();
+    // Spec 06.7 AC21, D19: a refusal takes the line by itself.
+    expect(screen.getByText("1 thing couldn't be saved — fix it first")).toBeInTheDocument();
   });
 });
 
@@ -375,22 +334,21 @@ describe("08.0 AC21 — finish lands on a summary with its PRs and no extra fetc
   });
 });
 
-describe("08.0 AC7 — the 409 recovery path gets the cache effects", () => {
-  it("removes the records entry so the summary fetches its records once by workoutId", async () => {
+describe("08.0 AC7 — the 409 replay gets the cache effects", () => {
+  it("06.7 AC3 — a lost reply reconciled as ours removes the records entry, so the summary fetches its records once by workoutId", async () => {
     const active = makeWorkoutDetail({ exercises: oneSet });
     const record = makePersonalRecord({ workoutId: active.id, exerciseName: "X" });
-    const fake = createWorkoutFake({ active, records: [record] });
+    // The finish really lands (its reply is lost), so the server holds the records it computed.
+    const fake = createWorkoutFake({ active, newRecordsOnFinish: [record] });
     prepareApp({ auth, fake });
     const { user, router } = renderApp("/app/workouts");
     await screen.findByRole("heading", { name: "Workout" });
-    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
-    fake.state.finished.set(active.id, { ...fake.state.active!, endedAt: new Date().toISOString() });
-    fake.state.active = null;
+    fake.loseNextResponse({ method: "PATCH", path: /^\/v1\/workouts\/[^/]+$/ });
 
     await user.click(finishButton());
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
 
-    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`), { timeout: 4000 });
     const block = await screen.findByRole("region", { name: /record/i });
     expect(within(block).getByRole("heading", { level: 3, name: "X" })).toBeInTheDocument();
     expect(within(block).getByText("102.5 kg")).toBeInTheDocument();

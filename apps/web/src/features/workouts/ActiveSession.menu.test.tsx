@@ -76,13 +76,14 @@ describe("17.1 AC33 — End workout early", () => {
     expect(item).toHaveAccessibleDescription("Log a set first");
   });
 
-  it("shares Finish's failure handling (a clock refusal shows the same message)", async () => {
+  it("shares Finish's path (Spec 06.7): a refused end leaves the workout open, with the dialog closed", async () => {
     const { fake, user } = await setup([ex("A", { plannedSets: planned(2), sets: logged(1) })]);
     fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(422, "validation-error", { errors: [{ path: "endedAt", message: "x" }] }));
     await openMenu(user);
     await user.click(screen.getByRole("button", { name: "End workout early" }));
     await user.click(within(screen.getByRole("dialog", { name: "End workout early?" })).getByRole("button", { name: "End workout" }));
-    expect(await screen.findByText(/Your device clock looks wrong/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "End workout early?" })).toBeNull());
+    expect(screen.getByRole("heading", { name: "Workout" })).toBeInTheDocument();
   });
 
   it("with nothing planned left (or no plan) the item says Finish workout and opens today's dialog", async () => {
@@ -105,7 +106,8 @@ describe("17.1 AC53 — workout_finished gains endedEarly and unloggedPlannedSet
     await waitFor(() => expect(observability.track).toHaveBeenCalledWith("workout_finished", expect.anything()));
     const props = observability.track.mock.calls.find(([e]) => e === "workout_finished")![1];
     expect(props).toMatchObject({ endedEarly: true, unloggedPlannedSets: 2 });
-    expect(Object.keys(props).sort()).toEqual(["durationMin", "endedEarly", "exerciseCount", "hadPlannedDuration", "setCount", "unloggedPlannedSets"]);
+    // Spec 06.7 §9: `queued` (false: it landed while the tap waited).
+    expect(Object.keys(props).sort()).toEqual(["durationMin", "endedEarly", "exerciseCount", "hadPlannedDuration", "queued", "setCount", "unloggedPlannedSets"]);
   });
 
   it("a normal finish reports false and 0", async () => {

@@ -23,7 +23,7 @@ import { USER_ID } from "../../test/catalogHarness";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { cleanupApp, deferred, fakeClient, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
-import { deleteSetIn, discardWorkout, finishButton, logButton } from "../../test/sessionHelpers";
+import { deleteSetIn, discardWorkout, finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
 import { DRAFTS_KEY, DRAFT_DEBOUNCE_MS, createDraftStores } from "./drafts/draftStore";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { EntryRow } from "./EntryRow";
@@ -195,12 +195,26 @@ describe("06.5 AC10 — finish, discard and the gone path drop the workout's dra
     await waitFor(() => expect(storedDrafts()).toBeNull());
   });
 
-  it("the gone path removes the key (409 workout-finished, but the workout is still active on re-read)", async () => {
+  it("06.7 D6 — a refused finish keeps the drafts: the workout reopens and the lifter's typing survives", async () => {
     const { user, fake } = await setup();
     await edit(user);
+    // 409 workout-finished, but the re-read shows the workout still live: the finish op fails (AC3).
     fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
     await user.click(finishButton());
     await user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
+    await waitFor(() => expect(fake.requests.filter((r) => r.method === "GET" && /^\/v1\/workouts\/[^/]+$/.test(r.path) && !r.path.endsWith("/active"))).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(storedDrafts()).not.toBeNull();
+  });
+
+  it("the gone path removes the key (a structure write finds the workout finished elsewhere)", async () => {
+    const { user, fake } = await setup();
+    await edit(user);
+    fake.failNext({ method: "DELETE", path: /\/workout-exercises\// }, () => problemResponse(409, "workout-finished"));
+    fake.state.active = null;
+    await user.click(optionsButton("Bench"));
+    await user.click(within(screen.getByRole("article", { name: "Bench" })).getByRole("button", { name: "Remove exercise" }));
+    await user.click(within(await screen.findByRole("dialog", { name: /^Remove Bench/ })).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(storedDrafts()).toBeNull());
   });
 

@@ -11,6 +11,11 @@ import { WORKOUT_KEYS, useActiveWorkout } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
 import { RoutinesSection } from "../routines/RoutinesSection";
 import { StartWorkout } from "./StartWorkout";
+import { GoneWorkoutCard } from "./GoneWorkoutCard";
+import { LandedLine } from "./LandedLine";
+import { WaitingFinishCard } from "./WaitingFinishCard";
+import { useWaitingFinish } from "./useWaitingFinish";
+import { useFinishTap } from "./finishTap";
 
 export const GONE_NOTICE = "That workout was already finished or removed.";
 export const REFRESH_FAILED_NOTICE = "Couldn't refresh your workout — showing the last copy we have.";
@@ -45,6 +50,10 @@ function noticeFromLocation(state: unknown): string | null {
  */
 export function WorkoutsScreen() {
   const active = useActiveWorkout();
+  // Spec 06.7 AC26, AC30: a finish op in the outbox decides first, from storage, before (and without) the active read.
+  const finishing = useWaitingFinish();
+  // A Finish tap in progress on this screen keeps ActiveSession: the tap opens the summary itself.
+  const tapping = useFinishTap();
   const queryClient = useQueryClient();
   const location = useLocation();
   const [notice, setNotice] = useState<string | null>(() => noticeFromLocation(location.state));
@@ -75,6 +84,28 @@ export function WorkoutsScreen() {
     if (active.error) reportUnexpected("load-active", active.error);
   }, [active.error]);
 
+  if (finishing.waiting && finishing.op && finishing.op.workoutId !== tapping) {
+    return (
+      <Screen title="Workouts" hideTitle>
+        <WaitingFinishCard op={finishing.op} />
+      </Screen>
+    );
+  }
+  // A refused finish whose workout the server no longer has live is gone (AC30); still live, it reopens (AC29).
+  const refused = finishing.failed ? finishing.op : null;
+  // A 404 counts only when it was the finish's own answer: a finish blocked by a write that got a 404 inherits the
+  // status (`blockedBy`), and that workout is still live (code review).
+  const ownNotFound = refused?.failure?.status === 404 && refused.failure.blockedBy === undefined;
+  const gone =
+    refused !== null && (ownNotFound || (!active.isPending && active.data !== undefined && active.data?.id !== refused.workoutId));
+  if (refused !== null && gone) {
+    return (
+      <Screen title="Workouts" hideTitle>
+        <GoneWorkoutCard workoutId={refused.workoutId} />
+      </Screen>
+    );
+  }
+
   if (active.isPending) return <Spinner label="Loading your workout…" />;
 
   // Only a failure with nothing to show is a screen of its own. A background refetch that fails (a
@@ -94,6 +125,7 @@ export function WorkoutsScreen() {
   if (active.data === null) {
     return (
       <StartWorkout
+        lead={<LandedLine />}
         notice={shownNotice}
         onDismissNotice={dismissNotice}
         onStarted={(resumed) => {

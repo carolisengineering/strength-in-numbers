@@ -1,0 +1,39 @@
+/* Spec 06.7 AC26, AC30: the waiting card and the gone card share one look: a surface panel, heading, lines, actions. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.meta {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.status {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* Spec 06.7 AC27: the one-time line and its Dismiss, side by side, wrapping on a narrow phone. */
+.landed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}

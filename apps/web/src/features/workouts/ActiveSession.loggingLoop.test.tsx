@@ -201,10 +201,11 @@ describe("17.4 AC11 — one line, not a stack", () => {
     await user.type(sheet.getByLabelText("Note"), "Felt good");
     await user.click(sheet.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(status()).toHaveTextContent(/^1 set and 1 note not saved yet$/));
-    // Code review: the Workout menu's disabled End / Finish item gives the same reason, from the same kinds list.
+    // Amended by Spec 06.7 AC21 (2026-11-16): queued writes no longer hold Finish; a refused one does. The Workout menu's End / Finish item is enabled, so it gives no reason.
     await user.click(screen.getByRole("button", { name: "Workout menu" }));
-    const end = screen.getByRole("button", { name: /^(End workout early|Finish workout)$/, description: /not saved yet/ });
-    expect(end).toHaveAccessibleDescription("1 set and 1 note not saved yet");
+    const end = screen.getAllByRole("button", { name: /^(End workout early|Finish workout)$/ })[0]!;
+    expect(end).toBeEnabled();
+    expect(end).not.toHaveAccessibleDescription();
   });
 });
 

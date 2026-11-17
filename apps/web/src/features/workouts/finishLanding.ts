@@ -59,8 +59,15 @@ export function createFinishLanding({ queryClient, drafts, rest, waiting, landed
     // (2) Records from `newRecords`, or none cached so the summary fetches them by workout id (08.0 AC6 / AC7).
     applyFinishedCaches(queryClient, id, result.outcome === "landed" ? result.updated.newRecords : null);
 
-    // (3) A `null`, not a removal: the Workouts screen's mounted observer needs it to show Start (06.4 D1).
-    if (active?.id === id) queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, null);
+    // (3) A `null`, not a removal: the Workouts screen's mounted observer needs it to show Start (06.4 D1). Not while
+    // a Finish tap waits on this op (minor 632): nulling it would unmount `ActiveSession` mid-tap and show Start; the
+    // tap opens the summary, which clears the entry on mount (06.4 D1), or clears it itself after an unmount.
+    if (active?.id === id && !waiting.has(op.id)) {
+      // Minor 627: a read of `/active` already in flight (a reconnect or focus refetch) read the server before this
+      // finish committed; cancel it, or its live copy would land on top of the null.
+      void queryClient.cancelQueries({ queryKey: WORKOUT_KEYS.active, exact: true });
+      queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, null);
+    }
 
     // (4) The cloud has it: the lifter's typing and the rest timer are done with (D6).
     drafts?.clearWorkout(id);

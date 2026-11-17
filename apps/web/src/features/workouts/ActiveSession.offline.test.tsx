@@ -268,12 +268,13 @@ describe("06.2 AC15, 06.2 AC16 — counts are sets, not queued writes (code revi
 });
 
 describe("06.2 AC16 — Finish waits for the outbox", () => {
-  it("disabled with 'N sets not saved yet' while ops exist; enabled after they sync", async () => {
+  // Amended by Spec 06.7 AC21 (2026-11-16): queued writes no longer hold Finish; a refused one does. (06.2 AC16)
+  it("enabled, with 'N sets not saved yet', while ops exist; the line clears after they sync", async () => {
     const { fake, user } = await setup();
     goOffline(fake);
     await logSet(user, "5");
     await logSet(user, "6");
-    expect(finishButton()).toBeDisabled();
+    expect(finishButton()).toBeEnabled();
     expect(screen.getByText("2 sets not saved yet")).toBeInTheDocument();
     goOnline(fake);
     await waitFor(() => expect(finishButton()).toBeEnabled());

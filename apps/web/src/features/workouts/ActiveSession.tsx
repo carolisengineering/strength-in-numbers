@@ -5,7 +5,6 @@ import { canLinkRule, ROUTINE_SECTIONS_MAX, type Exercise, type SessionOp, type 
 
 import { useSession } from "../../auth/useSession";
 import { track } from "../../observability/track";
-import { applyFinishedCaches } from "../records/cache";
 import { readKeepAwake } from "../../ui/keepAwake";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -30,11 +29,13 @@ import { formatStartedAt } from "./format";
 import { LogActionContext, createLogActionStore } from "./logAction";
 import { EndEarlyDialog } from "./EndEarlyDialog";
 import { LogBarButton, type BarAction } from "./LogBarButton";
-import { emitWorkoutFinished } from "./finishEvents";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
-import { sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
+import { failedOpCount, sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
+import { FINISH_OFFLINE_NOTE, REFUSED_LEAD, REFUSED_OTHER, finishLocked, finishUnsentNote, refusedBlocked, refusedIncomplete } from "./outbox/finishMessages";
+import { useWaitingFinish } from "./useWaitingFinish";
+import { START_CLOCK_MESSAGE } from "./useBeginWorkout";
 import { RESULT_COPY } from "./result/resultCopy";
 import { ResultSheet } from "./result/ResultSheet";
 import { useResultActions } from "./result/useResultActions";
@@ -58,6 +59,7 @@ import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishStatsFor, formatMinutes } from "./finishStats";
 import { FinishDialogBody, type FinishOneOff } from "./FinishDialog";
 import { finishEndedAt } from "./timestamps";
+import { beginFinishTap, currentFinishTap, endFinishTap } from "./finishTap";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { rereadFresh } from "./readGuard";
@@ -99,7 +101,6 @@ interface Banner {
   retry?: () => void;
 }
 
-const CLOCK_MESSAGE = "Your device clock looks wrong — check the date and time, then try again.";
 /** A structure write, finish or discard that failed at the network (Spec 06.2 AC15). */
 const OFFLINE_MESSAGE = "You're offline — try again when you have signal";
 const SECTION_LIMIT_ID = "session-section-limit";
@@ -183,7 +184,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     mounted.current = true;
     return () => {
       mounted.current = false;
+      // Spec 06.7: a tap that navigated keeps the guard until this screen is gone (code review: clearing it right after
+      // navigate() could let the Workouts screen draw the waiting card for a frame before the route commits).
+      if (currentFinishTap() === workout.id) endFinishTap();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the mount's workout
   }, []);
 
   const exercises = useMemo(
@@ -567,115 +572,80 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
 
   // ---- finish (§5.6, §6.6) ---------------------------------------------------------------------
 
-  /** `409 incomplete-working-sets` carries no ids (05.1 AC13), so reproduce the rule locally (D5). */
-  async function diagnoseIncomplete() {
-    await refetchActive();
-    const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
-    const ids = fresh ? findIncompleteWorkingSets(fresh) : [];
+  /** The incomplete working sets (05.1 AC13's rule, D5): flag the rows, say how many, scroll to the first. */
+  function showIncomplete(ids: readonly string[]) {
     track("finish_blocked", { incompleteCount: ids.length });
     scrollPending.current = ids.length > 0;
     setFlaggedIds(new Set(ids));
     setBanner({
       tone: "warning",
-      text:
-        ids.length > 0
-          ? `${ids.length} working ${ids.length === 1 ? "set is" : "sets are"} missing data. Fix or delete them, then finish again.`
-          : "Some sets are incomplete — reload and check your sets.",
+      text: `${ids.length} working ${ids.length === 1 ? "set is" : "sets are"} missing data. Fix or delete them, then finish again.`,
     });
   }
 
-  /** `409 workout-finished`: if the workout really is finished, our own finish landed (a lost first response). */
-  async function confirmAlreadyFinished(endedEarly: boolean) {
-    try {
-      const fresh = await client.getById(workout.id);
-      if (fresh.endedAt === null) {
-        gone("gone");
-        return;
-      }
-      // As in `useFinishWorkout`: seed only; the summary screen clears the active entry.
-      queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workout.id), fresh);
-      // The lost response carried `newRecords`; the summary refetches them by workoutId (Spec 08.0 AC7, D7).
-      applyFinishedCaches(queryClient, workout.id, null);
-      track("workout_finished", {
-        exerciseCount: fresh.exercises.length,
-        setCount: fresh.exercises.reduce((n, e) => n + e.sets.length, 0),
-        durationMin: Math.round((Date.parse(fresh.endedAt) - Date.parse(fresh.startedAt)) / 60_000),
-        viaReplay: true,
-        endedEarly,
-        unloggedPlannedSets: unlogged.total,
-        hadPlannedDuration: workout.plannedDurationSeconds !== null,
-      });
-      // Spec 20.2 AC24: this recovery seeds the caches itself, so it emits too (never on the gone path above).
-      emitWorkoutFinished({ workoutId: workout.id });
-      afterFinished();
-    } catch {
-      setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish(endedEarly) });
-    }
-  }
-
   /**
-   * After a successful finish: open the summary, which clears the active entry (Spec 06.4 D1). If the
-   * lifter already left this screen, the summary never mounts, so clear the entry here instead — else
-   * the finished workout would come back as an active session from cache.
+   * After the tap resolved: open the summary, which clears the active entry (Spec 06.4 D1). If the lifter already left
+   * this screen, the summary never mounts, so clear the entry here instead — else the finished workout would come back
+   * as an active session from cache. A queued finish carries how it was saved (Spec 06.7 §6.3 step 6).
    */
-  function afterFinished() {
+  function afterFinished(state?: { saved: "offline" | "slow" }) {
     if (mounted.current) {
-      void navigate(`/app/workouts/${workout.id}`);
+      if (state) void navigate(`/app/workouts/${workout.id}`, { state });
+      else void navigate(`/app/workouts/${workout.id}`);
     } else if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workout.id) {
       queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
     }
   }
 
-  /** The one finish path (Spec 17.1 §6.7): Finish and End workout early both call it, so their waits and failures match. */
+  /**
+   * The one finish path (Spec 17.1 §6.7, Spec 06.7 §6.3): Finish and End workout early both call it. The local check,
+   * then the end time read once, then `finishOrQueue`, which always resolves: a network, timeout or server failure is
+   * the finish op's (AC3), so the `catch` is for programming errors only.
+   */
   async function confirmFinish(endedEarly = false) {
     if (finishLock.current) return;
     finishLock.current = true;
     setBanner(null);
     try {
-      await finish.mutateAsync({
+      // Spec 06.7 AC17: the server's incomplete-sets rule, checked on the projected workout first (offline too).
+      const incomplete = findIncompleteWorkingSets(workout);
+      if (incomplete.length > 0) {
+        setFinishOpen(false);
+        setEndEarlyOpen(false);
+        showIncomplete(incomplete);
+        return;
+      }
+      beginFinishTap(workout.id);
+      const outcome = await finish.mutateAsync({
         id: workout.id,
         endedAt: finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, new Date()),
-        endedEarly,
-        unloggedPlannedSets: unlogged.total,
         // Spec 10.5 AC13: only a one-off's checked box adds the key; a Retry uses the choice as it stands.
         keepRoutine: workout.routineIsOneOff && keepOneOffRef.current,
+        // Spec 06.7 §6.2: the dialog's choices and the card's counts travel with the op, so a reload keeps them.
+        meta: {
+          startedAt: workout.startedAt,
+          exerciseCount: exercises.length,
+          setCount: totalSets,
+          endedEarly,
+          unloggedPlannedSets: unlogged.total,
+          hadPlannedDuration: workout.plannedDurationSeconds !== null,
+        },
       });
       setFinishOpen(false);
       setEndEarlyOpen(false);
       // Navigation stays out of the mutation hook: a response that lands after the lifter left this
-      // screen must not yank them back across screens.
-      afterFinished();
+      // screen must not yank them back across screens. A refused finish stays here: the workout reopens (AC29).
+      if (outcome.status === "landed") afterFinished();
+      else if (outcome.status === "queued") afterFinished({ saved: outcome.reason });
+      // A refused finish stays here, and a tap whose screen already left has nothing to keep: end the guard now. A tap
+      // that navigated ends it when this screen unmounts.
+      if (outcome.status === "refused" || !mounted.current) endFinishTap();
     } catch (error) {
+      endFinishTap();
       setFinishOpen(false);
       setEndEarlyOpen(false);
       reportUnexpected("finish", error);
-      const action = resolveFailure("finish", error);
-      switch (action.type) {
-        case "gone":
-          gone(action.reason);
-          break;
-        case "incomplete":
-          await diagnoseIncomplete();
-          break;
-        case "finished-check":
-          await confirmAlreadyFinished(endedEarly);
-          break;
-        case "clock":
-          track("workout_conflict", { kind: "clock" });
-          setBanner({ tone: "error", text: CLOCK_MESSAGE, requestId: action.requestId });
-          break;
-        default:
-          setBanner({
-            tone: "error",
-            text: isNetworkFailure(error)
-              ? OFFLINE_MESSAGE
-              : action.type === "retry"
-                ? action.text
-                : "Couldn't finish — try again",
-            requestId: "requestId" in action ? action.requestId : null,
-            retry: () => void confirmFinish(endedEarly),
-          });
-      }
+      setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish(endedEarly) });
     } finally {
       finishLock.current = false;
     }
@@ -794,10 +764,61 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
   const dismiss = banner === null ? onDismissNotice : undefined;
   const unsaved = pendingCount + failedCount;
-  // Spec 06.2 AC16: Finish waits for every queued or failed set AND note write of this workout — a PATCH after
-  // Finish answers `409 workout-finished` and would be lost (Spec 10.3 AC29).
-  // Spec 10.7 AC39: … and every timer entry.
-  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0 || unsavedNoteCount > 0 || timerUnsaved > 0;
+  // Spec 06.7 AC21 (amends 06.2 AC16, 10.3 AC29, 10.7 AC39): queued writes no longer hold Finish — the finish op sends
+  // after them (AC2). A write the server refused does: finishing past it would leave it behind (§6.7, D13).
+  const refused = failedOpCount(outboxState.ops, workout.id);
+  // Spec 06.7 AC29, §6.7: a refused finish op is the banner's memory; the workout is live again (AC19).
+  const refusedFinish = useWaitingFinish(workout.id);
+  const refusedOp = refusedFinish.failed ? refusedFinish.op : null;
+  const refusedKind: "blocked" | "incomplete" | "clock" | "other" | null =
+    refusedOp === null
+      ? null
+      : refusedOp.failure?.blockedBy !== undefined
+        ? failedCount > 0
+          ? "blocked"
+          : "other" // no refused set to point at: the blocking write was a note or timer entry, or was discarded (minor 621)
+        : refusedOp.failure?.status === 409 && refusedOp.failure.type === "incomplete-working-sets"
+          ? "incomplete"
+          : refusedOp.failure?.status === 422
+            ? "clock"
+            : "other";
+  // The server's 409 carries no ids (05.1 AC13): re-read (it may hold sets this screen hasn't seen), then flag them.
+  const refusedOpId = refusedOp?.id ?? null;
+  useEffect(() => {
+    if (refusedKind !== "incomplete" || refusedOpId === null) return;
+    void refetchActive().then(() => {
+      if (!mounted.current) return;
+      const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
+      const ids = fresh ? findIncompleteWorkingSets(fresh) : [];
+      track("finish_blocked", { incompleteCount: ids.length });
+      scrollPending.current = ids.length > 0;
+      setFlaggedIds(new Set(ids));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per refused op
+  }, [refusedKind, refusedOpId]);
+  // The screen reveals the current panel on open (17.1 AC9), which leaves a banner at the top above the fold: bring the
+  // refused banner into view once per refused op, after that reveal (a flagged row's own scroll still comes later).
+  const refusedRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (refusedOpId !== null) refusedRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [refusedOpId]);
+  const refusedText =
+    refusedKind === null
+      ? null
+      : `${REFUSED_LEAD} ${
+          refusedKind === "blocked"
+            ? refusedBlocked(failedCount) // sets, not ops: a create and its edit are one row
+            : refusedKind === "incomplete"
+              ? flaggedIds.size > 0
+                ? refusedIncomplete(flaggedIds.size)
+                : REFUSED_OTHER
+              : refusedKind === "clock"
+                ? START_CLOCK_MESSAGE
+                : REFUSED_OTHER
+        }`;
+  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || refused > 0;
+  // Spec 06.7 AC22: what Finish will do, said in both dialogs: no signal, or the sets that send first.
+  const finishNote = !outboxState.online ? FINISH_OFFLINE_NOTE : pendingCount > 0 ? finishUnsentNote(pendingCount) : undefined;
   // Spec 17.1 §6.6: the bar's mode and the planned sets End early would skip.
   const unlogged = useMemo(() => unloggedPlanned(rows), [rows]);
   const mode = barMode(rows, current.currentId);
@@ -814,7 +835,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     unsavedNoteCount > 0 ? plural(unsavedNoteCount, "note", "notes") : null,
     timerUnsaved > 0 ? RESULT_COPY.timerEntries(timerUnsaved) : null,
   ].filter((kind) => kind !== null);
-  const endReason = totalSets === 0 ? "Log a set first" : notSavedYet(unsavedKinds);
+  // Spec 06.7 AC21, D19: a refusal is the one thing to act on, so it takes the line and the reason by itself.
+  const lockedText = refused > 0 ? finishLocked(refused) : null;
+  const endReason = totalSets === 0 ? "Log a set first" : (lockedText ?? notSavedYet(unsavedKinds));
   // Spec 10.5 AC11: the line and checkbox only for a workout started from a one-off routine.
   const oneOff: FinishOneOff | undefined =
     workout.routineIsOneOff && workout.routineName !== null
@@ -859,6 +882,18 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onOpen={endUndo}
       />
 
+      {refusedText !== null && refusedOp !== null ? (
+        // Spec 06.7 AC29: Dismiss removes only the refused finish op; Finish again replaces it (AC2).
+        <div ref={refusedRef}>
+          <InlineNotice
+            tone="error"
+            requestId={refusedKind === "other" || refusedKind === "clock" ? (refusedOp.failure?.requestId ?? null) : null}
+            onDismiss={() => outbox?.discard(refusedOp.id)}
+          >
+            {refusedText}
+          </InlineNotice>
+        </div>
+      ) : null}
       {shown ? (
         <InlineNotice
           tone={shown.tone}
@@ -982,7 +1017,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               undo: undo.undoText,
               messages: [
                 totalSets === 0 ? "Log at least one set to finish" : null,
-                notSavedYet(unsavedKinds),
+                lockedText ?? notSavedYet(unsavedKinds),
               ].filter((message) => message !== null),
               confirmation: undo.offer ? confirmationLine(undo.offer.row.setNumber, undo.offer.value) : null,
             })}
@@ -1054,7 +1089,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onConfirm={() => void confirmFinish(false)}
         onCancel={() => setFinishOpen(false)}
       >
-        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} {...(endsAt ? { endsAt } : {})} {...(oneOff ? { oneOff } : {})} />
+        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} {...(endsAt ? { endsAt } : {})} {...(oneOff ? { oneOff } : {})} {...(finishNote ? { sendNote: finishNote } : {})} />
       </ConfirmDialog>
       <EndEarlyDialog
         open={endEarlyOpen}
@@ -1064,6 +1099,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         busy={finish.isPending}
         {...(endsAt ? { endsAt } : {})}
         {...(oneOff ? { oneOff } : {})}
+        {...(finishNote ? { sendNote: finishNote } : {})}
         onConfirm={() => void confirmFinish(true)}
         onCancel={() => setEndEarlyOpen(false)}
       />

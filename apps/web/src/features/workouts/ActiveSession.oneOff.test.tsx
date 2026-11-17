@@ -152,33 +152,18 @@ describe("10.5 AC13 — the request", () => {
     expect(patches(fake)[0]!.body).toStrictEqual({ endedAt: expect.any(String) });
   });
 
-  it("Try again after a failed finish keeps the choice", async () => {
+  it("06.7 AC4 — a failed send is retried by the outbox with the same body: the choice made at the tap", async () => {
     const { fake, user } = await setup();
     fake.failNext({ method: "PATCH", path: /^\/v1\/workouts\/[^/]+$/ }, () => problemResponse(500, "about:blank"));
     await user.click(finishButton());
     await user.click(keepBox(finishDialog()));
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-    await user.click(await screen.findByRole("button", { name: "Try again" }));
-    await waitFor(() => expect(patches(fake)).toHaveLength(2));
+    await waitFor(() => expect(patches(fake)).toHaveLength(2), { timeout: 4000 });
+    expect(patches(fake)[1]!.body).toStrictEqual(patches(fake)[0]!.body);
     expect(patches(fake)[1]!.body).toStrictEqual({ endedAt: expect.any(String), keepRoutine: true });
   });
-});
-
-describe("10.5 AC13 — Try again sends the choice as it stands", () => {
-  it("checked, failed, then reopened (reset) and canceled: Try again sends no keepRoutine", async () => {
-    const { fake, user } = await setup();
-    fake.failNext({ method: "PATCH", path: /^\/v1\/workouts\/[^/]+$/ }, () => problemResponse(500, "about:blank"));
-    await user.click(finishButton());
-    await user.click(keepBox(finishDialog()));
-    await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-    const tryAgain = await screen.findByRole("button", { name: "Try again" });
-    await user.click(finishButton());
-    expect(keepBox(finishDialog())).not.toBeChecked();
-    await user.click(within(finishDialog()).getByRole("button", { name: "Keep logging" }));
-    await user.click(tryAgain);
-    await waitFor(() => expect(patches(fake)).toHaveLength(2));
-    expect(patches(fake)[1]!.body).toStrictEqual({ endedAt: expect.any(String) });
-  });
+  // "Try again sends the choice as it stands" retired (Spec 06.7 B2): a failed send is the finish op's, replayed with
+  // the body fixed at the tap (AC4); there is no Try again to carry a later choice.
 });
 
 describe("10.5 AC13 — the choice is fixed once Finish is tapped", () => {
@@ -198,8 +183,9 @@ describe("10.5 AC13 — the choice is fixed once Finish is tapped", () => {
     await user.click(box);
     expect(box).not.toBeChecked();
     release();
-    await screen.findByRole("button", { name: "Try again" });
-    expect(patches(fake)[0]!.body).toStrictEqual({ endedAt: expect.any(String) });
+    // Spec 06.7: the outbox retries the op with the same body; the box's late tap changed nothing.
+    await waitFor(() => expect(patches(fake)).toHaveLength(2), { timeout: 4000 });
+    expect(patches(fake).map((p) => p.body)).toStrictEqual([{ endedAt: expect.any(String) }, { endedAt: expect.any(String) }]);
   });
 });
 

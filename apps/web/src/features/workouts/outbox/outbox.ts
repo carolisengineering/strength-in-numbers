@@ -432,10 +432,22 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
 
   /** Spec 06.7 AC3: the finish left by success. No set_* event (AC12); the provider's landing effects run before any waiter. */
   function landFinish(op: FinishOp, result: FinishSyncResult): void {
+    // Minor 629: a finish dropped or discarded mid-send was thrown away by the lifter: its late success runs no landing
+    // (no Hevy event, no landed line, no caches for a workout they discarded).
+    if (!state.ops.some((o) => o.id === op.id)) {
+      settleFinish(op.id, "pending");
+      return;
+    }
     set({ ops: state.ops.filter((o) => o.id !== op.id) });
     landedFinishes.add(op.id);
-    deps.onFinishSynced?.(op, result);
-    settleFinish(op.id, "landed");
+    try {
+      deps.onFinishSynced?.(op, result);
+    } catch (error) {
+      // Minor 626: the cloud has it whatever the landing effects did; a throw must not strand the tap or the queue.
+      reportError(error, { source: "workout-outbox" });
+    } finally {
+      settleFinish(op.id, "landed");
+    }
   }
 
   /** A finish failed: said once, by its own event (AC12), never as a set failure or through `onFailed`. */

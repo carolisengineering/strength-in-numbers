@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import {
   useIsMutating,
   useMutation,
@@ -11,26 +12,24 @@ import type {
   Modality,
   SetEntry,
   UpdateSet,
-  UpdatedWorkout,
   Workout,
   WorkoutDetail,
   WorkoutExercise,
 } from "@sin/core";
 import { ignoreNotFound } from "../../api";
-import { emitWorkoutFinished } from "./finishEvents";
 import { track } from "../../observability/track";
-import { applyDeletedCaches, applyFinishedCaches } from "../records/cache";
+import { applyDeletedCaches } from "../records/cache";
 import { useDraftStores } from "./drafts/DraftStoreContext";
 import { useOutbox } from "./outbox/OutboxContext";
 import { waitingFinishOf, withQueuedFinish } from "./outbox/finish";
-import { isFinishOp, type OutboxOp } from "./outbox/ops";
+import { isFinishOp, type FinishMeta, type OutboxOp } from "./outbox/ops";
 import type { RestStores } from "./restStore";
 import { useRestStores } from "./useRestTimer";
 import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { guardReads, rereadIfStale, type ReadGuard, rereadUntilLanded } from "./readGuard";
 import { reportUnexpected } from "./reportUnexpected";
-import type { WorkoutClient, WorkoutExercisePatch } from "./workoutClient";
+import type { FinishOutcome, WorkoutClient, WorkoutExercisePatch } from "./workoutClient";
 
 /**
  * Cache writes live in the hook-level `onSuccess`, never in a `mutate(vars, { onSuccess })` call:
@@ -76,43 +75,24 @@ export function useStartWorkout(): UseMutationResult<Workout, Error, { body: Cre
 }
 
 export function useFinishWorkout(): UseMutationResult<
-  UpdatedWorkout,
+  FinishOutcome,
   Error,
-  { id: string; endedAt: string; viaReplay?: boolean; endedEarly?: boolean; unloggedPlannedSets?: number; keepRoutine?: boolean }
+  { id: string; endedAt: string; keepRoutine?: boolean; meta: FinishMeta }
 > {
   const client = useWorkoutClient();
   const queryClient = useQueryClient();
-  const drafts = useDraftStores();
+  const outbox = useOutbox();
   const rest = useRestStores();
   return useMutation({
     networkMode: "always",
     // Spec 10.5 AC13: `keepRoutine` goes on the wire only as `true`; otherwise the body is exactly `{ endedAt }`.
-    mutationFn: ({ id, endedAt, keepRoutine }) => client.finish(id, keepRoutine ? { endedAt, keepRoutine: true } : { endedAt }),
-    // Seed the summary only. Removing the active entry here would leave the Workouts screen's observer
-    // pointing at nothing until the route changes, and any re-render in that gap rebuilds it as a
-    // pending query (spinner + refetch). `FinishedWorkoutScreen` removes it once mounted (Spec 06.4 D1),
-    // or `ActiveSession` does when the response lands after the lifter left (no summary will mount).
-    onSuccess: (updated, { id, viaReplay, endedEarly, unloggedPlannedSets }) => {
-      drafts?.clearWorkout(id); // Spec 06.5 AC10
-      rest?.clearWorkout(id); // Spec 17.1 AC47
-      // `newRecords` belongs to the records cache, never to the workout detail (Spec 08.0 AC5).
-      const { newRecords, ...workout } = updated;
-      const cached = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
-      if (cached) queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), { ...cached, ...workout });
-      applyFinishedCaches(queryClient, id, newRecords);
-      track("workout_finished", {
-        exerciseCount: cached?.exercises.length ?? 0,
-        setCount: cached?.exercises.reduce((n, e) => n + e.sets.length, 0) ?? 0,
-        durationMin: Math.round((Date.parse(workout.endedAt ?? workout.startedAt) - Date.parse(workout.startedAt)) / 60_000),
-        // Spec 17.1 AC53: scalars only.
-        endedEarly: endedEarly ?? false,
-        unloggedPlannedSets: unloggedPlannedSets ?? 0,
-        // Spec 18.0 AC43: the cached entry is still the pre-finish one (this hook only seeds the summary).
-        hadPlannedDuration: cached?.plannedDurationSeconds != null,
-        ...(viaReplay ? { viaReplay: true } : {}),
-      });
-      // Spec 20.2 AC24: last, once the caches are seeded (Hevy's auto-push listens).
-      emitWorkoutFinished({ workoutId: id });
+    // Spec 06.7 AC13: the finish goes through the outbox and always resolves (landed, queued or refused).
+    mutationFn: ({ id, endedAt, keepRoutine, meta }) => client.finishOrQueue(id, keepRoutine ? { endedAt, keepRoutine: true } : { endedAt }, meta),
+    // Spec 06.7 AC14: no landing effects here — the provider's `onFinishSynced` owns them, once. A queued finish only
+    // seeds the summary and clears the rest timer (AC15, §6.3 step 5); hook-level, so it runs after an unmount too.
+    onSuccess: (outcome, { id }) => {
+      if (outcome.status !== "queued") return;
+      applyQueuedFinish(queryClient, { id, reason: outcome.reason, ops: outbox?.getState().ops ?? [], rest });
     },
   });
 }
@@ -144,16 +124,26 @@ export function useDiscardUnsentWorkout(): (workoutId: string) => void {
   const outbox = useOutbox();
   const drafts = useDraftStores();
   const rest = useRestStores();
-  return (workoutId) => {
-    const ops = outbox?.getState().ops.filter((o) => o.workoutId === workoutId) ?? [];
-    if (ops.length === 0) return;
-    const setCount = ops.find(isFinishOp)?.meta.setCount ?? 0;
-    outbox?.dropWorkout(workoutId);
-    drafts?.clearWorkout(workoutId);
-    rest?.clearWorkout(workoutId);
-    queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(workoutId), exact: true });
-    track("workout_discarded", { phase: "unsent", setCount });
-  };
+  // Minor 631: one function while the stores stay the same, so a prop or an effect dependency doesn't churn.
+  return useCallback(
+    (workoutId: string) => {
+      const ops = outbox?.getState().ops.filter((o) => o.workoutId === workoutId) ?? [];
+      if (ops.length === 0) return;
+      const setCount = ops.find(isFinishOp)?.meta.setCount ?? 0;
+      outbox?.dropWorkout(workoutId);
+      drafts?.clearWorkout(workoutId);
+      rest?.clearWorkout(workoutId);
+      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(workoutId), exact: true });
+      // Final review: the server no longer has it, so a cached live copy is stale — drop it and ask again (null, or
+      // the server's other active workout), never fall back to showing it as in progress.
+      if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workoutId) {
+        queryClient.setQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active, null);
+      }
+      void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+      track("workout_discarded", { phase: "unsent", setCount });
+    },
+    [drafts, outbox, queryClient, rest],
+  );
 }
 
 export function useDeleteWorkout(): UseMutationResult<
