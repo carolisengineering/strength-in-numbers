@@ -335,7 +335,7 @@ describe("17.5 AC5, AC7 — Undo is the same delete, online or off", () => {
     expect(setsOf(fake)).toHaveLength(1);
   });
 
-  it("offline, a synced set: the row leaves, the line is honest, Finish waits, and it lands once back online", async () => {
+  it("offline, a synced set: the row leaves, the line is honest, Finish no longer waits (06.7 AC21), and it lands once back online", async () => {
     const { fake, user } = await setup([ex("A", { sets: [firstSet()] })]);
     await logThenOffer(user);
     await waitFor(() => expect(setsOf(fake)).toHaveLength(2));
@@ -344,7 +344,7 @@ describe("17.5 AC5, AC7 — Undo is the same delete, online or off", () => {
     await user.click(undoButton()!);
     await waitFor(() => expect(status().textContent).toBe("Undoing set 2… · 1 set not saved yet"));
     expect(rows("A", /47\.5 kg × 6/)).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Finish workout" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Finish workout" })).toBeEnabled(); // Spec 06.7 AC21: the finish sends after it
     goOnline(fake);
     await waitFor(() => expect(status().textContent).toBe("Set 2 undone"));
     expect(setsOf(fake)).toHaveLength(1);

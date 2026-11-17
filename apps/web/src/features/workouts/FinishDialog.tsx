@@ -28,6 +28,7 @@ export function FinishDialogBody({
   note,
   endsAt,
   oneOff,
+  sendNote,
 }: {
   stats: FinishStatsValue;
   unitPreference: "kg" | "lb";
@@ -35,6 +36,8 @@ export function FinishDialogBody({
   note?: string;
   endsAt?: string;
   oneOff?: FinishOneOff;
+  /** Spec 06.7 AC22: how the finish will travel (no signal, or the unsent sets that send first); last, after 17.2's content. */
+  sendNote?: string;
 }) {
   return (
     <div className={styles.body}>
@@ -62,6 +65,7 @@ export function FinishDialogBody({
         </>
       ) : null}
       {note ? <p>{note}</p> : null}
+      {sendNote ? <p>{sendNote}</p> : null}
     </div>
   );
 }

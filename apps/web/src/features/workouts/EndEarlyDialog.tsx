@@ -13,6 +13,8 @@ export interface EndEarlyDialogProps {
   endsAt?: string;
   /** Spec 10.5 AC12: the one-off line and checkbox, passed straight to the body. */
   oneOff?: FinishOneOff;
+  /** Spec 06.7 AC22: no signal, or the unsent sets that send first. */
+  sendNote?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -21,7 +23,7 @@ export interface EndEarlyDialogProps {
  * Spec 17.1 AC33, §6.7: what ending now leaves out. Its confirm runs the same `confirmFinish` as Finish, so every wait,
  * block and failure message is identical. Spec 17.2 replaced the children (stats, flag, list, note); the call is unchanged.
  */
-export function EndEarlyDialog({ open, unlogged, stats, unitPreference, busy, endsAt, oneOff, onConfirm, onCancel }: EndEarlyDialogProps) {
+export function EndEarlyDialog({ open, unlogged, stats, unitPreference, busy, endsAt, oneOff, sendNote, onConfirm, onCancel }: EndEarlyDialogProps) {
   return (
     <ConfirmDialog open={open} title="End workout early?" confirmLabel="End workout" cancelLabel="Keep logging" busy={busy} onConfirm={onConfirm} onCancel={onCancel}>
       <FinishDialogBody
@@ -31,6 +33,7 @@ export function EndEarlyDialog({ open, unlogged, stats, unitPreference, busy, en
         note="Unlogged sets aren't saved."
         {...(endsAt ? { endsAt } : {})}
         {...(oneOff ? { oneOff } : {})}
+        {...(sendNote ? { sendNote } : {})}
       />
     </ConfirmDialog>
   );

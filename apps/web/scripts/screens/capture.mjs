@@ -1318,6 +1318,13 @@ try {
         if (narrowLong.buttonTop !== narrow.buttonTop) violations.push(`320 px: a long message moved the button from ${narrow.buttonTop} to ${narrowLong.buttonTop}`);
         if (narrowLong.statusHeight > 44) violations.push(`320 px: a long message grew the line to ${narrowLong.statusHeight}px`);
         await shoot(page, device, "26g-undo-320", "Spec 17.5 AC4: the longest message beside Undo at 320 × 568");
+        // Spec 06.7 AC21, D19: a refusal takes the line by itself; with a two-digit count it must fit beside Undo too.
+        await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "12 things couldn't be saved — fix them first"; });
+        const narrowLocked = await measureLoggingLoop(page);
+        steps.push({ step: "320 px, refusal", ...narrowLocked });
+        if (narrowLocked.undo === null) violations.push("320 px: no Undo beside the refusal line, so it measured the wrong case");
+        if (narrowLocked.buttonTop !== narrow.buttonTop) violations.push(`320 px: the refusal line moved the button from ${narrow.buttonTop} to ${narrowLocked.buttonTop}`);
+        if (narrowLocked.statusHeight > 44) violations.push(`320 px: the refusal line grew the line to ${narrowLocked.statusHeight}px`);
       }
       } catch (e) {
         violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);

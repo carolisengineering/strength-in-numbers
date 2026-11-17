@@ -18,7 +18,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { card, logButton, makeCurrent, optionsButton, restBetweenSets } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
-import { createWorkoutFake } from "../../test/workoutFake";
+import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, fakeClient, makeQueryClient, prepareApp, renderApp } from "../../test/workoutHarness";
 import { EntryRow } from "./EntryRow";
 import { LogActionContext, createLogActionStore } from "./logAction";
@@ -267,12 +267,21 @@ describe("17.1 AC27 — Finish mode", () => {
 });
 
 describe("17.1 AC28 — Finish keeps every rule", () => {
-  it("is disabled while a set is not saved, with today's hint", async () => {
+  // Amended by Spec 06.7 AC21 (2026-11-16): queued writes no longer hold Finish; a refused one does.
+  it("is enabled while a set is not saved, with today's hint; a refused set disables it", async () => {
     const { fake, user } = await setup([ex("A", { plannedSets: planned(1) })]);
     fake.setOffline(true);
     await user.click(logButton("A"));
-    expect(await screen.findByRole("button", { name: "Finish workout" })).toHaveAttribute("aria-disabled", "true");
+    expect(await screen.findByRole("button", { name: "Finish workout" })).not.toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("1 set not saved yet")).toBeInTheDocument();
+  });
+
+  it("06.7 AC21 — is aria-disabled while a set is refused, saying so", async () => {
+    const { fake, user } = await setup([ex("A", { plannedSets: planned(1) })]);
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
+    await user.click(logButton("A"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Finish workout" })).toHaveAttribute("aria-disabled", "true"));
+    expect(screen.getByText("1 thing couldn't be saved — fix it first")).toBeInTheDocument();
   });
 
   it("opens today's Finish dialog", async () => {
@@ -315,11 +324,13 @@ describe("17.1 AC29 — the bar's button never takes `disabled` (a disabled butt
     expect(setPosts(fake)).toHaveLength(1);
   });
 
-  it("Finish mode waiting on an unsaved set is aria-disabled, not disabled, and opens nothing", async () => {
+  // Amended by Spec 06.7 AC21 (2026-11-16): queued writes no longer hold Finish; a refused one does.
+  it("Finish mode locked by a refused set is aria-disabled, not disabled, and opens nothing", async () => {
     const { fake, user } = await setup([ex("A", { plannedSets: planned(1) })]);
-    fake.setOffline(true);
+    fake.failNext({ method: "POST", path: /\/sets$/ }, () => problemResponse(409, "workout-finished"));
     await user.click(logButton("A"));
     const finish = await bar().findByRole("button", { name: "Finish workout" });
+    await waitFor(() => expect(finish).toHaveAttribute("aria-disabled", "true"));
     expect(finish).not.toHaveAttribute("disabled");
     expect(finish).toHaveAttribute("aria-disabled", "true");
     await user.click(finish);

@@ -43,7 +43,7 @@ async function setup() {
 }
 
 describe("17.1 AC34 — offline logging still queues, and collapsed rows say so", () => {
-  it("a queued set shows 'Not saved yet' on the row and on the collapsed card; Finish waits", async () => {
+  it("a queued set shows 'Not saved yet' on the row and on the collapsed card; Finish no longer waits (06.7 AC21)", async () => {
     const { fake, user } = await setup();
     online = false;
     fake.setOffline(true);
@@ -52,7 +52,7 @@ describe("17.1 AC34 — offline logging still queues, and collapsed rows say so"
     expect(await within(card("X")).findByText("Not saved yet")).toBeInTheDocument();
     await makeCurrent(user, "Y");
     expect(within(card("X")).getByText("Not saved yet")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Finish workout" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Finish workout" })).toBeEnabled(); // Spec 06.7 AC21: the finish sends after it
   });
 });
 

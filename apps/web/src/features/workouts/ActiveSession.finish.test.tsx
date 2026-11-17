@@ -131,7 +131,8 @@ describe("AC26 — Finish: confirm and success", () => {
     expect(patches(fake)).toHaveLength(1);
   });
 
-  it("Finish waits for a set write that is not saved yet (06.2 AC16)", async () => {
+  // Amended by Spec 06.7 AC21 (2026-11-16): queued writes no longer hold Finish; a refused one does. (06.2 AC16)
+  it("Finish stays enabled while a set write is not saved yet: the finish sends after it", async () => {
     const { fake, user } = await setup();
     fake.setOffline(true); // the send fails at the network and is retried
     const row = within(screen.getByRole("article", { name: "X" }));
@@ -140,10 +141,8 @@ describe("AC26 — Finish: confirm and success", () => {
 
     await user.click(logButton("X"));
 
-    expect(finishButton()).toBeDisabled();
-    fake.setOffline(false);
-    await user.click(await screen.findByRole("button", { name: "Retry now" }));
-    await waitFor(() => expect(finishButton()).toBeEnabled());
+    expect(await screen.findByText("1 set not saved yet")).toBeInTheDocument();
+    expect(finishButton()).toBeEnabled();
   });
 });
 
@@ -307,7 +306,8 @@ describe("AC29 — discard and the gone path", () => {
 
     expect(await row.findByText("Couldn't save")).toBeInTheDocument();
     expect(finishButton()).toBeDisabled();
-    expect(screen.getByText("1 set not saved yet")).toBeInTheDocument();
+    // Spec 06.7 AC21, D19: a refusal takes the line by itself.
+    expect(screen.getByText("1 thing couldn't be saved — fix it first")).toBeInTheDocument();
   });
 });
 

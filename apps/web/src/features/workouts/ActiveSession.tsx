@@ -32,7 +32,8 @@ import { LogBarButton, type BarAction } from "./LogBarButton";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
-import { sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
+import { failedOpCount, sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
+import { FINISH_OFFLINE_NOTE, finishLocked, finishUnsentNote } from "./outbox/finishMessages";
 import { RESULT_COPY } from "./result/resultCopy";
 import { ResultSheet } from "./result/ResultSheet";
 import { useResultActions } from "./result/useResultActions";
@@ -751,10 +752,12 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const shown: Banner | null = banner ?? (notice ? { tone: "info", text: notice } : null);
   const dismiss = banner === null ? onDismissNotice : undefined;
   const unsaved = pendingCount + failedCount;
-  // Spec 06.2 AC16: Finish waits for every queued or failed set AND note write of this workout — a PATCH after
-  // Finish answers `409 workout-finished` and would be lost (Spec 10.3 AC29).
-  // Spec 10.7 AC39: … and every timer entry.
-  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || unsaved > 0 || unsavedNoteCount > 0 || timerUnsaved > 0;
+  // Spec 06.7 AC21 (amends 06.2 AC16, 10.3 AC29, 10.7 AC39): queued writes no longer hold Finish — the finish op sends
+  // after them (AC2). A write the server refused does: finishing past it would leave it behind (§6.7, D13).
+  const refused = failedOpCount(outboxState.ops, workout.id);
+  const finishDisabled = totalSets === 0 || setWritePending || structureBusy || refused > 0;
+  // Spec 06.7 AC22: what Finish will do, said in both dialogs: no signal, or the sets that send first.
+  const finishNote = !outboxState.online ? FINISH_OFFLINE_NOTE : pendingCount > 0 ? finishUnsentNote(pendingCount) : undefined;
   // Spec 17.1 §6.6: the bar's mode and the planned sets End early would skip.
   const unlogged = useMemo(() => unloggedPlanned(rows), [rows]);
   const mode = barMode(rows, current.currentId);
@@ -771,7 +774,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     unsavedNoteCount > 0 ? plural(unsavedNoteCount, "note", "notes") : null,
     timerUnsaved > 0 ? RESULT_COPY.timerEntries(timerUnsaved) : null,
   ].filter((kind) => kind !== null);
-  const endReason = totalSets === 0 ? "Log a set first" : notSavedYet(unsavedKinds);
+  // Spec 06.7 AC21, D19: a refusal is the one thing to act on, so it takes the line and the reason by itself.
+  const lockedText = refused > 0 ? finishLocked(refused) : null;
+  const endReason = totalSets === 0 ? "Log a set first" : (lockedText ?? notSavedYet(unsavedKinds));
   // Spec 10.5 AC11: the line and checkbox only for a workout started from a one-off routine.
   const oneOff: FinishOneOff | undefined =
     workout.routineIsOneOff && workout.routineName !== null
@@ -939,7 +944,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               undo: undo.undoText,
               messages: [
                 totalSets === 0 ? "Log at least one set to finish" : null,
-                notSavedYet(unsavedKinds),
+                lockedText ?? notSavedYet(unsavedKinds),
               ].filter((message) => message !== null),
               confirmation: undo.offer ? confirmationLine(undo.offer.row.setNumber, undo.offer.value) : null,
             })}
@@ -1011,7 +1016,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onConfirm={() => void confirmFinish(false)}
         onCancel={() => setFinishOpen(false)}
       >
-        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} {...(endsAt ? { endsAt } : {})} {...(oneOff ? { oneOff } : {})} />
+        <FinishDialogBody stats={dialogStats} unitPreference={unitPreference} unlogged={unlogged} {...(endsAt ? { endsAt } : {})} {...(oneOff ? { oneOff } : {})} {...(finishNote ? { sendNote: finishNote } : {})} />
       </ConfirmDialog>
       <EndEarlyDialog
         open={endEarlyOpen}
@@ -1021,6 +1026,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         busy={finish.isPending}
         {...(endsAt ? { endsAt } : {})}
         {...(oneOff ? { oneOff } : {})}
+        {...(finishNote ? { sendNote: finishNote } : {})}
         onConfirm={() => void confirmFinish(true)}
         onCancel={() => setEndEarlyOpen(false)}
       />

@@ -66,13 +66,14 @@ const openSheet = async (user: Awaited<ReturnType<typeof setupNotes>>["user"], l
 };
 
 describe("10.3 AC29 — Finish waits for notes", () => {
-  it("disabled while a note is queued, with '1 note not saved yet' on its own line; enabled once it syncs", async () => {
+  // Amended by Spec 06.7 AC21 (2026-11-16): queued writes no longer hold Finish; a refused one does. (10.3 AC29)
+  it("enabled while a note is queued, with '1 note not saved yet' on its own line; the line clears once it syncs", async () => {
     const { user, fake } = await setupNotes();
     goOffline(fake);
     const sheet = await openSheet(user, "Edit note for X");
     await user.type(sheet.getByLabelText("Note"), " more");
     await user.click(sheet.getByRole("button", { name: "Save" }));
-    expect(finishButton()).toBeDisabled();
+    expect(finishButton()).toBeEnabled();
     expect(screen.getByText("1 note not saved yet")).toBeInTheDocument();
     expect(screen.queryByText(/sets? not saved yet/)).toBeNull();
     expect(screen.getByText("Offline — 1 note will save when you're back online")).toBeInTheDocument();
@@ -119,7 +120,7 @@ describe("10.3 AC29 — Finish waits for notes", () => {
     // The cards carry a Note action, so scope the "no note wording" check to the status line and the bar hints.
     expect(within(screen.getByTestId("sync-status")).queryByText(/note/i)).toBeNull();
     expect(screen.queryByText(/notes? not saved yet/)).toBeNull();
-    expect(finishButton()).toBeDisabled();
+    expect(finishButton()).toBeEnabled(); // Spec 06.7 AC21: a queued set no longer holds Finish
   });
 });
 
