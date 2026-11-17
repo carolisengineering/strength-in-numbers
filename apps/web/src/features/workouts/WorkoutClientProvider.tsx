@@ -9,6 +9,7 @@ import { withExerciseNotes, withSection, withSectionCleared, withSetRemoved, wit
 import { createDraftStores } from "./drafts/draftStore";
 import { createFinishLanding } from "./finishLanding";
 import { createLandedStore } from "./outbox/landedStore";
+import { LandedStoreContext } from "./outbox/LandedStoreContext";
 import { viewing } from "./summaryViewing";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
 import { createRestStores } from "./restStore";
@@ -115,7 +116,7 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
   const api = useApi();
   const queryClient = useQueryClient();
   // `rest` inside the memo is the REST client; the memo's returned `rest` is the rest-timer stores.
-  const { outbox, client, editClient, drafts, rest } = useMemo(() => {
+  const { outbox, client, editClient, drafts, rest, landed } = useMemo(() => {
     const adapter = storage ?? localStorageAdapter();
     const rest = createWorkoutClient(api);
     const drafts = createDraftStores(adapter, userId);
@@ -169,6 +170,7 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       editClient: rest, // Spec 18.0 D5: edit mode's plain REST client
       drafts,
       rest: restTimers,
+      landed,
     };
   }, [api, queryClient, storage, userId]);
 
@@ -180,7 +182,9 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
       <DraftStoresContext.Provider value={drafts}>
         <RestStoresContext.Provider value={rest}>
           <WorkoutClientContext.Provider value={client}>
-            <EditWorkoutClientContext.Provider value={editClient}>{children}</EditWorkoutClientContext.Provider>
+            <EditWorkoutClientContext.Provider value={editClient}>
+              <LandedStoreContext.Provider value={landed}>{children}</LandedStoreContext.Provider>
+            </EditWorkoutClientContext.Provider>
           </WorkoutClientContext.Provider>
         </RestStoresContext.Provider>
       </DraftStoresContext.Provider>

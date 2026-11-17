@@ -4,6 +4,7 @@ import { Navigate, useNavigate, useParams } from "react-router";
 import { ROUTINE_SECTIONS_MAX, canLinkRule, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { track } from "../../../observability/track";
+import { useWaitingFinish } from "../useWaitingFinish";
 import { NotFound } from "../../../screens/NotFound";
 import { ActionBar, ActionBarHint } from "../../../ui/ActionBar";
 import { BackLink } from "../../../ui/BackLink";
@@ -79,7 +80,15 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * composes the logging screen's leaf components inside `ScreenModeContext` `edit`, and none of the live machinery
  * (outbox, drafts, rest timer, the log bar, Finish). Every write is pessimistic and online-only (D5).
  */
+/** Spec 06.7 AC24: a workout whose finish is waiting can't be edited yet: its route goes to the summary. */
 export function EditWorkoutScreen({ section }: { section: SummarySection }) {
+  const { id = "" } = useParams();
+  const { waiting } = useWaitingFinish(id);
+  if (waiting) return <Navigate to={`/app/${section}/${id}`} replace />;
+  return <EditWorkoutBody section={section} />;
+}
+
+function EditWorkoutBody({ section }: { section: SummarySection }) {
   const home = SECTION_HOME[section];
   const { id = "" } = useParams();
   // #160: set while Delete workout is in flight. The detail stops reading (a focus refetch would find it, or 404 once

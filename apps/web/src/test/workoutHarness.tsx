@@ -140,10 +140,10 @@ export function cleanupApp(): void {
   vi.unstubAllEnvs();
 }
 
-/** Render the real route table at `path`, inside the real providers. */
-export function renderApp(path: string) {
+/** Render the real route table at `path`, inside the real providers; `state` is the entry's router state (Spec 06.7). */
+export function renderApp(path: string, state?: unknown) {
   const queryClient = makeQueryClient();
-  const router = createMemoryRouter(routes, { initialEntries: [path] });
+  const router = createMemoryRouter(routes, { initialEntries: [state === undefined ? path : { pathname: path, state }] });
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />

@@ -104,3 +104,14 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Spec 06.7 AC24: where the Workout menu sits while the finish waits. */
+.editAfterSend {
+  color: var(--color-muted);
+  text-align: end;
+}
+
+/* Spec 06.7 AC23, AC25: the saved / sent message; always in the tree (a live region), no space while empty. */
+.saved:empty {
+  display: contents;
+}
