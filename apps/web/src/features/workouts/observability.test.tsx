@@ -233,9 +233,13 @@ describe("AC35 — observability hygiene across the flows", () => {
       await user.click(finishConfirm());
       await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`));
       expect(observability.track).toHaveBeenCalledWith("workout_finish_queued", { reason: "offline" });
+      // Back online, let the finish land inside the test: a retry left pending would write the outbox after the cleanup.
+      onLine.mockReturnValue(true);
+      fake.setOffline(false);
+      window.dispatchEvent(new Event("online"));
+      await waitFor(() => expect(observability.track).toHaveBeenCalledWith("workout_finished", expect.objectContaining({ queued: true })));
     } finally {
       onLine.mockRestore();
-      window.dispatchEvent(new Event("online"));
     }
   });
 

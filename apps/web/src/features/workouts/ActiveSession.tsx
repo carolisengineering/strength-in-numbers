@@ -57,6 +57,7 @@ import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishStatsFor, formatMinutes } from "./finishStats";
 import { FinishDialogBody, type FinishOneOff } from "./FinishDialog";
 import { finishEndedAt } from "./timestamps";
+import { beginFinishTap, endFinishTap } from "./finishTap";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { rereadFresh } from "./readGuard";
@@ -608,6 +609,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         showIncomplete(incomplete);
         return;
       }
+      beginFinishTap(workout.id);
       const outcome = await finish.mutateAsync({
         id: workout.id,
         endedAt: finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, new Date()),
@@ -629,7 +631,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       // screen must not yank them back across screens. A refused finish stays here: the workout reopens (AC29).
       if (outcome.status === "landed") afterFinished();
       else if (outcome.status === "queued") afterFinished({ saved: outcome.reason });
+      endFinishTap();
     } catch (error) {
+      endFinishTap();
       setFinishOpen(false);
       setEndEarlyOpen(false);
       reportUnexpected("finish", error);

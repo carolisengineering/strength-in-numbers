@@ -209,15 +209,18 @@ function PreviewBody({
     }
   }
 
+  // Spec 06.7 AC18: a finish is waiting (or was refused) on this phone; Start sent nothing.
+  const [blocked, setBlocked] = useState<string | null>(null);
   const goToWorkouts = (state?: WorkoutsLocationState) =>
     navigate(WORKOUTS_PATH, state === undefined ? { replace: true } : { replace: true, state });
 
   async function onStart() {
+    setBlocked(null);
     const outcome = await begin();
     if (outcome === null) return;
     if (outcome.kind === "started") goToWorkouts();
     else if (outcome.kind === "resumed") goToWorkouts({ notice: "routine-not-applied" });
-    else if (outcome.kind === "blocked") return; // Spec 06.7 AC18: the message is shown from Phase B2
+    else if (outcome.kind === "blocked") setBlocked(outcome.message); // Spec 06.7 AC18
     else if (outcome.failure.kind === "not-found") {
       // Forget the routine only once this preview unmounts: cleared earlier, a list refetch could land
       // first and flash this screen's own "gone" state before the navigation renders.
@@ -294,6 +297,7 @@ function PreviewBody({
           Delete
         </Button>
       </div>
+      {blocked ? <InlineNotice tone="warning">{blocked}</InlineNotice> : null}
       {startFailure ? (
         <InlineNotice
           tone="error"

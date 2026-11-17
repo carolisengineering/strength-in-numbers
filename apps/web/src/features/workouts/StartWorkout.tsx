@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { ActionBar } from "../../ui/ActionBar";
 import { Button } from "../../ui/Button";
@@ -15,6 +15,8 @@ export interface StartWorkoutProps {
   onStarted: (resumed: boolean) => void;
   /** Spec 10.0's Routines section, rendered above the bottom bar's Start button. */
   children?: ReactNode;
+  /** Spec 06.7 AC27: the one-time "saved" line, above everything else. */
+  lead?: ReactNode;
 }
 
 /**
@@ -22,13 +24,17 @@ export interface StartWorkoutProps {
  * `useBeginWorkout`; nothing is persisted — a reload mints a new key, and the
  * `409 workout-in-progress-exists` → resume path covers a started-but-unseen workout.
  */
-export function StartWorkout({ notice, onDismissNotice, onStarted, children }: StartWorkoutProps) {
+export function StartWorkout({ notice, onDismissNotice, onStarted, children, lead }: StartWorkoutProps) {
   const { begin, busy, failure } = useBeginWorkout();
+  // Spec 06.7 AC18: a finish op is in the outbox; nothing was sent.
+  const [blocked, setBlocked] = useState<string | null>(null);
 
   async function onStart() {
+    setBlocked(null);
     const outcome = await begin();
     if (outcome?.kind === "started") onStarted(false);
     else if (outcome?.kind === "resumed") onStarted(true);
+    else if (outcome?.kind === "blocked") setBlocked(outcome.message);
   }
 
   const error = failure === null ? null : failure.kind === "validation" ? START_CLOCK_MESSAGE : START_FAILED_MESSAGE;
@@ -37,6 +43,8 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children }: S
     <Screen title="Start a workout">
       <div className={styles.start}>
         <div className={styles.messages}>
+          {lead}
+          {blocked ? <InlineNotice tone="warning">{blocked}</InlineNotice> : null}
           {notice ? <InlineNotice {...(onDismissNotice ? { onDismiss: onDismissNotice } : {})}>{notice}</InlineNotice> : null}
           {error ? (
             <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void onStart()}>
