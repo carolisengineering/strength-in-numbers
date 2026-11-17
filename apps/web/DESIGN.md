@@ -159,7 +159,7 @@ The system is light-first, designed for a gym with natural light. Dark is a deli
 - Figures as the signature: larger, firmer, slightly narrower numbers.
 - Separation by tint, not outline; no shadows; dialogs have no frame.
 - Hand-drawn 2px-stroke icons, always beside a text label.
-- Thumb-zone layout: 44px targets, a sticky bottom ActionBar flush on the bottom nav.
+- Thumb-zone layout: 44px targets, a sticky bottom ActionBar flush on the bottom nav (below 64rem; at desktop widths it sits at the bottom of the window, clearing the home indicator).
 
 ## Colors
 
@@ -182,7 +182,7 @@ Each color is defined twice: light in `:root` (the frontmatter values) and dark 
 
 ### Neutral
 - **Stone Ground** (`bg`; dark `#1c1a17`): the ground behind everything; also the sheet and the ActionBar background, and the `theme-color` of each theme.
-- **Stone Panel** (`surface`; dark `#26231f`): cards, list rows, the app header and the bottom nav. Its contrast with the ground (about 1.1:1) is decorative and exempt by design.
+- **Stone Panel** (`surface`; dark `#26231f`): cards, list rows, the app header and the bottom nav, and the side rail at desktop widths. Its contrast with the ground (about 1.1:1) is decorative and exempt by design.
 - **Raised Stone** (`surface-raised`; dark `#2f2b26`): dialogs, secondary buttons, segmented options.
 - **Warm Ink** (`text`; dark `#eeeae3`): body text, headings, the spinner.
 - **Warm Gray** (`muted`; dark `#a8a196`): secondary text, labels, inactive nav, set numbers. **Warm-up** (`--color-warmup`) is an alias of muted, used only on warm-up set rows.
