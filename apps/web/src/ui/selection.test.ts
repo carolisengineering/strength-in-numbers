@@ -1,6 +1,20 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { selectedId } from "./selection";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+describe("17.12 AC19 — the selected row's teal wash is an allowed signal use", () => {
+  it("selectedRow.module.css uses --color-signal-soft and is on SIGNAL_ALLOWED with its reason", () => {
+    expect(readFileSync(join(HERE, "selectedRow.module.css"), "utf8")).toMatch(/var\(--color-signal-soft\)/);
+    const roles = readFileSync(join(HERE, "roles.test.ts"), "utf8");
+    expect(roles).toMatch(/a selected list row is a selection[^\n]*\n\s*"ui\/selectedRow\.module\.css"/);
+  });
+});
 
 describe("17.12 AC16 — selection is derived", () => {
   const ids = ["a", "b"] as const;

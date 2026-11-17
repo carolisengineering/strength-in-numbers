@@ -1078,10 +1078,13 @@ async function zoomPass(browser) {
 const desktop = [];
 const DESKTOP_SCREENS = [
   { name: "d1-workouts", path: "/app/workouts" },
-  { name: "d2-history", path: "/app/history" },
+  // Spec 17.12 Phase B: History as two panes (the newest open, a chosen workout, the edit screen in the pane).
+  { name: "d2-history", path: "/app/history", panes: true },
   { name: "d3-exercises", path: "/app/exercises" },
   { name: "d4-profile", path: "/app/profile" },
   { name: "d5-routine-editor", path: `/app/workouts/routines/${D.ids.PUSH_ID}/edit` },
+  { name: "d7-history-workout", path: `/app/history/${D.ids.latestPush}`, panes: true },
+  { name: "d8-history-edit", path: `/app/history/${D.ids.conditioning}/edit`, panes: true, editBar: true },
 ];
 /** Review Focus 3: a 60-character display name, which must ellipsize inside the rail. */
 const LONG_NAME = "Maximiliana Wolfeschlegelsteinhausenbergerdorff-Featherstone";
@@ -1131,7 +1134,14 @@ async function desktopPass(browser) {
           if (fontSize) await page.evaluate((f) => { document.documentElement.style.fontSize = f; }, fontSize);
           await settle(page);
           await shoot(page, device, s.name, `Spec 17.12 AC11: ${s.name.slice(3)} at ${viewport.width} × ${viewport.height}${fontSize ? `, ${fontSize} text` : ""}`);
-          desktop.push(await checkShell(page, `${theme}/${device}/${s.name}`, config));
+          const entry = await checkShell(page, `${theme}/${device}/${s.name}`, config);
+          // Spec 17.12 AC13–AC18, AC31: the two-pane screens, at the desktop sizes (not the tablet, not 200% text).
+          if (s.panes && config.wide === true) {
+            const found = await checkPanes(page, s);
+            for (const v of found) console.error(`  DESKTOP ${entry.shot}: ${v}`);
+            entry.violations.push(...found);
+          }
+          desktop.push(entry);
         });
       }
       await ctx.close();
@@ -1154,6 +1164,36 @@ async function desktopPass(browser) {
       await ctx.close();
     });
   }
+}
+
+/**
+ * Spec 17.12 Phase B: a two-pane screen's checks. One h1; one nav, one main and the two pane regions (AC31); both panes
+ * scroll on their own (AC13); a selected row carries aria-current (AC16); the edit screen's Done bar sits at the detail
+ * pane's bottom (AC18, within 1 px).
+ */
+async function checkPanes(page, { editBar }) {
+  const found = await page.evaluate((wantBar) => {
+    const out = [];
+    const h1s = [...document.querySelectorAll("h1")].length;
+    if (h1s !== 1) out.push(`${h1s} h1 elements, not 1`);
+    const navs = document.querySelectorAll("nav").length;
+    const mains = document.querySelectorAll("main").length;
+    const regions = [...document.querySelectorAll('[data-pane][role="region"]')];
+    if (navs !== 1 || mains !== 1 || regions.length !== 2) out.push(`landmarks: ${navs} nav, ${mains} main, ${regions.length} pane regions (want 1, 1, 2)`);
+    for (const r of regions) if (getComputedStyle(r).overflowY !== "auto") out.push(`the "${r.getAttribute("aria-label")}" pane doesn't scroll on its own`);
+    const list = regions[0];
+    if (list && !list.querySelector('a[aria-current="page"]')) out.push("no row in the list is marked as the open one");
+    if (wantBar) {
+      const bar = document.querySelector('[data-testid="edit-bar"]');
+      const detail = regions[1];
+      if (!bar || !detail) out.push("no edit bar in the detail pane");
+      else if (Math.abs(bar.getBoundingClientRect().bottom - detail.getBoundingClientRect().bottom) > 1) {
+        out.push(`the edit bar ends at ${Math.round(bar.getBoundingClientRect().bottom)}, the detail pane at ${Math.round(detail.getBoundingClientRect().bottom)}`);
+      }
+    }
+    return out;
+  }, Boolean(editBar));
+  return found;
 }
 
 /** One desktop-pass shot's checks (AC11, AC12): sideways scroll, rail targets, overlaps, and the layout for the width. */
