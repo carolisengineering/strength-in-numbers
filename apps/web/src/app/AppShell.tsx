@@ -17,7 +17,7 @@ export const SKIP_TO_CONTENT = "Skip to content";
  * The four sections, from the `NAV_ITEMS` registry, for both the bottom nav and the rail (Spec 17.12): one list, two
  * looks. The current section is styled through the `aria-current="page"` attribute `NavLink` sets itself.
  */
-function NavItems({ targetClass, labelClass }: { targetClass: string; labelClass: string }) {
+function NavItems({ targetClass, labelClass }: { targetClass: string | undefined; labelClass: string | undefined }) {
   return NAV_ITEMS.map(({ to, label, icon: Icon, comingSoon }) => (
     <NavLink key={to} to={to} className={[targetClass, comingSoon ? styles.navTargetComingSoon : ""].filter(Boolean).join(" ")}>
       <Icon />
