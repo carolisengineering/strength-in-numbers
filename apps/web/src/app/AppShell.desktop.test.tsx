@@ -248,6 +248,12 @@ describe("17.12 AC8 — the safe areas at desktop widths", () => {
   it("a bottom action bar (the editor's, the workout's) clears the bottom inset at 64rem, where no nav is under it", () => {
     expect(rule(mediaBlock(actionBarCss, DESKTOP), ".bar")).toMatch(/padding-bottom:\s*calc\(var\(--space-3\) \+ env\(safe-area-inset-bottom\)\)/);
   });
+
+  // Code review #1: while a keyboard is up the bar rides on it (the frame ends at the keyboard), so the home
+  // indicator's inset would leave a gap above the keyboard, as a sheet's row drops it too.
+  it("with a keyboard up, the bar drops the inset again", () => {
+    expect(rule(mediaBlock(actionBarCss, DESKTOP), ':global(:root[data-keyboard="open"]) .bar')).toMatch(/padding-bottom:\s*var\(--space-3\)/);
+  });
 });
 
 describe("17.12 review focus 1 — a resize across 64rem keeps the page's state", () => {

@@ -29,6 +29,12 @@
   .bar {
     padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
   }
+
+  /* While a keyboard is up the frame ends at the keyboard and the bar rides on it: no home indicator under it, as a
+     sheet's row drops its inset too (#206). */
+  :global(:root[data-keyboard="open"]) .bar {
+    padding-bottom: var(--space-3);
+  }
 }
 
 /* A status line under the buttons (why Finish is disabled, unsaved writes). */
