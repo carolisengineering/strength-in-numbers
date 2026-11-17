@@ -112,7 +112,7 @@ function makeHandler(state) {
       console.log(`  (holding ${m} ${p} unanswered so the outbox keeps it pending)`);
       return; // never fulfilled: the write stays in flight
     }
-    if (m === "GET" && p === "/v1/me") res = json(D.me);
+    if (m === "GET" && p === "/v1/me") res = json(state.meName ? { ...D.me, displayName: state.meName } : D.me);
     else if (m === "GET" && p === "/v1/hevy/status") res = json(D.hevyStatus);
     else if (m === "GET" && p === "/v1/hevy/mapping") res = json(state.hevyMapping ?? D.hevyMapping);
     // Spec 20.2: a workout's Hevy link as `state.hevyLink` says (none when unset), and begin / complete / release.
@@ -412,6 +412,9 @@ async function layoutDump(page) {
     // Spec 17.13 AC20: a radio or checkbox is tapped through its label, so a label of at least 44 × 44 is its target.
     const small = (el, r) => {
       if (r.width >= 44 && r.height >= 44) return false;
+      // Spec 17.12: a visually hidden control (ui/VisuallyHidden, a 1 × 1 box clipped to nothing) has no target until
+      // it shows; the desktop skip link draws itself full size on focus.
+      if (r.width <= 1 && r.height <= 1 && getComputedStyle(el).clipPath.startsWith("inset(50%")) return false;
       if (el.tagName === "INPUT" && (el.type === "radio" || el.type === "checkbox")) {
         const l = el.closest("label")?.getBoundingClientRect();
         if (l && l.width >= 44 && l.height >= 44) return false;
@@ -964,7 +967,7 @@ const ZOOM_KNOWN = [
 const zoom = [];
 // The zoom pass's shots: their small targets, clipped inputs and sheet-row problems are zoom findings (so ZOOM_KNOWN can
 // hold them), and the run-wide checks skip them.
-const ZOOM_SHOT = /(^|\/)mobile-(320-reflow|200pct)\//;
+const ZOOM_SHOT = /(^|\/)(mobile-(320-reflow|200pct)|desktop-1280-200pct)\//;
 
 /** Spec 17.13 AC19: nine screens at 320 × 568 and at 200% text; fails on sideways scroll, an overlap, or a primary off screen. */
 async function zoomPass(browser) {
@@ -1069,6 +1072,103 @@ async function zoomPass(browser) {
     }
     await ctx.close();
   }
+}
+// Spec 17.12 AC11, AC12, AC31: the shell at three desktop sizes and a tablet, light and dark, plus 1280 × 800 at 200%
+// text. Phases B–D add their shots to DESKTOP_SCREENS and inherit every config.
+const desktop = [];
+const DESKTOP_SCREENS = [
+  { name: "d1-workouts", path: "/app/workouts" },
+  { name: "d2-history", path: "/app/history" },
+  { name: "d3-exercises", path: "/app/exercises" },
+  { name: "d4-profile", path: "/app/profile" },
+  { name: "d5-routine-editor", path: `/app/workouts/routines/${D.ids.PUSH_ID}/edit` },
+];
+/** Review Focus 3: a 60-character display name, which must ellipsize inside the rail. */
+const LONG_NAME = "Maximiliana Wolfeschlegelsteinhausenbergerdorff-Featherstone";
+
+/** Spec 17.12: the shell's layout at this width, read from the page. */
+const measureShell = (page) =>
+  page.evaluate(() => {
+    const shell = document.querySelector('[data-testid="app-shell"]');
+    const rail = shell?.getAttribute("data-layout") === "wide" ? shell.querySelector(':scope > nav[aria-label="Primary"]') : null;
+    const bottomNav = shell?.getAttribute("data-layout") === "wide" ? null : shell?.querySelector(':scope > nav[aria-label="Primary"]');
+    const user = document.querySelector('[data-testid="app-shell-user"]');
+    const box = (el) => el?.getBoundingClientRect();
+    return {
+      wide: shell?.getAttribute("data-layout") === "wide",
+      header: Boolean(shell?.querySelector(":scope > header")),
+      rail: Boolean(rail),
+      bottomNav: Boolean(bottomNav),
+      railWidth: rail ? Math.round(box(rail).width) : null,
+      mainWidth: Math.round(box(document.querySelector("main"))?.width ?? 0),
+      railTargets: rail ? [...rail.querySelectorAll("a")].map((a) => ({ text: a.getAttribute("aria-label") ?? a.textContent.trim(), h: Math.round(box(a).height) })) : [],
+      userOverflows: user ? user.scrollWidth > user.clientWidth + 1 || box(user).right > (rail ? box(rail).right : Infinity) + 0.5 : false,
+      sideways: document.documentElement.scrollWidth > window.innerWidth,
+    };
+  });
+
+async function desktopPass(browser) {
+  const CONFIGS = [
+    { device: "desktop-1440", viewport: { width: 1440, height: 900 }, wide: true },
+    { device: "desktop-1280", viewport: { width: 1280, height: 800 }, wide: true },
+    { device: "desktop-1024", viewport: { width: 1024, height: 768 }, wide: true, mainWidth: 784 },
+    { device: "tablet-820", viewport: { width: 820, height: 1180 }, wide: false },
+    // AC31: 200% text. Only the rail's targets, sideways scroll and overlaps are checked here.
+    { device: "desktop-1280-200pct", viewport: { width: 1280, height: 800 }, fontSize: "200%" },
+  ];
+  for (const theme of ["light", "dark"]) {
+    THEME = theme;
+    for (const config of CONFIGS) {
+      const { device, viewport, fontSize } = config;
+      const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      await ctx.route(isSinApi, makeHandler({ active: false }));
+      const page = await ctx.newPage();
+      page.setDefaultTimeout(8000);
+      page.on("pageerror", (err) => consoleErrors.push(`${device} ${page.url()}: PAGEERROR ${err.message.slice(0, 300)}`));
+      for (const s of DESKTOP_SCREENS) {
+        await tryStep(`desktop ${theme} ${device} ${s.name}`, async () => {
+          await page.goto(BASE + s.path);
+          if (fontSize) await page.evaluate((f) => { document.documentElement.style.fontSize = f; }, fontSize);
+          await settle(page);
+          await shoot(page, device, s.name, `Spec 17.12 AC11: ${s.name.slice(3)} at ${viewport.width} × ${viewport.height}${fontSize ? `, ${fontSize} text` : ""}`);
+          desktop.push(await checkShell(page, `${theme}/${device}/${s.name}`, config));
+        });
+      }
+      await ctx.close();
+    }
+    // Review Focus 3: a long display name at 1024 keeps the rail at 240 px and stays inside it.
+    await tryStep(`desktop ${theme} long name`, async () => {
+      const ctx = await browser.newContext({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      await ctx.route(isSinApi, makeHandler({ active: false, meName: LONG_NAME }));
+      const page = await ctx.newPage();
+      await page.goto(BASE + "/app/history");
+      await settle(page);
+      await shoot(page, "desktop-1024", "d6-long-name", "Spec 17.12 review focus 3: a 60-character name in the rail");
+      const entry = await checkShell(page, `${theme}/desktop-1024/d6-long-name`, { wide: true, mainWidth: 784 });
+      const extra = [];
+      if (entry.shell.railWidth !== 240) extra.push(`the rail is ${entry.shell.railWidth} px wide with a long name, not 240`);
+      if (entry.shell.userOverflows) extra.push("the user link overflows the rail");
+      for (const v of extra) console.error(`  DESKTOP ${entry.shot}: ${v}`);
+      entry.violations.push(...extra);
+      desktop.push(entry);
+      await ctx.close();
+    });
+  }
+}
+
+/** One desktop-pass shot's checks (AC11, AC12): sideways scroll, rail targets, overlaps, and the layout for the width. */
+async function checkShell(page, shot, { wide, mainWidth }) {
+  const shell = await measureShell(page);
+  const violations = [];
+  if (shell.sideways) violations.push("the page scrolls sideways");
+  for (const t of shell.railTargets) if (t.h < 44) violations.push(`rail link "${t.text}" is ${t.h} px tall`);
+  const dump = await layoutDump(page);
+  for (const o of dump.overlaps) violations.push(`overlap: ${o.a} / ${o.b}`);
+  if (wide === true && (!shell.wide || !shell.rail || shell.header || shell.bottomNav)) violations.push("expected the rail and no header or bottom nav");
+  if (wide === false && (shell.wide || shell.rail || !shell.header || !shell.bottomNav)) violations.push("expected the header and bottom nav, no rail");
+  if (mainWidth && Math.abs(shell.mainWidth - mainWidth) > 1) violations.push(`<main> is ${shell.mainWidth} px wide, not ${mainWidth}`);
+  for (const v of violations) console.error(`  DESKTOP ${shot}: ${v}`);
+  return { shot, shell, violations };
 }
 // Spec 17.13 AC12: the first History row's offset from <main>'s top at 390 × 844. Before Phase B it was 67 px (the
 // header's word said again by a visible h1); the page gives back at least 40 px.
@@ -3177,6 +3277,9 @@ try {
   // Spec 17.13 AC19: the zoom pass, once, in the light theme.
   if (DEVICE_FILTER.includes("mobile")) await zoomPass(browser);
 
+  // Spec 17.12 AC11: the desktop pass, light and dark.
+  if (DEVICE_FILTER.includes("desktop")) await desktopPass(browser);
+
   // The Light / Dark / System override (Spec 17.0 AC18): Profile on a light OS with Dark stored.
   {
     THEME = "override-dark";
@@ -3287,6 +3390,12 @@ if (DEVICE_FILTER.includes("mobile") && (localeChecks.length === 0 || report.som
 }
 if (doubledTitles.length) process.exitCode = 1;
 if (keyboardFrame.some((k) => k.violations.length)) process.exitCode = 1;
+// Spec 17.12 AC11: the desktop pass fails the run on any finding, or when it never ran on every shot.
+if (desktop.some((d) => d.violations.length)) process.exitCode = 1;
+if (DEVICE_FILTER.includes("desktop") && (desktop.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED desktop")))) {
+  console.error("  DESKTOP: the desktop pass did not run on every shot");
+  process.exitCode = 1;
+}
 // Spec 17.13 AC19, Review Focus 5: the zoom pass fails the run on a finding not in ZOOM_KNOWN, or when it never ran.
 if (zoom.some((z) => z.violations.length)) process.exitCode = 1;
 if (DEVICE_FILTER.includes("mobile") && (zoom.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED zoom")))) {
@@ -3301,7 +3410,7 @@ if (DEVICE_FILTER.includes("mobile") && (historyOffsets.length === 0 || historyO
   console.error("  HISTORY OFFSET: the check failed or did not run");
   process.exitCode = 1;
 }
-fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, doubledTitles, historyOffsets, keyboardFrame, zoom, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
+fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, doubledTitles, historyOffsets, keyboardFrame, zoom, desktop, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
 console.log(`\nunmatched API requests: ${unmatched.size ? [...unmatched].join(", ") : "none"}`);
 console.log(`console errors: ${consoleErrors.length}`);
 for (const e of consoleErrors.slice(0, 20)) console.log("  " + e);

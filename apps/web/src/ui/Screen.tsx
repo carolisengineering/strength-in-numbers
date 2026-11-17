@@ -1,5 +1,6 @@
 import { useId, type ReactNode, type Ref } from "react";
 
+import { useIsDesktop } from "./breakpoints";
 import styles from "./Screen.module.css";
 
 export interface ScreenProps {
@@ -13,7 +14,8 @@ export interface ScreenProps {
   titleRef?: Ref<HTMLHeadingElement>;
   /**
    * Spec 17.13 AC10: the app header already says this word, so the `<h1>` is hidden from sight. It stays in the tree,
-   * names the landmark and can take focus. Hidden at every width until Spec 17.12's desktop layout shows it.
+   * names the landmark and can take focus. Hidden below 64rem, where the header says the word; at desktop widths
+   * there is no header, so it shows (Spec 17.12 AC9).
    */
   hideTitle?: boolean;
   /** Spec 17.13 AC11: the `<h1>` one step smaller, under a larger title of the page's own (the summary's workout title). */
@@ -28,7 +30,9 @@ export interface ScreenProps {
  */
 export function Screen({ title, lead, leadFill = false, children, titleRef, hideTitle = false, titleSmall = false }: ScreenProps) {
   const headingId = useId();
-  const titleClass = [styles.title, hideTitle ? styles.titleHidden : null, titleSmall ? styles.titleSmall : null].filter(Boolean).join(" ");
+  const wide = useIsDesktop();
+  const titleHidden = hideTitle && !wide;
+  const titleClass = [styles.title, titleHidden ? styles.titleHidden : null, titleSmall ? styles.titleSmall : null].filter(Boolean).join(" ");
 
   return (
     <section className={styles.screen} aria-labelledby={headingId}>

@@ -23,6 +23,20 @@
   flex: 1;
 }
 
+/* Spec 17.12: at desktop widths there is no bottom nav under the bar, so it clears the home indicator itself (an
+   iPad in landscape; 0 in a desktop browser). Padding here, not on <main>, so its background still reaches the edge. */
+@media (min-width: 64rem) {
+  .bar {
+    padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  }
+
+  /* While a keyboard is up the frame ends at the keyboard and the bar rides on it: no home indicator under it, as a
+     sheet's row drops its inset too (#206). */
+  :global(:root[data-keyboard="open"]) .bar {
+    padding-bottom: var(--space-3);
+  }
+}
+
 /* A status line under the buttons (why Finish is disabled, unsaved writes). */
 .hint {
   flex-basis: 100%;
