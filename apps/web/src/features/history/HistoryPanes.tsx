@@ -1,10 +1,11 @@
 import { useMemo } from "react";
-import { useMatch } from "react-router";
+import { useMatch, useParams } from "react-router";
 
 import { useIsDesktop } from "../../ui/breakpoints";
 import { usePane } from "../../ui/paneContext";
 import { Panes } from "../../ui/Panes";
 import { useSelectedId } from "../../ui/selection";
+import { EditWorkoutScreen } from "../workouts/edit/EditWorkoutScreen";
 import { FinishedWorkoutScreen } from "../workouts/FinishedWorkoutScreen";
 import { HistoryScreen } from "./HistoryScreen";
 import { flattenHistory, useHistoryList } from "./queries";
@@ -34,4 +35,19 @@ export function HistoryIndex() {
   const { slot, selectedId } = usePane();
   if (slot === null) return <HistoryScreen />;
   return selectedId === null ? null : <FinishedWorkoutScreen key={selectedId} section="history" workoutId={selectedId} />;
+}
+
+/**
+ * `/app/history/:id` and `…/:id/edit`, keyed by the id (code review): beside the list, a click goes from one workout
+ * to the next without leaving the route, and an already-read workout would reuse the last one's screen state (an open
+ * Workout menu, a failure notice, the saved message). On a phone the list was always in between.
+ */
+export function HistoryWorkout() {
+  const { id = "" } = useParams();
+  return <FinishedWorkoutScreen key={id} section="history" />;
+}
+
+export function HistoryWorkoutEdit() {
+  const { id = "" } = useParams();
+  return <EditWorkoutScreen key={id} section="history" />;
 }

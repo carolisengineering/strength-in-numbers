@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -108,6 +109,33 @@ describe("17.12 AC16 — opening another item scrolls the detail to its top, and
     expect(screen.getByRole("heading", { level: 1, name: "Another workout" })).toBeInTheDocument();
     expect(detail.scrollTop).toBe(0);
     expect(list.scrollTop).toBe(200);
+  });
+});
+
+describe("17.12 AC16 — the detail starts at its top when the selection changes on the same path", () => {
+  // Code review #2: at /app/history the open workout is the list's first, so a delete (or a finish landing) changes
+  // it with no change of path.
+  it("wide: a new selectedId on the same path scrolls the detail to 0", async () => {
+    const user = userEvent.setup();
+    setDesktop(true);
+    function Switcher() {
+      const [id, setId] = useState("a");
+      return (
+        <>
+          <button onClick={() => setId("b")}>Next newest</button>
+          <Panes list={<ListScreen />} listLabel="History" detailLabel="Workout" selectedId={id} />
+        </>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/list", element: <Switcher />, children: [{ index: true, element: <SecondDetail /> }] }], {
+      initialEntries: ["/list"],
+    });
+    render(<RouterProvider router={router} />);
+    const detail = panes()[1]!;
+    detail.scrollTop = 300;
+    await user.click(screen.getByRole("button", { name: "Next newest" }));
+    expect(router.state.location.pathname).toBe("/list");
+    expect(detail.scrollTop).toBe(0);
   });
 });
 

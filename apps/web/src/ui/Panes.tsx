@@ -29,10 +29,11 @@ export function Panes({ list, listLabel, detailLabel, selectedId }: PanesProps) 
   const listValue = useMemo<PaneValue>(() => ({ slot: "list", selectedId }), [selectedId]);
   const detailValue = useMemo<PaneValue>(() => ({ slot: wide ? "detail" : null, selectedId }), [wide, selectedId]);
 
-  // AC16: opening another item starts the detail at its top; the list keeps its place.
+  // AC16: opening another item starts the detail at its top; the list keeps its place. The selection too: at a list's
+  // bare path the open item is derived, so a delete or a new newest changes it with no change of path.
   useLayoutEffect(() => {
     if (detailRef.current) detailRef.current.scrollTop = 0;
-  }, [pathname]);
+  }, [pathname, selectedId]);
 
   return (
     <div className={styles.root} data-wide={wide ? "" : undefined}>

@@ -119,6 +119,23 @@ describe("17.12 AC16 — choosing a row swaps the detail", () => {
   });
 });
 
+describe("17.12 AC16 — each workout opens fresh", () => {
+  // Code review #1: on a phone you always went back through the list; beside it, a click must not carry one
+  // workout's screen state (an open menu, a failure notice) over to the next.
+  it("an open Workout menu on one workout is closed on the next (already read, so no spinner remounts it)", async () => {
+    const { user } = await setup(`/app/history/${OLDER.id}`);
+    await within(detailPane()).findByText("Older pull");
+    await user.click(rowOf("Newer push"));
+    await within(detailPane()).findByText("Newer push");
+    await user.click(within(detailPane()).getByRole("button", { name: "Workout menu" }));
+    expect(within(detailPane()).getByRole("button", { name: "Delete workout" })).toBeInTheDocument();
+    await user.click(rowOf("Older pull"));
+    await within(detailPane()).findByText("Older pull");
+    expect(within(detailPane()).getByRole("button", { name: "Workout menu" })).toHaveAttribute("aria-expanded", "false");
+    expect(within(detailPane()).queryByRole("button", { name: "Delete workout" })).toBeNull();
+  });
+});
+
 describe("17.12 AC17 — one h1, the list's title an h2, no back link, the Workout menu kept", () => {
   it("wide summary: the page's only h1 is the detail's; History is an h2; Edit sits above Delete in the menu", async () => {
     const { user } = await setup(`/app/history/${NEWER.id}`);

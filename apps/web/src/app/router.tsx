@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 
 import { Callback } from "../auth/Callback";
-import { HistoryIndex, HistoryPanes } from "../features/history/HistoryPanes";
+import { HistoryIndex, HistoryPanes, HistoryWorkout, HistoryWorkoutEdit } from "../features/history/HistoryPanes";
 import { HevyRoute } from "../features/hevy/HevyRoute";
 import { HevyScreen } from "../features/hevy/HevyScreen";
 import { HevyImportRoute } from "../features/hevy/import/HevyImportRoute";
@@ -134,8 +134,8 @@ export const routes: RouteObject[] = [
                 element: <HistoryPanes />,
                 children: [
                   { index: true, element: <HistoryIndex /> },
-                  { path: ":id", element: <FinishedWorkoutScreen section="history" /> },
-                  { path: ":id/edit", element: <EditWorkoutScreen section="history" /> },
+                  { path: ":id", element: <HistoryWorkout /> },
+                  { path: ":id/edit", element: <HistoryWorkoutEdit /> },
                 ],
               },
               {
