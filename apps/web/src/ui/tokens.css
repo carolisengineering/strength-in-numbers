@@ -92,6 +92,16 @@
 
   /* layout */
   --measure-max: 40rem;
+  /* Spec 17.12 AC1: the two breakpoints. Repeated as a literal in media conditions; a custom property can't be read there. */
+  --bp-tablet: 48rem;
+  /* Repeated as a literal in media conditions; a custom property can't be read there (ui/breakpoints.ts DESKTOP_QUERY). */
+  --bp-desktop: 64rem;
+  /* Spec 17.12: the side rail's width at desktop widths. */
+  --sidebar-width: 15rem;
+  /* Spec 17.12: a two-pane screen's list pane. */
+  --pane-list-width: 20rem;
+  /* Spec 17.12: the cap on a two-pane screen, centered in <main>. */
+  --content-max-wide: 80rem;
 
   /* a screen's inset from the viewport edge; ActionBar bleeds across exactly this much */
   --screen-pad: var(--space-4);
