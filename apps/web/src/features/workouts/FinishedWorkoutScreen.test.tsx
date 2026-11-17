@@ -497,8 +497,10 @@ describe("a delete never re-reads the workout it deleted", () => {
       `sin:workout:outbox:${USER_ID}`,
       JSON.stringify({ v: 1, userId: USER_ID, ops: [], idMap: { "c-1": { setId, workoutId: workout.id } } }),
     );
+    const stored = () => window.localStorage.getItem(`sin:workout:outbox:${USER_ID}`) ?? "";
     const { user, router } = renderApp(`/app/${section}/${workout.id}`);
     await screen.findByRole("heading", { name: "Workout summary" });
+    expect(stored()).toContain(workout.id);
 
     await user.click(await revealDelete(user));
     await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
@@ -508,5 +510,7 @@ describe("a delete never re-reads the workout it deleted", () => {
     expect(deleted).toBeGreaterThanOrEqual(0);
     const reread = fake.requests.slice(deleted).filter((r) => r.method === "GET" && r.path === `/v1/workouts/${workout.id}`);
     expect(reread).toEqual([]);
+    // The outbox read the seeded id map and `dropWorkout` took the entry out, so the re-render above really happened.
+    expect(stored()).not.toContain(workout.id);
   });
 });
