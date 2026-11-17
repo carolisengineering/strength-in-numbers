@@ -159,15 +159,19 @@ export function useDeleteWorkout(): UseMutationResult<
   return useMutation({
     networkMode: "always",
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteWorkout(id)),
-    onSuccess: (_void, { id, phase, setCount }) => {
+    onSuccess: async (_void, { id, phase, setCount }) => {
       drafts?.clearWorkout(id); // Spec 06.5 AC10
       rest?.clearWorkout(id); // Spec 17.1 AC47
       outbox?.dropWorkout(id); // Spec 18.0 AC25: an op for a workout the lifter just deleted must not be sent
-      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(id) });
       // An in-progress workout has no records and no History row (Spec 08.0 AC8).
       if (phase === "finished") applyDeletedCaches(queryClient, id);
       track("workout_discarded", { phase, setCount });
-      return queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+      await queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
+      // Last, right before the caller navigates away: the summary and the edit screen still observe this detail, and
+      // they re-render while the active read is out (`dropWorkout` notifies the outbox's readers, `useWaitingFinish`
+      // among them). Removed any earlier, that re-render would re-read the deleted workout: a 404, and a spinner then
+      // Not found on the screen (the browser smoke after #341).
+      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(id) });
     },
   });
 }
