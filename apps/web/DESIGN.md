@@ -221,7 +221,7 @@ Each color is defined twice: light in `:root` (the frontmatter values) and dark 
 
 ## Layout
 
-Mobile-first and single column. A screen is a flex column with a 1rem (`--space-4`) gap, padded by `--screen-pad` (1rem), capped at `--measure-max` (40rem) and centered; wide screens only cap the measure. The app shell is a three-row grid fixed to the viewport height: a slim header (Stone Panel), a scrolling main, and a bottom nav (Stone Panel) at every width. At 48rem and above, the header's inline padding grows to 2rem and the main column caps at the measure.
+Mobile-first and single column. A screen is a flex column with a 1rem (`--space-4`) gap, padded by `--screen-pad` (1rem), capped at `--measure-max` (40rem) and centered; wide screens only cap the measure. Below 64rem the app shell is a three-row grid fixed to the viewport height: a slim header (Stone Panel), a scrolling main, and a bottom nav (Stone Panel). At 48rem and above, the header's inline padding grows to 2rem and the main column caps at the measure. At 64rem and above (Spec 17.12) the shell is two columns: a side rail of `--sidebar-width` (15rem) on Stone Panel with a Hairline on its right, then `<main>` filling the rest; there is no header and no bottom nav, and single-column screens keep their measure, centered in `<main>`. The breakpoints are tokens, `--bp-tablet` (48rem) and `--bp-desktop` (64rem), repeated as literals in media conditions; `--pane-list-width` (20rem) and `--content-max-wide` (80rem) are for the two-pane screens (Phases B–D).
 
 The spacing scale is `--space-1` through `--space-8` (0.25, 0.5, 0.75, 1, 1.5, 2rem). Rows inside a panel are separated by gaps (0.5rem between set rows), not by borders. Every card-like panel uses the card insets (`--card-pad-block` 0.75rem, `--card-pad-inline` 1rem), so their edges line up.
 
@@ -281,8 +281,8 @@ Quiet, firm and thumb-sized.
 - **Select** (`ui/Select`, Spec 17.7): a long or data-driven list (muscle, equipment, section, time zone, the picker's filters, Hevy type) keeps the native menu, drawn like an input: the same 6px radius, 44px height and Control Boundary, a drawn chevron on the right in ink, no `data:` image. The picker's filters are inline Selects, so 6px, not the 10px of buttons: a select is a field, and fields are 6px.
 
 ### Navigation
-- **Style:** a bottom bar of equal columns on Stone Panel with a Hairline on top, clearing the iOS home indicator. Each target is an icon over a Label (0.875rem), at least 44px.
-- **States:** inactive is Warm Gray; the current page is Deep Stone Teal and 700 weight with `aria-current="page"`. Labels ellipsize rather than widen the page.
+- **Style:** below 64rem, a bottom bar of equal columns on Stone Panel with a Hairline on top, clearing the iOS home indicator; each target is an icon over a Label (0.875rem), at least 44px. At 64rem and above, a rail instead (Spec 17.12): the app name as text (1.125rem, 700), the four sections stacked as rows at least 44px tall (an icon beside a 600-weight Label), and the signed-in user's name at the bottom above a Hairline, as a link to Profile. A visually hidden "Skip to content" link comes first and shows on keyboard focus.
+- **States:** inactive is Warm Gray; the current page is Deep Stone Teal and 700 weight with `aria-current="page"`, and in the rail it also sits on the signal wash (`--color-signal-soft`, mockup call M1). Labels and the user's name ellipsize rather than widen the page or the rail.
 
 ### Logged set row (signature)
 A logged set is a full-width, borderless, 44px button inside its card: a muted set number, then weight × reps in the Set figure style. A warm-up row is Warm Gray, body size and weight 400, with a bold W in a fixed slot after the set number (`aria-hidden`), and its accessible name still says "Warm-up". `data-set-type` is on every row so later specs can target types without a class per type. The finished-workout screen marks warm-ups the same way.
