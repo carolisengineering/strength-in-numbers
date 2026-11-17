@@ -193,10 +193,6 @@ function setKeyOf(op: SetOp, idMap: IdMap): string {
 }
 
 /**
- * How many *sets* of `workoutId` are not saved yet (Spec 06.2 AC15, AC16): a set with several queued
- * ops counts once, and a set with any failed op counts as failed, not pending (code review #3).
- */
-/**
  * Spec 06.7 AC21: the writes of this workout the server refused — every failed op but the finish (a refused finish is
  * replaced by the next Finish tap, AC2). It locks every Finish door and is the `n` of `finishLocked(n)`.
  */
@@ -204,6 +200,10 @@ export function failedOpCount(ops: readonly OutboxOp[], workoutId: string): numb
   return ops.filter((o) => o.workoutId === workoutId && o.status === "failed" && o.kind !== "finish").length;
 }
 
+/**
+ * How many *sets* of `workoutId` are not saved yet (Spec 06.2 AC15, AC16): a set with several queued
+ * ops counts once, and a set with any failed op counts as failed, not pending (code review #3).
+ */
 export function unsavedSets(ops: readonly OutboxOp[], workoutId: string, idMap: IdMap): { pending: number; failed: number } {
   const failed = new Set<string>();
   const all = new Set<string>();

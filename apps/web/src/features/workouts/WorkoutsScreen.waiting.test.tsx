@@ -174,6 +174,19 @@ describe("06.7 AC30 — the gone card", () => {
     expect(await screen.findByRole("region", { name: GONE_TITLE })).toBeInTheDocument();
   });
 
+  it("code review: a finish blocked by a set write that got a 404 is not gone (the workout is live): it reopens, no discard", async () => {
+    const w = workoutOf();
+    const fake = createWorkoutFake({ active: w });
+    prepareApp({ auth, fake });
+    const blocked = { ...finishOp(w, "failed", 404), failure: { status: 404, type: "not-found", requestId: "r-1", blockedBy: "update-1" } };
+    storeOps([blocked]);
+    holdActive();
+    renderApp("/app/workouts");
+    // With the active read held, nothing may decide "gone" from the inherited 404 alone.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.queryByRole("region", { name: GONE_TITLE })).toBeNull();
+  });
+
   it("a refused finish whose workout is still live is not gone: the workout reopens (AC29), no discard offered", async () => {
     const w = workoutOf();
     const fake = createWorkoutFake({ active: w });
@@ -242,5 +255,23 @@ describe("06.7 AC18 — a routine's Start says why it waits", () => {
     await user.click(await screen.findByRole("button", { name: "Start this routine" }));
     expect(await screen.findByText(START_BLOCKED_MESSAGE)).toBeInTheDocument();
     expect(fake.requests.filter((r) => r.method === "POST" && r.path === "/v1/workouts")).toEqual([]);
+  });
+});
+
+describe("06.7 AC18 — code review: the blocked warning doesn't outlive the finish", () => {
+  it("Start's 'hasn't sent yet' clears once the finish op is gone", async () => {
+    const w = workoutOf();
+    const routine = makeRoutine({ id: routineId(8), name: "Pull A", items: [makeRoutineItem({ exerciseId: catalog[0]!.id })] });
+    // Finished on another device meanwhile: the replayed finish reconciles as elsewhere, and its op leaves the outbox.
+    prepareApp({ auth, catalog, fake: createWorkoutFake({ catalog, routines: [routine], active: null, finished: [{ ...w, endedAt: "2026-10-02T10:50:00.000Z" }] }) });
+    online = false;
+    storeOps([finishOp(w, "queued")]);
+    const { user } = renderApp(`/app/workouts/routines/${routine.id}`);
+    await user.click(await screen.findByRole("button", { name: "Start this routine" }));
+    expect(await screen.findByText(START_BLOCKED_MESSAGE)).toBeInTheDocument();
+    // The finish lands (the op leaves the outbox): the warning goes with it.
+    online = true;
+    window.dispatchEvent(new Event("online"));
+    await waitFor(() => expect(screen.queryByText(START_BLOCKED_MESSAGE)).toBeNull());
   });
 });

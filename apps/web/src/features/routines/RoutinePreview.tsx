@@ -11,6 +11,7 @@ import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
 import { useActiveWorkout } from "../workouts/queries";
 import { START_CLOCK_MESSAGE, START_FAILED_MESSAGE, useBeginWorkout } from "../workouts/useBeginWorkout";
+import { useWaitingFinish } from "../workouts/useWaitingFinish";
 import type { WorkoutsLocationState } from "../workouts/WorkoutsScreen";
 import { useExerciseLookup } from "./exerciseLookup";
 import { ItemLine } from "./ItemLine";
@@ -210,7 +211,9 @@ function PreviewBody({
   }
 
   // Spec 06.7 AC18: a finish is waiting (or was refused) on this phone; Start sent nothing.
-  const [blocked, setBlocked] = useState<string | null>(null);
+  const [blockedAt, setBlocked] = useState<string | null>(null);
+  // Only while a finish op is still there (code review): once it lands, Start works again.
+  const blocked = useWaitingFinish().op === null ? null : blockedAt;
   const goToWorkouts = (state?: WorkoutsLocationState) =>
     navigate(WORKOUTS_PATH, state === undefined ? { replace: true } : { replace: true, state });
 

@@ -59,7 +59,7 @@ import { supersetRows, type SupersetRow } from "./supersetRows";
 import { finishStatsFor, formatMinutes } from "./finishStats";
 import { FinishDialogBody, type FinishOneOff } from "./FinishDialog";
 import { finishEndedAt } from "./timestamps";
-import { beginFinishTap, endFinishTap } from "./finishTap";
+import { beginFinishTap, currentFinishTap, endFinishTap } from "./finishTap";
 import { useCurrentExercise } from "./useCurrentExercise";
 import { useRegroup } from "./useRegroup";
 import { rereadFresh } from "./readGuard";
@@ -184,7 +184,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     mounted.current = true;
     return () => {
       mounted.current = false;
+      // Spec 06.7: a tap that navigated keeps the guard until this screen is gone (code review: clearing it right after
+      // navigate() could let the Workouts screen draw the waiting card for a frame before the route commits).
+      if (currentFinishTap() === workout.id) endFinishTap();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the mount's workout
   }, []);
 
   const exercises = useMemo(
@@ -633,7 +637,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       // screen must not yank them back across screens. A refused finish stays here: the workout reopens (AC29).
       if (outcome.status === "landed") afterFinished();
       else if (outcome.status === "queued") afterFinished({ saved: outcome.reason });
-      endFinishTap();
+      // A refused finish stays here, and a tap whose screen already left has nothing to keep: end the guard now. A tap
+      // that navigated ends it when this screen unmounts.
+      if (outcome.status === "refused" || !mounted.current) endFinishTap();
     } catch (error) {
       endFinishTap();
       setFinishOpen(false);
@@ -784,6 +790,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       if (!mounted.current) return;
       const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
       const ids = fresh ? findIncompleteWorkingSets(fresh) : [];
+      track("finish_blocked", { incompleteCount: ids.length });
       scrollPending.current = ids.length > 0;
       setFlaggedIds(new Set(ids));
     });
@@ -880,7 +887,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         <div ref={refusedRef}>
           <InlineNotice
             tone="error"
-            requestId={refusedKind === "other" ? (refusedOp.failure?.requestId ?? null) : null}
+            requestId={refusedKind === "other" || refusedKind === "clock" ? (refusedOp.failure?.requestId ?? null) : null}
             onDismiss={() => outbox?.discard(refusedOp.id)}
           >
             {refusedText}

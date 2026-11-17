@@ -75,11 +75,6 @@ const noop = () => {};
 type RegroupRequest = { type: "move"; id: string; direction: "up" | "down" } | { type: "toggleLink"; upperId: string };
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/**
- * Spec 18.0 Phase A: a finished workout's edit screen. A sibling of `ActiveSession`, never a mode of it (D3): it
- * composes the logging screen's leaf components inside `ScreenModeContext` `edit`, and none of the live machinery
- * (outbox, drafts, rest timer, the log bar, Finish). Every write is pessimistic and online-only (D5).
- */
 /** Spec 06.7 AC24: a workout whose finish is waiting can't be edited yet: its route goes to the summary. */
 export function EditWorkoutScreen({ section }: { section: SummarySection }) {
   const { id = "" } = useParams();
@@ -88,6 +83,11 @@ export function EditWorkoutScreen({ section }: { section: SummarySection }) {
   return <EditWorkoutBody section={section} />;
 }
 
+/**
+ * Spec 18.0 Phase A: a finished workout's edit screen. A sibling of `ActiveSession`, never a mode of it (D3): it
+ * composes the logging screen's leaf components inside `ScreenModeContext` `edit`, and none of the live machinery
+ * (outbox, drafts, rest timer, the log bar, Finish). Every write is pessimistic and online-only (D5).
+ */
 function EditWorkoutBody({ section }: { section: SummarySection }) {
   const home = SECTION_HOME[section];
   const { id = "" } = useParams();

@@ -93,9 +93,11 @@ export function WorkoutsScreen() {
   }
   // A refused finish whose workout the server no longer has live is gone (AC30); still live, it reopens (AC29).
   const refused = finishing.failed ? finishing.op : null;
+  // A 404 counts only when it was the finish's own answer: a finish blocked by a write that got a 404 inherits the
+  // status (`blockedBy`), and that workout is still live (code review).
+  const ownNotFound = refused?.failure?.status === 404 && refused.failure.blockedBy === undefined;
   const gone =
-    refused !== null &&
-    (refused.failure?.status === 404 || (!active.isPending && active.data !== undefined && active.data?.id !== refused.workoutId));
+    refused !== null && (ownNotFound || (!active.isPending && active.data !== undefined && active.data?.id !== refused.workoutId));
   if (refused !== null && gone) {
     return (
       <Screen title="Workouts" hideTitle>

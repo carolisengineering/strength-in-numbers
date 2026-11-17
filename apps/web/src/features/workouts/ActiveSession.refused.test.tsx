@@ -65,6 +65,7 @@ describe("06.7 AC19 / AC29 — a refused finish reopens the workout to fix", () 
     const alert = await banner();
     expect(alert).toHaveTextContent(REFUSED_LEAD);
     expect(alert).toHaveTextContent(START_CLOCK_MESSAGE);
+    expect(alert).toHaveTextContent(/Request ID: /); // code review: support still gets the request id
     expect(screen.getByRole("heading", { name: "Workout" })).toBeInTheDocument();
     expect(within(screen.getByRole("article", { name: "X" })).getByRole("button", { name: /60 kg × 8/ })).toBeInTheDocument();
     expect(finishButton()).toBeEnabled();

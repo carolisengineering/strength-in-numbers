@@ -30,6 +30,11 @@ const subscribe = (listener: () => void) => {
   };
 };
 
+/** The current value, outside React (ActiveSession's unmount reads it). */
+export function currentFinishTap(): string | null {
+  return tapping;
+}
+
 /** The workout whose Finish tap is in progress, or `null`. */
 export function useFinishTap(): string | null {
   return useSyncExternalStore(subscribe, () => tapping);

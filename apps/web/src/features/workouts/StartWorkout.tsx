@@ -5,6 +5,7 @@ import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
 import { START_CLOCK_MESSAGE, START_FAILED_MESSAGE, useBeginWorkout } from "./useBeginWorkout";
+import { useWaitingFinish } from "./useWaitingFinish";
 import styles from "./WorkoutsScreen.module.css";
 
 export interface StartWorkoutProps {
@@ -27,7 +28,9 @@ export interface StartWorkoutProps {
 export function StartWorkout({ notice, onDismissNotice, onStarted, children, lead }: StartWorkoutProps) {
   const { begin, busy, failure } = useBeginWorkout();
   // Spec 06.7 AC18: a finish op is in the outbox; nothing was sent.
-  const [blocked, setBlocked] = useState<string | null>(null);
+  const [blockedAt, setBlocked] = useState<string | null>(null);
+  // Said only while a finish op is still there: once it lands, Start works and the warning would contradict the line.
+  const blocked = useWaitingFinish().op === null ? null : blockedAt;
 
   async function onStart() {
     setBlocked(null);
