@@ -1180,9 +1180,15 @@ async function checkPanes(page, { editBar }) {
     if (h1s !== 1) out.push(`${h1s} h1 elements, not 1`);
     const navs = document.querySelectorAll("nav").length;
     const mains = document.querySelectorAll("main").length;
-    const regions = [...document.querySelectorAll('[data-pane][role="region"]')];
-    if (navs !== 1 || mains !== 1 || regions.length !== 2) out.push(`landmarks: ${navs} nav, ${mains} main, ${regions.length} pane regions (want 1, 1, 2)`);
-    for (const r of regions) if (getComputedStyle(r).overflowY !== "auto") out.push(`the "${r.getAttribute("aria-label")}" pane doesn't scroll on its own`);
+    const regions = [...document.querySelectorAll("[data-pane]")];
+    if (navs !== 1 || mains !== 1 || regions.length !== 2) out.push(`landmarks: ${navs} nav, ${mains} main, ${regions.length} panes (want 1, 1, 2)`);
+    // Owner (2026-11-17): the panes are no landmarks of their own; the screens in them are the regions, each named once.
+    const names = [...document.querySelectorAll("main section[aria-labelledby]")].map((s) => document.getElementById(s.getAttribute("aria-labelledby"))?.textContent?.trim());
+    if (new Set(names).size !== names.length) out.push(`two regions share a name: ${names.join(", ")}`);
+    for (const r of regions) if (r.hasAttribute("role")) out.push("a pane has a role of its own");
+    regions.forEach((r, i) => {
+      if (getComputedStyle(r).overflowY !== "auto") out.push(`the ${i === 0 ? "list" : "detail"} pane doesn't scroll on its own`);
+    });
     const list = regions[0];
     if (list && !list.querySelector('a[aria-current="page"]')) out.push("no row in the list is marked as the open one");
     if (wantBar) {

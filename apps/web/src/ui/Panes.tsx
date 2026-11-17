@@ -8,10 +8,6 @@ import styles from "./Panes.module.css";
 export interface PanesProps {
   /** The list pane's screen, drawn only at desktop widths. */
   list: ReactNode;
-  /** The list region's accessible name ("History"). */
-  listLabel: string;
-  /** The detail region's accessible name ("Workout"). */
-  detailLabel: string;
   /** The derived selection (`useSelectedId`), handed to both panes through `PaneContext`. */
   selectedId: string | null;
 }
@@ -19,10 +15,12 @@ export interface PanesProps {
 /**
  * Spec 17.12 §6.3, AC13: a list-and-detail layout route. The detail is always the route's `<Outlet/>`, and the root's
  * children are always `[list slot, detail slot]`, so a resize across 64rem never remounts the detail. At desktop
- * widths the list and the detail are two labelled regions, each its own scroller; below 64rem there is no list and the
- * wrappers are `display: contents` with no role, so the phone draws exactly today's screen for each URL.
+ * widths the list and the detail are two scrollers side by side; below 64rem there is no list and the wrappers are
+ * `display: contents`, so the phone draws exactly today's screen for each URL. The panes are no landmarks of their own
+ * (owner, 2026-11-17): each `Screen` in them is already a region named by its heading, so a screen reader hears each
+ * name once ("History", then "Workout summary").
  */
-export function Panes({ list, listLabel, detailLabel, selectedId }: PanesProps) {
+export function Panes({ list, selectedId }: PanesProps) {
   const wide = useIsDesktop();
   const { pathname } = useLocation();
   const detailRef = useRef<HTMLDivElement>(null);
@@ -39,19 +37,13 @@ export function Panes({ list, listLabel, detailLabel, selectedId }: PanesProps) 
     <div className={styles.root} data-wide={wide ? "" : undefined}>
       {wide ? (
         <PaneContext.Provider value={listValue}>
-          <div className={styles.slot} role="region" aria-label={listLabel} data-pane="">
+          <div className={styles.slot} data-pane="">
             {list}
           </div>
         </PaneContext.Provider>
       ) : null}
       <PaneContext.Provider value={detailValue}>
-        <div
-          ref={detailRef}
-          className={styles.slot}
-          role={wide ? "region" : undefined}
-          aria-label={wide ? detailLabel : undefined}
-          data-pane={wide ? "" : undefined}
-        >
+        <div ref={detailRef} className={styles.slot} data-pane={wide ? "" : undefined}>
           <Outlet />
         </div>
       </PaneContext.Provider>

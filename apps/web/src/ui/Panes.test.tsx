@@ -43,7 +43,7 @@ function renderPanes(path = "/list") {
     [
       {
         path: "/list",
-        element: <Panes list={<ListScreen />} listLabel="History" detailLabel="Workout" selectedId={null} />,
+        element: <Panes list={<ListScreen />} selectedId={null} />,
         children: [
           { index: true, element: <FirstDetail /> },
           { path: "second", element: <SecondDetail /> },
@@ -70,15 +70,18 @@ describe("17.12 AC13 — Panes: two panes at desktop widths, today's screen belo
     expect(screen.getByRole("heading", { level: 1, name: "Workout summary" })).toBeInTheDocument();
   });
 
-  it("wide: a list region and a detail region, named by their labels", () => {
+  // Owner (2026-11-17, minor 652): the panes are no landmarks of their own, so a screen reader hears each screen's
+  // region once ("History", "Workout summary"), never the same name twice.
+  it("wide: a list pane and a detail pane, with no role of their own; the screens in them are the regions", () => {
     setDesktop(true);
     renderPanes();
     const [list, detail] = panes();
     expect(panes()).toHaveLength(2);
-    expect(list).toHaveAttribute("role", "region");
-    expect(detail).toHaveAttribute("role", "region");
-    expect(list).toHaveAccessibleName("History");
-    expect(detail).toHaveAccessibleName("Workout");
+    expect(list).not.toHaveAttribute("role");
+    expect(detail).not.toHaveAttribute("role");
+    expect(list).not.toHaveAttribute("aria-label");
+    expect(screen.getAllByRole("region", { name: "History" })).toHaveLength(1);
+    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby") !== null)).toEqual([true, true]);
     expect(within(list!).getByText("The list")).toBeInTheDocument();
     expect(within(detail!).getByRole("heading", { level: 1, name: "Workout summary" })).toBeInTheDocument();
   });
@@ -123,7 +126,7 @@ describe("17.12 AC16 — the detail starts at its top when the selection changes
       return (
         <>
           <button onClick={() => setId("b")}>Next newest</button>
-          <Panes list={<ListScreen />} listLabel="History" detailLabel="Workout" selectedId={id} />
+          <Panes list={<ListScreen />} selectedId={id} />
         </>
       );
     }

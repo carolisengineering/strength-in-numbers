@@ -71,7 +71,8 @@ describe("17.12 AC14 — History's URLs don't change, and the phone is today's",
 
   it("wide: /app/history/:id shows the list beside the workout", async () => {
     await setup(`/app/history/${OLDER.id}`);
-    expect(await within(await screen.findByRole("region", { name: "Workout" })).findByRole("heading", { name: "Workout summary" })).toBeInTheDocument();
+    expect(await within(detailPane()).findByRole("heading", { name: "Workout summary" })).toBeInTheDocument();
+    expect(screen.getAllByRole("region", { name: "History" })).toHaveLength(1);
     expect(await within(listPane()).findByText(/Newer push/)).toBeInTheDocument();
   });
 

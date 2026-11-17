@@ -23,7 +23,7 @@ export function HistoryPanes() {
   const list = useHistoryList({ enabled: wide });
   const ids = useMemo(() => flattenHistory(list.data?.pages ?? []).map((row) => row.id), [list.data]);
   const selectedId = useSelectedId(routeId, ids);
-  return <Panes list={<HistoryScreen />} listLabel="History" detailLabel="Workout" selectedId={selectedId} />;
+  return <Panes list={<HistoryScreen />} selectedId={selectedId} />;
 }
 
 /**
