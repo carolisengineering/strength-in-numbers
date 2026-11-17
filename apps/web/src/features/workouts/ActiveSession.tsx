@@ -33,7 +33,9 @@ import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
 import { failedOpCount, sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
-import { FINISH_OFFLINE_NOTE, finishLocked, finishUnsentNote } from "./outbox/finishMessages";
+import { FINISH_OFFLINE_NOTE, REFUSED_LEAD, REFUSED_OTHER, finishLocked, finishUnsentNote, refusedBlocked, refusedIncomplete } from "./outbox/finishMessages";
+import { useWaitingFinish } from "./useWaitingFinish";
+import { START_CLOCK_MESSAGE } from "./useBeginWorkout";
 import { RESULT_COPY } from "./result/resultCopy";
 import { ResultSheet } from "./result/ResultSheet";
 import { useResultActions } from "./result/useResultActions";
@@ -759,6 +761,48 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // Spec 06.7 AC21 (amends 06.2 AC16, 10.3 AC29, 10.7 AC39): queued writes no longer hold Finish — the finish op sends
   // after them (AC2). A write the server refused does: finishing past it would leave it behind (§6.7, D13).
   const refused = failedOpCount(outboxState.ops, workout.id);
+  // Spec 06.7 AC29, §6.7: a refused finish op is the banner's memory; the workout is live again (AC19).
+  const refusedFinish = useWaitingFinish(workout.id);
+  const refusedOp = refusedFinish.failed ? refusedFinish.op : null;
+  const refusedKind: "blocked" | "incomplete" | "clock" | "other" | null =
+    refusedOp === null
+      ? null
+      : refusedOp.failure?.blockedBy !== undefined
+        ? refused > 0
+          ? "blocked"
+          : "other" // the blocking write was discarded: nothing left to point at (minor 621)
+        : refusedOp.failure?.status === 409 && refusedOp.failure.type === "incomplete-working-sets"
+          ? "incomplete"
+          : refusedOp.failure?.status === 422
+            ? "clock"
+            : "other";
+  // The server's 409 carries no ids (05.1 AC13): re-read (it may hold sets this screen hasn't seen), then flag them.
+  const refusedOpId = refusedOp?.id ?? null;
+  useEffect(() => {
+    if (refusedKind !== "incomplete" || refusedOpId === null) return;
+    void refetchActive().then(() => {
+      if (!mounted.current) return;
+      const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
+      const ids = fresh ? findIncompleteWorkingSets(fresh) : [];
+      scrollPending.current = ids.length > 0;
+      setFlaggedIds(new Set(ids));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per refused op
+  }, [refusedKind, refusedOpId]);
+  const refusedText =
+    refusedKind === null
+      ? null
+      : `${REFUSED_LEAD} ${
+          refusedKind === "blocked"
+            ? refusedBlocked(refused)
+            : refusedKind === "incomplete"
+              ? flaggedIds.size > 0
+                ? refusedIncomplete(flaggedIds.size)
+                : REFUSED_OTHER
+              : refusedKind === "clock"
+                ? START_CLOCK_MESSAGE
+                : REFUSED_OTHER
+        }`;
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy || refused > 0;
   // Spec 06.7 AC22: what Finish will do, said in both dialogs: no signal, or the sets that send first.
   const finishNote = !outboxState.online ? FINISH_OFFLINE_NOTE : pendingCount > 0 ? finishUnsentNote(pendingCount) : undefined;
@@ -825,6 +869,16 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         onOpen={endUndo}
       />
 
+      {refusedText !== null && refusedOp !== null ? (
+        // Spec 06.7 AC29: Dismiss removes only the refused finish op; Finish again replaces it (AC2).
+        <InlineNotice
+          tone="error"
+          requestId={refusedKind === "other" ? (refusedOp.failure?.requestId ?? null) : null}
+          onDismiss={() => outbox?.discard(refusedOp.id)}
+        >
+          {refusedText}
+        </InlineNotice>
+      ) : null}
       {shown ? (
         <InlineNotice
           tone={shown.tone}

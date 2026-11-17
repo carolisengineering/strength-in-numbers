@@ -58,6 +58,8 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
   // Spec 06.7 AC27: while this summary is open, a landing updates it in place and leaves no one-time line; opening it
   // by any route takes that workout's line away.
   useViewingSummary(id);
+  // Spec 06.7 AC29: a refused finish leaves the workout live; the summary can't stay on it.
+  const refusedHere = useWaitingFinish(id).failed;
   const landed = useLandedStore();
   useEffect(() => {
     landed?.clearWorkout(id);
@@ -77,6 +79,7 @@ export function FinishedWorkoutScreen({ section = "workouts" }: { section?: Summ
     }
   }, [finished, id, queryClient]);
 
+  if (refusedHere) return <Navigate to="/app/workouts" replace />;
   if (detail.isPending) return <Spinner label="Loading your workout…" />;
 
   // Minors 235, 238: the load error is classified once, as on the edit screen. A gone workout is gone even with a
