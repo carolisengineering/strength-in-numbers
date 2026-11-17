@@ -49,9 +49,14 @@ export const SECTION_HOME: Record<SummarySection, { to: string; label: string }>
  * (delete it — Spec 05.0 §6.5's one exemption from immutability). Spec 08.0 reuses this screen as
  * `/app/history/:id` (`section="history"`) and adds the records the workout holds.
  */
-export function FinishedWorkoutScreen({ section = "workouts" }: { section?: SummarySection }) {
+/**
+ * `workoutId` wins over the route's `:id` (Spec 17.12 AC15): History's index passes the newest workout's id at desktop
+ * widths, where `/app/history` has no id of its own.
+ */
+export function FinishedWorkoutScreen({ section = "workouts", workoutId }: { section?: SummarySection; workoutId?: string }) {
   const home = SECTION_HOME[section];
-  const { id = "" } = useParams();
+  const params = useParams();
+  const id = workoutId ?? params.id ?? "";
   const detail = useWorkoutDetail(id);
   const queryClient = useQueryClient();
   const finished = detail.data !== undefined && detail.data.endedAt !== null;
