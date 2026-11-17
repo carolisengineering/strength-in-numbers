@@ -116,6 +116,15 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   const navigate = useNavigate();
   // Spec 06.7 AC24: "is it in the cloud" comes from the ops, never from `endedAt` (§6.11).
   const { waiting } = useWaitingFinish(workout.id);
+  // Spec 06.7 AC34: arriving from a Finish tap that saved it on the phone, focus goes to the heading (the message
+  // under it is a polite region, read after).
+  const location = useLocation();
+  const fromTap = (location.state as { saved?: string } | null)?.saved !== undefined;
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (fromTap) titleRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
   const home = SECTION_HOME[section];
   const date = formatLocalDate(workout.localDate);
   const setCount = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
@@ -124,6 +133,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   return (
     <Screen
       title="Workout summary"
+      titleRef={titleRef}
       titleSmall={hasOwnTitle(workout)}
       leadFill
       lead={

@@ -168,3 +168,16 @@ describe("06.7 AC14 — online, a finish that lands in time is today's result, i
     expect(emitted).toHaveBeenCalledOnce();
   });
 });
+
+describe("06.7 AC34 — accessibility", () => {
+  it("after an offline tap, focus lands on the summary's heading, and the saved message is a polite status region", async () => {
+    const { user } = await setup({ offline: true });
+    await user.click(finishButton());
+    await user.click(within(dialog()).getByRole("button", { name: "Finish" }));
+    const heading = await screen.findByRole("heading", { level: 1, name: "Workout summary" });
+    await waitFor(() => expect(heading).toHaveFocus());
+    const region = screen.getByTestId("finish-saved");
+    expect(region).toHaveAttribute("role", "status");
+    expect(region).not.toHaveAttribute("aria-live", "assertive");
+  });
+});

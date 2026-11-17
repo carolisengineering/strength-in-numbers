@@ -789,6 +789,12 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per refused op
   }, [refusedKind, refusedOpId]);
+  // The screen reveals the current panel on open (17.1 AC9), which leaves a banner at the top above the fold: bring the
+  // refused banner into view once per refused op, after that reveal (a flagged row's own scroll still comes later).
+  const refusedRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (refusedOpId !== null) refusedRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [refusedOpId]);
   const refusedText =
     refusedKind === null
       ? null
@@ -871,13 +877,15 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
 
       {refusedText !== null && refusedOp !== null ? (
         // Spec 06.7 AC29: Dismiss removes only the refused finish op; Finish again replaces it (AC2).
-        <InlineNotice
-          tone="error"
-          requestId={refusedKind === "other" ? (refusedOp.failure?.requestId ?? null) : null}
-          onDismiss={() => outbox?.discard(refusedOp.id)}
-        >
-          {refusedText}
-        </InlineNotice>
+        <div ref={refusedRef}>
+          <InlineNotice
+            tone="error"
+            requestId={refusedKind === "other" ? (refusedOp.failure?.requestId ?? null) : null}
+            onDismiss={() => outbox?.discard(refusedOp.id)}
+          >
+            {refusedText}
+          </InlineNotice>
+        </div>
       ) : null}
       {shown ? (
         <InlineNotice

@@ -947,6 +947,11 @@ const ZOOM_KNOWN = [
   { shot: "light/mobile-200pct/z1-workout", item: "small target: input[text] \"6\"", bl: "BL-37" },
   { shot: "light/mobile-200pct/z1-workout", item: "clipped input: input[text] \"47.5\"", bl: "BL-37" },
   { shot: "light/mobile-200pct/z1-workout", item: "clipped input: input[text] \"6\"", bl: "BL-37" },
+  // Spec 06.7: the refused finish reopens the live workout screen (z1's), so its entry panel carries the same BL-37 rows.
+  { shot: "light/mobile-200pct/z12-refused", item: "small target: input[text] \"47.5\"", bl: "BL-37" },
+  { shot: "light/mobile-200pct/z12-refused", item: "small target: input[text] \"6\"", bl: "BL-37" },
+  { shot: "light/mobile-200pct/z12-refused", item: "clipped input: input[text] \"47.5\"", bl: "BL-37" },
+  { shot: "light/mobile-200pct/z12-refused", item: "clipped input: input[text] \"6\"", bl: "BL-37" },
   { shot: "light/mobile-200pct/z3-edit-sheet", item: "clipped input: input[text] \"24\"", bl: "BL-37" },
   { shot: "light/mobile-200pct/z3-edit-sheet", item: "clipped input: input[text] \"40\"", bl: "BL-37" },
   { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Bench Press, 5 × 5–8 @ 40–82.5 kg · 3:00\"", bl: "BL-38" },
@@ -1002,6 +1007,10 @@ async function zoomPass(browser) {
     { name: "z7-summary", path: `/app/history/${D.ids.latestPush}` },
     { name: "z8-routine-editor", path: `/app/workouts/routines/${D.ids.PUSH_ID}/edit`, primary: (p) => p.locator("[data-action-bar]").getByRole("button", { name: "Save", exact: true }) },
     { name: "z9-profile", path: "/app/profile", primary: (p) => p.getByRole("button", { name: "Save", exact: true }) },
+    // Spec 06.7 (Phase B2): the offline finish's three screens, seeded through storage (`outbox`), finish PATCH held.
+    { name: "z10-waiting-card", path: "/app/workouts", outbox: "queued" },
+    { name: "z11-summary-saved", path: `/app/workouts/${D.active.id}`, outbox: "queued" },
+    { name: "z12-refused", path: "/app/workouts", outbox: "failed" },
   ];
   THEME = "light";
   for (const { device, viewport, fontSize } of CONFIGS) {
@@ -1010,8 +1019,17 @@ async function zoomPass(browser) {
     const page = await ctx.newPage();
     page.setDefaultTimeout(8000);
     page.on("pageerror", (err) => consoleErrors.push(`${device} ${page.url()}: PAGEERROR ${err.message.slice(0, 300)}`));
+    // Spec 06.7: hold the finish's PATCH for the offline-finish screens (no other zoom screen finishes a workout).
+    await ctx.route((u) => isSinApi(u) && /^\/v1\/workouts\/[^/]+$/.test(u.pathname), (route) => (route.request().method() === "PATCH" ? undefined : route.fallback()));
     for (const s of SCREENS) {
       await tryStep(`zoom ${device} ${s.name}`, async () => {
+        await page.goto(BASE + "/app/profile");
+        await page.evaluate(({ k, v }) => { if (v === null) window.localStorage.removeItem(k); else window.localStorage.setItem(k, v); }, {
+          k: `sin:workout:outbox:${D.me.id}`,
+          v: s.outbox
+            ? JSON.stringify({ v: 1, userId: D.me.id, idMap: {}, ops: [{ id: "finish-zoom", kind: "finish", workoutId: D.active.id, userId: D.me.id, status: s.outbox, attempted: s.outbox === "failed", attempts: s.outbox === "failed" ? 1 : 0, nextAttemptAt: 0, enqueuedAt: 0, ...(s.outbox === "failed" ? { failure: { status: 400, type: "bad-request", requestId: "req-zoom" } } : {}), body: { endedAt: new Date(Date.parse(D.active.startedAt) + 50 * 60_000).toISOString() }, meta: { startedAt: D.active.startedAt, exerciseCount: 2, setCount: 6, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false } }] })
+            : null,
+        });
         await page.goto(BASE + s.path);
         // Text resize: the root's font size through the CSSOM (CSP allows it), after each navigation.
         if (fontSize) await page.evaluate((f) => { document.documentElement.style.fontSize = f; }, fontSize);
@@ -2627,6 +2645,52 @@ try {
       }
       cardDeclutter.push({ theme, device, steps, violations });
       for (const v of violations) console.error(`  CARD DECLUTTER ${theme}/${device}: ${v}`);
+    });
+    // Spec 06.7 (Phase B2): the offline finish's screens, from a finish op seeded in storage. The finish PATCH is held
+    // (never answered), so the waiting states stay on screen: the Workouts card, the saved summary, the refused banner.
+    await tryStep("offline finish", async () => {
+      const outboxKey = `sin:workout:outbox:${D.me.id}`;
+      const finishOp = (status) => ({
+        id: "finish-shot",
+        kind: "finish",
+        workoutId: D.active.id,
+        userId: D.me.id,
+        status,
+        attempted: status === "failed",
+        attempts: status === "failed" ? 1 : 0,
+        nextAttemptAt: 0,
+        enqueuedAt: 0,
+        ...(status === "failed" ? { failure: { status: 400, type: "bad-request", requestId: "req-06-7-shot" } } : {}),
+        body: { endedAt: new Date(Date.parse(D.active.startedAt) + 50 * 60_000).toISOString() },
+        meta: { startedAt: D.active.startedAt, exerciseCount: D.active.exercises.length, setCount: D.active.exercises.reduce((n, e) => n + e.sets.length, 0), endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false },
+      });
+      const finishContext = async (status) => {
+        const fctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        await fctx.route(isSinApi, makeHandler({ active: true }));
+        // Registered last, so it is asked first: hold the finish's PATCH, let every other request through.
+        await fctx.route((u) => isSinApi(u) && /^\/v1\/workouts\/[^/]+$/.test(u.pathname), (route) => (route.request().method() === "PATCH" ? undefined : route.fallback()));
+        await fctx.addInitScript(({ k, v }) => window.localStorage.setItem(k, v), { k: outboxKey, v: JSON.stringify({ v: 1, userId: D.me.id, idMap: {}, ops: [finishOp(status)] }) });
+        const fp = await fctx.newPage();
+        fp.setDefaultTimeout(8000);
+        fp.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(`${device} ${fp.url()}: ${msg.text().slice(0, 300)}`); });
+        return { fctx, fp };
+      };
+      const waiting = await finishContext("queued");
+      await waiting.fp.goto(BASE + "/app/workouts");
+      await waiting.fp.getByRole("heading", { name: "1 workout waiting to send" }).waitFor();
+      await settle(waiting.fp);
+      await shoot(waiting.fp, device, "06-7-waiting-card", "Spec 06.7 AC26: the Workouts screen with a finished workout waiting to send");
+      await waiting.fp.getByRole("button", { name: "View workout" }).click();
+      await waiting.fp.getByTestId("finish-saved").getByText("Workout saved on this phone.", { exact: false }).waitFor();
+      await settle(waiting.fp);
+      await shoot(waiting.fp, device, "06-7-summary-saved", "Spec 06.7 AC23, AC24: the summary while the finish waits: the saved message, no records, the edit line");
+      await waiting.fctx.close();
+      const refused = await finishContext("failed");
+      await refused.fp.goto(BASE + "/app/workouts");
+      await refused.fp.getByText("Your workout is still open — it couldn't be finished.", { exact: false }).waitFor();
+      await settle(refused.fp);
+      await shoot(refused.fp, device, "06-7-refused", "Spec 06.7 AC29: a refused finish reopens the workout, with the banner");
+      await refused.fctx.close();
     });
     // Spec 20.0 AC32: the Hevy key screen with no key, with a key, and after a failed check.
     await tryStep("hevy key screen", async () => {

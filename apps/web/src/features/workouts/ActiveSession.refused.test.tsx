@@ -70,6 +70,14 @@ describe("06.7 AC19 / AC29 — a refused finish reopens the workout to fix", () 
     expect(finishButton()).toBeEnabled();
   });
 
+  it("the banner is brought into view when the workout reopens (the panel's own reveal would leave it above the fold)", async () => {
+    const { fake, user } = await setup();
+    fake.failNext(FINISH_PATCH, () => problemResponse(400, "bad-request"));
+    await tapFinish(user);
+    const alert = await banner();
+    await waitFor(() => expect(scrollIntoView.mock.contexts.some((el) => el instanceof Element && el.contains(alert))).toBe(true));
+  });
+
   it("any other refusal: REFUSED_OTHER with the request id", async () => {
     const { fake, user } = await setup();
     fake.failNext(FINISH_PATCH, () => problemResponse(400, "bad-request"));

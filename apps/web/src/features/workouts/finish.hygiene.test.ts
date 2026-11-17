@@ -32,3 +32,35 @@ describe("17.2 AC12 — tokens only", () => {
     expect(css).not.toMatch(/(^|[\s{;])width:\s*\d/m);
   });
 });
+
+describe("06.7 AC35 — hygiene of the offline finish", () => {
+  // Every module Spec 06.7 added (Phases B1 and B2).
+  const OFFLINE_TS = [
+    "./outbox/finish.ts",
+    "./outbox/finishMessages.ts",
+    "./outbox/landedStore.ts",
+    "./outbox/LandedStoreContext.ts",
+    "./finishLanding.ts",
+    "./finishTap.ts",
+    "./summaryViewing.ts",
+    "./useWaitingFinish.ts",
+    "./WaitingFinishCard.tsx",
+    "./GoneWorkoutCard.tsx",
+    "./LandedLine.tsx",
+  ];
+
+  it("no new module names localStorage or sessionStorage (the StorageAdapter only), or the console", () => {
+    for (const p of OFFLINE_TS) expect(read(p), p).not.toMatch(/localStorage|sessionStorage|console\./);
+  });
+
+  it("the only new storage key is sin:workout:landed, under sin:workout: (the outbox's per-account key is Phase A's)", () => {
+    const keys = OFFLINE_TS.flatMap((p) => [...strip(read(p)).matchAll(/["'`](sin:[^"'`]*)["'`]/g)].map((m) => m[1]));
+    expect(keys).toEqual(["sin:workout:landed"]);
+  });
+
+  it("track() is called with literal event names and scalar props only: no id, name or time reaches it", () => {
+    const src = strip(read("./finishLanding.ts"));
+    expect([...src.matchAll(/track\("([a-z_]+)"/g)].map((m) => m[1]).sort()).toEqual(["workout_finish_elsewhere", "workout_finished"]);
+    expect(src).not.toMatch(/track\([^)]*(workoutId|\bid\b|endedAt|startedAt|name)\s*[,:}]/);
+  });
+});
