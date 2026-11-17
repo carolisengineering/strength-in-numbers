@@ -47,11 +47,9 @@ export const SECTION_HOME: Record<SummarySection, { to: string; label: string }>
 /**
  * A finished workout, read-only (Spec 06.1 §5.7, D18), and the only way to undo a mistaken Finish
  * (delete it — Spec 05.0 §6.5's one exemption from immutability). Spec 08.0 reuses this screen as
- * `/app/history/:id` (`section="history"`) and adds the records the workout holds.
- */
-/**
- * `workoutId` wins over the route's `:id` (Spec 17.12 AC15): History's index passes the newest workout's id at desktop
- * widths, where `/app/history` has no id of its own.
+ * `/app/history/:id` (`section="history"`) and adds the records the workout holds. `workoutId` wins over the
+ * route's `:id` (Spec 17.12 AC15): History's index passes the newest workout's id at desktop widths, where
+ * `/app/history` has no id of its own.
  */
 export function FinishedWorkoutScreen({ section = "workouts", workoutId }: { section?: SummarySection; workoutId?: string }) {
   const home = SECTION_HOME[section];

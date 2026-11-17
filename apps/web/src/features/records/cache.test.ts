@@ -80,6 +80,34 @@ describe("08.1 AC8 — finish and delete invalidate every progress series", () =
   });
 });
 
+// Spec 17.12 AC18: at desktop widths the list stays mounted beside the summary; its first row picks what opens next.
+describe("17.12 AC18 — applyDeletedCaches drops the deleted workout's History row", () => {
+  it("removes that row only, and the list is still marked stale for its re-read", () => {
+    const qc = makeQueryClient();
+    const row = (id: string) => ({ id });
+    qc.setQueryData(HISTORY_KEYS.list, {
+      pages: [
+        { items: [row(W), row(OTHER)], next: "c1" },
+        { items: [row("w-older")], next: null },
+      ],
+      pageParams: [null, "c1"],
+    });
+
+    applyDeletedCaches(qc, W);
+
+    const data = qc.getQueryData<{ pages: { items: { id: string }[]; next: string | null }[] }>(HISTORY_KEYS.list);
+    expect(data?.pages.map((page) => page.items.map((item) => item.id))).toEqual([[OTHER], ["w-older"]]);
+    expect(data?.pages.map((page) => page.next)).toEqual(["c1", null]);
+    expect(invalidated(qc, HISTORY_KEYS.list)).toBe(true);
+  });
+
+  it("does nothing to a list that isn't cached", () => {
+    const qc = makeQueryClient();
+    applyDeletedCaches(qc, W);
+    expect(qc.getQueryData(HISTORY_KEYS.list)).toBeUndefined();
+  });
+});
+
 describe("18.0 AC22 — applyEditedCaches", () => {
   it("resets the history list, invalidates progress and every records family, and leaves the workout keys alone", () => {
     const qc = makeQueryClient();
