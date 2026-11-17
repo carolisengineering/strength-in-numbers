@@ -1,6 +1,7 @@
 import { useId, type ReactNode, type Ref } from "react";
 
 import { useIsDesktop } from "./breakpoints";
+import { usePane } from "./paneContext";
 import styles from "./Screen.module.css";
 
 export interface ScreenProps {
@@ -31,15 +32,18 @@ export interface ScreenProps {
 export function Screen({ title, lead, leadFill = false, children, titleRef, hideTitle = false, titleSmall = false }: ScreenProps) {
   const headingId = useId();
   const wide = useIsDesktop();
-  const titleHidden = hideTitle && !wide;
+  // Spec 17.12 AC17: in a list pane the detail beside it owns the page's h1, so the list's title is an h2, always drawn.
+  const inList = usePane().slot === "list";
+  const titleHidden = hideTitle && !wide && !inList;
+  const Title = inList ? "h2" : "h1";
   const titleClass = [styles.title, titleHidden ? styles.titleHidden : null, titleSmall ? styles.titleSmall : null].filter(Boolean).join(" ");
 
   return (
     <section className={styles.screen} aria-labelledby={headingId}>
       {lead ? <div className={leadFill ? styles.leadFill : styles.lead}>{lead}</div> : null}
-      <h1 className={titleClass} id={headingId} ref={titleRef} tabIndex={titleRef ? -1 : undefined}>
+      <Title className={titleClass} id={headingId} ref={titleRef} tabIndex={titleRef ? -1 : undefined}>
         {title}
-      </h1>
+      </Title>
       {children}
     </section>
   );
