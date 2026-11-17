@@ -43,7 +43,11 @@ const SHAPES: Record<string, Record<string, Kind>> = {
   set_deleted: { modality: "string", viaUndo: "boolean" },
   finish_blocked: { incompleteCount: "number" },
   // Spec 17.1 AC53: endedEarly and unloggedPlannedSets are scalars.
-  workout_finished: { exerciseCount: "number", setCount: "number", durationMin: "number", viaReplay: "boolean", endedEarly: "boolean", unloggedPlannedSets: "number", hadPlannedDuration: "boolean" },
+  // Spec 06.7 §9: `queued`, and `waitedMs` only when queued; three new finish events.
+  workout_finished: { exerciseCount: "number", setCount: "number", durationMin: "number", viaReplay: "boolean", endedEarly: "boolean", unloggedPlannedSets: "number", hadPlannedDuration: "boolean", queued: "boolean", waitedMs: "number" },
+  workout_finish_queued: { reason: "string" },
+  workout_finish_failed: { status: "number" },
+  workout_finish_elsewhere: {},
   workout_discarded: { phase: "string", setCount: "number" },
   workout_conflict: { kind: "string" },
   exercise_picked: { source: "string", msSinceOpen: "number" },
@@ -57,7 +61,8 @@ const ENUMS: Record<string, readonly string[]> = {
   modality: MODALITY_VALUES,
   setType: SET_TYPE_VALUES,
   direction: ["up", "down"],
-  phase: ["active", "finished"],
+  phase: ["active", "finished", "unsent"],
+  reason: ["offline", "slow"],
   kind: ["gone", "finished", "retired", "unavailable", "stale-position", "clock"],
   where: ["live", "edit"],
   changed: ["start", "duration", "both"],
@@ -209,12 +214,46 @@ describe("AC35 — observability hygiene across the flows", () => {
     await user.click(within(screen.getByRole("dialog", { name: /Set 1/ })).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText("Needs data")).not.toBeInTheDocument());
     const id = fake.state.active!.id;
+    // Spec 06.7 AC3: the finish lands, its reply is lost, the outbox replays it and reconciles the 409 as ours.
+    fake.loseNextResponse({ method: "PATCH", path: /^\/v1\/workouts\/[^/]+$/ });
+    await user.click(finishButton());
+    await user.click(finishConfirm());
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`), { timeout: 4000 });
+    expect(observability.track).toHaveBeenCalledWith("workout_finished", expect.objectContaining({ viaReplay: true }));
+  });
+
+  it("06.7 §9 — a finish with no signal is queued (workout_finish_queued)", async () => {
+    const onLine = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    try {
+      const { fake, user, router } = await setup([{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 })] }]);
+      fake.setOffline(true);
+      window.dispatchEvent(new Event("offline"));
+      const id = fake.state.active!.id;
+      await user.click(finishButton());
+      await user.click(finishConfirm());
+      await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`));
+      expect(observability.track).toHaveBeenCalledWith("workout_finish_queued", { reason: "offline" });
+    } finally {
+      onLine.mockRestore();
+      window.dispatchEvent(new Event("online"));
+    }
+  });
+
+  it("06.7 §9 — a refused finish (workout_finish_failed) and one finished elsewhere (workout_finish_elsewhere)", async () => {
+    const { fake, user, router } = await setup([{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 })] }]);
+    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(422, "validation-error"));
+    await user.click(finishButton());
+    await user.click(finishConfirm());
+    await waitFor(() => expect(observability.track).toHaveBeenCalledWith("workout_finish_failed", { status: 422 }));
+    // Finished on another device meanwhile: the next Finish replaces the refused op and reconciles the 409.
+    const id = fake.state.active!.id;
     fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(409, "workout-finished"));
-    fake.state.finished.set(id, { ...fake.state.active!, endedAt: new Date().toISOString() });
+    fake.state.finished.set(id, { ...fake.state.active!, endedAt: new Date(Date.now() - 60_000).toISOString() });
     fake.state.active = null;
     await user.click(finishButton());
     await user.click(finishConfirm());
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`));
+    expect(observability.track).toHaveBeenCalledWith("workout_finish_elsewhere", {});
   });
 
   it("discard", async () => {
@@ -235,7 +274,8 @@ describe("AC35 — observability hygiene across the flows", () => {
     await screen.findByRole("heading", { name: "Start a workout" });
   });
 
-  it("conflicts: retired, gone, clock", async () => {
+  // The finish's clock refusal is a refused finish op since Spec 06.7 (its banner and event: ActiveSession.refused.test.tsx).
+  it("conflicts: retired, gone", async () => {
     const { fake, user } = await setup([{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 })] }]);
     // retired
     fake.failNext({ method: "POST", path: /\/exercises$/ }, () => problemResponse(409, "exercise-retired"));
@@ -243,11 +283,6 @@ describe("AC35 — observability hygiene across the flows", () => {
     const dialog = await screen.findByRole("dialog", { name: "Add exercise" });
     await user.click(within(within(dialog).getByRole("region", { name: "All exercises" })).getByRole("button", { name: new RegExp(SECRET_NAME) }));
     await screen.findByText(/has been retired/);
-    // clock
-    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(422, "validation-error"));
-    await user.click(finishButton());
-    await user.click(finishConfirm());
-    await screen.findByText(/device clock looks wrong/);
     // gone — through a structure write: queued set writes surface failures on the row instead (06.2)
     fake.failNext({ method: "DELETE", path: /\/workout-exercises\// }, () => problemResponse(409, "workout-finished"));
     fake.state.active = null;
@@ -255,7 +290,7 @@ describe("AC35 — observability hygiene across the flows", () => {
     await user.click(card("X").getByRole("button", { name: "Remove exercise" }));
     await user.click(within(await screen.findByRole("dialog", { name: /^Remove X/ })).getByRole("button", { name: "Remove" }));
     await screen.findByRole("heading", { name: "Start a workout" });
-    for (const kind of ["retired", "clock", "finished"]) {
+    for (const kind of ["retired", "finished"]) {
       expect(observability.track).toHaveBeenCalledWith("workout_conflict", { kind });
     }
   });

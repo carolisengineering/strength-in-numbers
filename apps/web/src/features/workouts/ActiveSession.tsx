@@ -5,7 +5,6 @@ import { canLinkRule, ROUTINE_SECTIONS_MAX, type Exercise, type SessionOp, type 
 
 import { useSession } from "../../auth/useSession";
 import { track } from "../../observability/track";
-import { applyFinishedCaches } from "../records/cache";
 import { readKeepAwake } from "../../ui/keepAwake";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
@@ -30,7 +29,6 @@ import { formatStartedAt } from "./format";
 import { LogActionContext, createLogActionStore } from "./logAction";
 import { EndEarlyDialog } from "./EndEarlyDialog";
 import { LogBarButton, type BarAction } from "./LogBarButton";
-import { emitWorkoutFinished } from "./finishEvents";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
@@ -99,7 +97,6 @@ interface Banner {
   retry?: () => void;
 }
 
-const CLOCK_MESSAGE = "Your device clock looks wrong — check the date and time, then try again.";
 /** A structure write, finish or discard that failed at the network (Spec 06.2 AC15). */
 const OFFLINE_MESSAGE = "You're offline — try again when you have signal";
 const SECTION_LIMIT_ID = "session-section-limit";
@@ -567,115 +564,75 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
 
   // ---- finish (§5.6, §6.6) ---------------------------------------------------------------------
 
-  /** `409 incomplete-working-sets` carries no ids (05.1 AC13), so reproduce the rule locally (D5). */
-  async function diagnoseIncomplete() {
-    await refetchActive();
-    const fresh = queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active);
-    const ids = fresh ? findIncompleteWorkingSets(fresh) : [];
+  /** The incomplete working sets (05.1 AC13's rule, D5): flag the rows, say how many, scroll to the first. */
+  function showIncomplete(ids: readonly string[]) {
     track("finish_blocked", { incompleteCount: ids.length });
     scrollPending.current = ids.length > 0;
     setFlaggedIds(new Set(ids));
     setBanner({
       tone: "warning",
-      text:
-        ids.length > 0
-          ? `${ids.length} working ${ids.length === 1 ? "set is" : "sets are"} missing data. Fix or delete them, then finish again.`
-          : "Some sets are incomplete — reload and check your sets.",
+      text: `${ids.length} working ${ids.length === 1 ? "set is" : "sets are"} missing data. Fix or delete them, then finish again.`,
     });
   }
 
-  /** `409 workout-finished`: if the workout really is finished, our own finish landed (a lost first response). */
-  async function confirmAlreadyFinished(endedEarly: boolean) {
-    try {
-      const fresh = await client.getById(workout.id);
-      if (fresh.endedAt === null) {
-        gone("gone");
-        return;
-      }
-      // As in `useFinishWorkout`: seed only; the summary screen clears the active entry.
-      queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(workout.id), fresh);
-      // The lost response carried `newRecords`; the summary refetches them by workoutId (Spec 08.0 AC7, D7).
-      applyFinishedCaches(queryClient, workout.id, null);
-      track("workout_finished", {
-        exerciseCount: fresh.exercises.length,
-        setCount: fresh.exercises.reduce((n, e) => n + e.sets.length, 0),
-        durationMin: Math.round((Date.parse(fresh.endedAt) - Date.parse(fresh.startedAt)) / 60_000),
-        viaReplay: true,
-        endedEarly,
-        unloggedPlannedSets: unlogged.total,
-        hadPlannedDuration: workout.plannedDurationSeconds !== null,
-      });
-      // Spec 20.2 AC24: this recovery seeds the caches itself, so it emits too (never on the gone path above).
-      emitWorkoutFinished({ workoutId: workout.id });
-      afterFinished();
-    } catch {
-      setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish(endedEarly) });
-    }
-  }
-
   /**
-   * After a successful finish: open the summary, which clears the active entry (Spec 06.4 D1). If the
-   * lifter already left this screen, the summary never mounts, so clear the entry here instead — else
-   * the finished workout would come back as an active session from cache.
+   * After the tap resolved: open the summary, which clears the active entry (Spec 06.4 D1). If the lifter already left
+   * this screen, the summary never mounts, so clear the entry here instead — else the finished workout would come back
+   * as an active session from cache. A queued finish carries how it was saved (Spec 06.7 §6.3 step 6).
    */
-  function afterFinished() {
+  function afterFinished(state?: { saved: "offline" | "slow" }) {
     if (mounted.current) {
-      void navigate(`/app/workouts/${workout.id}`);
+      if (state) void navigate(`/app/workouts/${workout.id}`, { state });
+      else void navigate(`/app/workouts/${workout.id}`);
     } else if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workout.id) {
       queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
     }
   }
 
-  /** The one finish path (Spec 17.1 §6.7): Finish and End workout early both call it, so their waits and failures match. */
+  /**
+   * The one finish path (Spec 17.1 §6.7, Spec 06.7 §6.3): Finish and End workout early both call it. The local check,
+   * then the end time read once, then `finishOrQueue`, which always resolves: a network, timeout or server failure is
+   * the finish op's (AC3), so the `catch` is for programming errors only.
+   */
   async function confirmFinish(endedEarly = false) {
     if (finishLock.current) return;
     finishLock.current = true;
     setBanner(null);
     try {
-      await finish.mutateAsync({
+      // Spec 06.7 AC17: the server's incomplete-sets rule, checked on the projected workout first (offline too).
+      const incomplete = findIncompleteWorkingSets(workout);
+      if (incomplete.length > 0) {
+        setFinishOpen(false);
+        setEndEarlyOpen(false);
+        showIncomplete(incomplete);
+        return;
+      }
+      const outcome = await finish.mutateAsync({
         id: workout.id,
         endedAt: finishEndedAt(workout.startedAt, workout.plannedDurationSeconds, new Date()),
-        endedEarly,
-        unloggedPlannedSets: unlogged.total,
         // Spec 10.5 AC13: only a one-off's checked box adds the key; a Retry uses the choice as it stands.
         keepRoutine: workout.routineIsOneOff && keepOneOffRef.current,
+        // Spec 06.7 §6.2: the dialog's choices and the card's counts travel with the op, so a reload keeps them.
+        meta: {
+          startedAt: workout.startedAt,
+          exerciseCount: exercises.length,
+          setCount: totalSets,
+          endedEarly,
+          unloggedPlannedSets: unlogged.total,
+          hadPlannedDuration: workout.plannedDurationSeconds !== null,
+        },
       });
       setFinishOpen(false);
       setEndEarlyOpen(false);
       // Navigation stays out of the mutation hook: a response that lands after the lifter left this
-      // screen must not yank them back across screens.
-      afterFinished();
+      // screen must not yank them back across screens. A refused finish stays here: the workout reopens (AC29).
+      if (outcome.status === "landed") afterFinished();
+      else if (outcome.status === "queued") afterFinished({ saved: outcome.reason });
     } catch (error) {
       setFinishOpen(false);
       setEndEarlyOpen(false);
       reportUnexpected("finish", error);
-      const action = resolveFailure("finish", error);
-      switch (action.type) {
-        case "gone":
-          gone(action.reason);
-          break;
-        case "incomplete":
-          await diagnoseIncomplete();
-          break;
-        case "finished-check":
-          await confirmAlreadyFinished(endedEarly);
-          break;
-        case "clock":
-          track("workout_conflict", { kind: "clock" });
-          setBanner({ tone: "error", text: CLOCK_MESSAGE, requestId: action.requestId });
-          break;
-        default:
-          setBanner({
-            tone: "error",
-            text: isNetworkFailure(error)
-              ? OFFLINE_MESSAGE
-              : action.type === "retry"
-                ? action.text
-                : "Couldn't finish — try again",
-            requestId: "requestId" in action ? action.requestId : null,
-            retry: () => void confirmFinish(endedEarly),
-          });
-      }
+      setBanner({ tone: "error", text: "Couldn't finish — try again", retry: () => void confirmFinish(endedEarly) });
     } finally {
       finishLock.current = false;
     }

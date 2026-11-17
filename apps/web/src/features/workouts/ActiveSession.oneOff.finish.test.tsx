@@ -83,8 +83,8 @@ describe("10.5 AC15 — after the finish the routines list shows the truth", () 
     app.fake.loseNextResponse({ method: "PATCH", path: WORKOUT_PATCH });
     await app.user.click(finishButton());
     await app.user.click(within(dialog()).getByRole("button", { name: "Finish" }));
-    await app.user.click(await screen.findByRole("button", { name: "Try again" }));
-    await screen.findByRole("heading", { level: 1, name: "Workout summary" });
+    // Spec 06.7 AC3: the outbox replays the finish; the 409 reconciles as ours and the landing refreshes the list.
+    await screen.findByRole("heading", { level: 1, name: "Workout summary" }, { timeout: 4000 });
     expect(app.queryClient.getQueryState(["routines", "list"])?.isInvalidated).toBe(true);
     const list = await toWorkouts(app);
     await waitFor(() => expect(within(list).queryByRole("link", { name: /Class Fri 16 Oct/ })).toBeNull());

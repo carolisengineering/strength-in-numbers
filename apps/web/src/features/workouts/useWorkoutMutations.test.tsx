@@ -2,15 +2,16 @@ import { useEffect, type ReactNode } from "react";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { useIsMutating } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { WorkoutSchema, type WorkoutDetail } from "@sin/core";
+import type { WorkoutDetail } from "@sin/core";
 import { ApiError } from "../../api";
 import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../test/workoutHarness";
-import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
+import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { HISTORY_KEYS } from "../history/queries";
 import { PROGRESS_KEYS } from "../progress/queries";
 import { RECORDS_KEYS } from "../records/queries";
 import { memoryStorageAdapter } from "../../storage/storage";
 import { DraftStoresContext } from "./drafts/DraftStoreContext";
+import { RestStoresContext } from "./useRestTimer";
 import { createOutbox } from "./outbox/outbox";
 import { OutboxContext } from "./outbox/OutboxContext";
 import { WORKOUT_KEYS, useActiveWorkout } from "./queries";
@@ -221,54 +222,53 @@ describe("exercise-structure writes", () => {
   });
 });
 
-describe("finish", () => {
-  it("seeds the detail cache with the finished workout and returns it; leaves the active entry to the summary screen (06.4 AC1)", async () => {
+const META = { startedAt: "2026-10-02T10:00:00.000Z", exerciseCount: 1, setCount: 1, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false };
+
+describe("06.7 AC14 — useFinishWorkout has no landing effects of its own", () => {
+  it("sends finishOrQueue with the body and meta, and a landed outcome seeds, clears and tracks nothing (the provider's onFinishSynced does)", async () => {
     const { qc, detail } = seeded();
-    const finished = {
-      id: detail.id,
-      title: null,
-      notes: null,
-      startedAt: detail.startedAt,
-      endedAt: "2026-10-02T11:00:00.000Z",
-      localDate: detail.localDate,
-      tzOffsetMinutes: 0,
-      clientGeneratedId: detail.clientGeneratedId,
-      source: "manual",
-      createdAt: detail.createdAt,
-      updatedAt: "2026-10-02T11:00:00.000Z",
-      routineName: null,
-      plannedDurationSeconds: null,
-    } as const;
-    const { result } = renderHook(() => useFinishWorkout(), {
-      wrapper: wrapperWith(qc, fakeClient({ finish: async () => ({ ...finished, newRecords: [] }) })),
-    });
-    await act(() => result.current.mutateAsync({ id: detail.id, endedAt: finished.endedAt }));
-    expect(qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.active)?.id).toBe(detail.id);
-    const seededDetail = qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(detail.id))!;
-    expect(seededDetail.endedAt).toBe(finished.endedAt);
-    expect(seededDetail.exercises).toHaveLength(1);
+    const finishOrQueue = vi.fn(async () => ({ status: "landed" as const }));
+    const { result } = renderHook(() => useFinishWorkout(), { wrapper: wrapperWith(qc, fakeClient({ finishOrQueue })) });
+    trackSpy.mockClear();
+    await act(() => result.current.mutateAsync({ id: detail.id, endedAt: "2026-10-02T11:00:00.000Z", keepRoutine: false, meta: META }));
+    expect(finishOrQueue).toHaveBeenCalledWith(detail.id, { endedAt: "2026-10-02T11:00:00.000Z" }, META);
+    expect(qc.getQueryData(WORKOUT_KEYS.detail(detail.id))).toBeUndefined();
+    expect(qc.getQueryData(WORKOUT_KEYS.active)).toBe(detail);
+    expect(trackSpy).not.toHaveBeenCalled();
+  });
+
+  it("keepRoutine goes on the wire only as true (10.5 AC13)", async () => {
+    const { qc, detail } = seeded();
+    const finishOrQueue = vi.fn(async () => ({ status: "landed" as const }));
+    const { result } = renderHook(() => useFinishWorkout(), { wrapper: wrapperWith(qc, fakeClient({ finishOrQueue })) });
+    await act(() => result.current.mutateAsync({ id: detail.id, endedAt: "2026-10-02T11:00:00.000Z", keepRoutine: true, meta: META }));
+    expect(finishOrQueue).toHaveBeenCalledWith(detail.id, { endedAt: "2026-10-02T11:00:00.000Z", keepRoutine: true }, META);
   });
 });
 
-describe("08.0 AC5/AC6 — finish success at hook level", () => {
-  it("seeds records from newRecords, keeps newRecords out of the detail, invalidates history", async () => {
-    const qc = makeQueryClient();
-    const active = makeWorkoutDetail();
-    qc.setQueryData(WORKOUT_KEYS.active, active);
-    qc.setQueryData(HISTORY_KEYS.list, { pages: [], pageParams: [] });
-    const endedAt = new Date(Date.parse(active.startedAt) + 60_000).toISOString();
-    const record = makePersonalRecord({ workoutId: active.id });
-    const client = fakeClient({
-      finish: async () => ({ ...WorkoutSchema.parse({ ...active, endedAt }), newRecords: [record] }),
+describe("06.7 AC15 — a queued outcome does only the queued effects, at hook level", () => {
+  it("seeds the projected summary from the outbox, clears the rest timer and tracks workout_finish_queued", async () => {
+    const { qc, detail } = seeded();
+    const outbox = createOutbox({ storage: memoryStorageAdapter(), rest: fakeClient(), userId: "u1", isOnline: () => false });
+    const rest = { clearWorkout: vi.fn() };
+    const finishOrQueue = vi.fn(async () => {
+      outbox.enqueueFinish({ workoutId: detail.id, body: { endedAt: "2026-10-02T11:00:00.000Z" }, meta: META });
+      return { status: "queued" as const, reason: "offline" as const, durable: true };
     });
-    const { result } = renderHook(() => useFinishWorkout(), { wrapper: wrapperWith(qc, client) });
-
-    await act(() => result.current.mutateAsync({ id: active.id, endedAt }));
-
-    expect(qc.getQueryData(RECORDS_KEYS.forWorkout(active.id))).toEqual([record]);
-    expect(qc.getQueryState(RECORDS_KEYS.forWorkout(active.id))?.isInvalidated).toBe(false);
-    expect(qc.getQueryData(WORKOUT_KEYS.detail(active.id))).not.toHaveProperty("newRecords");
-    expect(qc.getQueryState(HISTORY_KEYS.list)?.isInvalidated).toBe(true);
+    const Inner = wrapperWith(qc, fakeClient({ finishOrQueue }));
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <Inner>
+        <OutboxContext.Provider value={outbox}>
+          <RestStoresContext.Provider value={rest as never}>{children}</RestStoresContext.Provider>
+        </OutboxContext.Provider>
+      </Inner>
+    );
+    const { result } = renderHook(() => useFinishWorkout(), { wrapper });
+    trackSpy.mockClear();
+    await act(() => result.current.mutateAsync({ id: detail.id, endedAt: "2026-10-02T11:00:00.000Z", meta: META }));
+    expect(qc.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(detail.id))?.endedAt).toBe("2026-10-02T11:00:00.000Z");
+    expect(rest.clearWorkout).toHaveBeenCalledWith(detail.id);
+    expect(trackSpy.mock.calls).toEqual([["workout_finish_queued", { reason: "offline" }]]);
   });
 });
 
@@ -350,14 +350,14 @@ describe("06.5 AC10 — finish and discard clear the workout's drafts", () => {
     expect(s2.clearWorkout).not.toHaveBeenCalled();
   });
 
-  it("useFinishWorkout clears on success", async () => {
+  it("06.7 D6 — useFinishWorkout never clears drafts itself: the landing does, once the cloud has it", async () => {
     const { qc, detail } = seeded();
     const s = stores();
-    const endedAt = "2026-01-01T10:00:00.000Z";
-    const finished = { ...WorkoutSchema.parse({ ...detail, endedAt }), newRecords: [] };
-    const { result } = renderHook(() => useFinishWorkout(), { wrapper: wrapperWithDrafts(qc, fakeClient({ finish: async () => finished }), s) });
-    await act(() => result.current.mutateAsync({ id: detail.id, endedAt }));
-    expect(s.clearWorkout).toHaveBeenCalledWith(detail.id);
+    const { result } = renderHook(() => useFinishWorkout(), {
+      wrapper: wrapperWithDrafts(qc, fakeClient({ finishOrQueue: async () => ({ status: "landed" as const }) }), s),
+    });
+    await act(() => result.current.mutateAsync({ id: detail.id, endedAt: "2026-01-01T10:00:00.000Z", meta: META }));
+    expect(s.clearWorkout).not.toHaveBeenCalled();
   });
 });
 

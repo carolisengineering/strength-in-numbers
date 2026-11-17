@@ -20,7 +20,7 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
-import { card, discardWorkout, makeCurrent } from "../../test/sessionHelpers";
+import { card, discardWorkout, makeCurrent, optionsButton } from "../../test/sessionHelpers";
 import { makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -236,11 +236,13 @@ describe("17.1 AC47 — finish, discard and gone remove the key", () => {
   it("the gone path removes it", async () => {
     const { user, fake } = await setup([ex("A"), ex("B")]);
     await logOnce(user, fake);
-    fake.failNext({ method: "PATCH", path: /\/v1\/workouts\// }, () => problemResponse(404, "not-found"));
+    // Spec 06.7: a finish the server no longer has is a refused op (AC30's gone card), so reach the gone path through a
+    // structure write.
+    fake.failNext({ method: "DELETE", path: /\/workout-exercises\// }, () => problemResponse(409, "workout-finished"));
     fake.state.active = null;
-    await user.click(screen.getByRole("button", { name: "Workout menu" }));
-    await user.click(screen.getByRole("button", { name: "End workout early" }));
-    await user.click(within(screen.getByRole("dialog", { name: "End workout early?" })).getByRole("button", { name: "End workout" }));
+    await user.click(optionsButton("A"));
+    await user.click(within(screen.getByRole("article", { name: "A" })).getByRole("button", { name: "Remove exercise" }));
+    await user.click(within(await screen.findByRole("dialog", { name: /^Remove A/ })).getByRole("button", { name: "Remove" }));
     expect(await screen.findByRole("heading", { name: "Start a workout" })).toBeInTheDocument();
     expect(stored()).toBeNull();
   });

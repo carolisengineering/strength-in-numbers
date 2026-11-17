@@ -292,7 +292,8 @@ describe("06.7 AC14 — Review Focus 1: the effects have run before a waiting ta
       active: queryClient.getQueryData(WORKOUT_KEYS.active),
     }));
     stop();
-    expect(seen).toEqual({ r: { status: "landed" }, detail: ENDED, records: [], active: null });
+    // Minor 632: while the tap waits, the landing leaves the active entry; the tap's summary clears it (06.4 D1).
+    expect(seen).toEqual({ r: { status: "landed" }, detail: ENDED, records: [], active: workout });
     expect(propsOf("workout_finished")).toMatchObject({ queued: false });
     expect(propsOf("workout_finished")).not.toHaveProperty("waitedMs");
     expect(waiting.size).toBe(0);

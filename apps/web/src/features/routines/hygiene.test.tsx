@@ -119,7 +119,7 @@ describe("10.5 AC22 — storage, privacy, text as text", () => {
     for (const s of spies) s.mockRestore();
   });
 
-  it("the Finish dialog's checked, failing then retried finish leaks no routine text", async () => {
+  it("the Finish dialog's checked, failing then retried finish leaks no routine text (Spec 06.7: the outbox retries it)", async () => {
     const spies = consoleSpies();
     const writes: unknown[] = [];
     const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key: string, value: string) {
@@ -136,8 +136,8 @@ describe("10.5 AC22 — storage, privacy, text as text", () => {
     expect(within(dialog).getByText(`'${SECRET}' is a one-off: it leaves your routines when you finish.`)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("checkbox", { name: "Keep it in my routines" }));
     await user.click(within(dialog).getByRole("button", { name: "Finish" }));
-    await user.click(await screen.findByRole("button", { name: "Try again" }));
-    await screen.findByRole("heading", { level: 1, name: "Workout summary" });
+    // The finish op is stored (with keepRoutine) and retried by the outbox: neither the file nor any log holds the name.
+    await screen.findByRole("heading", { level: 1, name: "Workout summary" }, { timeout: 4000 });
     expect(leaked(spies, writes)).not.toContain("Zanzibar");
     setItem.mockRestore();
     for (const s of spies) s.mockRestore();
@@ -170,6 +170,7 @@ describe("10.5 AC23 — observability", () => {
       "endedEarly",
       "exerciseCount",
       "hadPlannedDuration",
+      "queued",
       "setCount",
       "unloggedPlannedSets",
     ]);
