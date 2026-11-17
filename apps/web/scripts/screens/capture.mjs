@@ -1116,14 +1116,16 @@ async function desktopPass(browser) {
     { device: "desktop-1280", viewport: { width: 1280, height: 800 }, wide: true },
     { device: "desktop-1024", viewport: { width: 1024, height: 768 }, wide: true, mainWidth: 784 },
     { device: "tablet-820", viewport: { width: 820, height: 1180 }, wide: false },
-    // AC31: 200% text. Only the rail's targets, sideways scroll and overlaps are checked here.
-    { device: "desktop-1280-200pct", viewport: { width: 1280, height: 800 }, fontSize: "200%" },
+    // AC31: a 1280 × 800 window at 200% zoom, as a browser lays it out (§5): 640 × 400 CSS px at twice the pixel
+    // density, so the phone shell (final review, Phase B: raising only the root font size kept the desktop layout,
+    // squeezing the detail pane to ~80 px, a page no lifter sees). Checked for sideways scroll and overlaps.
+    { device: "desktop-1280-200pct", viewport: { width: 640, height: 400 }, deviceScaleFactor: 2, wide: false },
   ];
   for (const theme of ["light", "dark"]) {
     THEME = theme;
     for (const config of CONFIGS) {
-      const { device, viewport, fontSize } = config;
-      const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const { device, viewport, fontSize, deviceScaleFactor = 1 } = config;
+      const ctx = await browser.newContext({ viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await ctx.route(isSinApi, makeHandler({ active: false }));
       const page = await ctx.newPage();
       page.setDefaultTimeout(8000);

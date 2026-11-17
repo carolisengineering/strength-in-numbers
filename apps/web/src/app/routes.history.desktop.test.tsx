@@ -154,6 +154,22 @@ describe("17.12 AC18 — edit and delete work in the pane", () => {
     expect(reads(fake, NEWER.id, deleted + 1)).toEqual([]);
   });
 
+  // Final review #1: the main desktop path — History opens the newest by itself and the lifter deletes it.
+  it("from the bare /app/history: deleting the workout it opened shows the next newest, with no second history entry", async () => {
+    const { user, router, fake } = await setup("/app/history");
+    await within(detailPane()).findByText("Newer push");
+    await user.click(within(detailPane()).getByRole("button", { name: "Workout menu" }));
+    await user.click(within(detailPane()).getByRole("button", { name: "Delete workout" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
+    expect(await within(detailPane()).findByText("Older pull")).toBeInTheDocument();
+    await waitFor(() => expect(fake.state.finished.has(NEWER.id)).toBe(false));
+    const deleted = fake.requests.findIndex((r) => r.method === "DELETE");
+    expect(reads(fake, NEWER.id, deleted + 1)).toEqual([]);
+    expect(router.state.location.pathname).toBe("/app/history");
+    // Still the first entry: Back from here leaves History, it doesn't land on the same page again.
+    expect(router.state.historyAction).not.toBe("PUSH");
+  });
+
   it("the deleted workout is never opened next, even when the list's re-read fails", async () => {
     const { user, router, fake } = await setup(`/app/history/${NEWER.id}`);
     await within(detailPane()).findByText("Newer push");

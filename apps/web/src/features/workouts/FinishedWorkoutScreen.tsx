@@ -310,6 +310,7 @@ function DeleteWorkoutControl({
   showButton: boolean;
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const del = useDeleteWorkout();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<{ text: string; requestId: string | null } | null>(null);
@@ -322,7 +323,9 @@ function DeleteWorkoutControl({
     try {
       await del.mutateAsync({ id: workoutId, phase: "finished", setCount });
       setOpen(false);
-      void navigate(afterDelete);
+      // Spec 17.12 AC18: at desktop widths `/app/history` shows its newest workout itself, so a delete from there is
+      // already where it lands: replace, or Back would land on the same page again.
+      void navigate(afterDelete, { replace: pathname === afterDelete });
     } catch (caught) {
       setOpen(false);
       reportUnexpected("discard", caught);
