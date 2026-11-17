@@ -96,3 +96,26 @@ describe("06.7 AC20 — a workout gone from the server can be dropped, once", ()
     expect(observability.track).toHaveBeenCalledOnce();
   });
 });
+
+describe("06.7 AC20 — the discard function is stable across renders (minor 631)", () => {
+  it("returns the same function on every render while its stores don't change", () => {
+    const storage = memoryStorageAdapter();
+    const queryClient = new QueryClient();
+    const outbox = createOutbox({ storage, rest: fakeClient(), userId: "u1", isOnline: () => false });
+    const drafts = createDraftStores(storage, "u1");
+    const rest = createRestStores(storage, "u1");
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <OutboxContext.Provider value={outbox}>
+          <DraftStoresContext.Provider value={drafts}>
+            <RestStoresContext.Provider value={rest}>{children}</RestStoresContext.Provider>
+          </DraftStoresContext.Provider>
+        </OutboxContext.Provider>
+      </QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(() => useDiscardUnsentWorkout(), { wrapper });
+    const first = result.current;
+    rerender();
+    expect(result.current).toBe(first);
+  });
+});

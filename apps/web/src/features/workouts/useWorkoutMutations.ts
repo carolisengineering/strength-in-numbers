@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import {
   useIsMutating,
   useMutation,
@@ -123,16 +124,20 @@ export function useDiscardUnsentWorkout(): (workoutId: string) => void {
   const outbox = useOutbox();
   const drafts = useDraftStores();
   const rest = useRestStores();
-  return (workoutId) => {
-    const ops = outbox?.getState().ops.filter((o) => o.workoutId === workoutId) ?? [];
-    if (ops.length === 0) return;
-    const setCount = ops.find(isFinishOp)?.meta.setCount ?? 0;
-    outbox?.dropWorkout(workoutId);
-    drafts?.clearWorkout(workoutId);
-    rest?.clearWorkout(workoutId);
-    queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(workoutId), exact: true });
-    track("workout_discarded", { phase: "unsent", setCount });
-  };
+  // Minor 631: one function while the stores stay the same, so a prop or an effect dependency doesn't churn.
+  return useCallback(
+    (workoutId: string) => {
+      const ops = outbox?.getState().ops.filter((o) => o.workoutId === workoutId) ?? [];
+      if (ops.length === 0) return;
+      const setCount = ops.find(isFinishOp)?.meta.setCount ?? 0;
+      outbox?.dropWorkout(workoutId);
+      drafts?.clearWorkout(workoutId);
+      rest?.clearWorkout(workoutId);
+      queryClient.removeQueries({ queryKey: WORKOUT_KEYS.detail(workoutId), exact: true });
+      track("workout_discarded", { phase: "unsent", setCount });
+    },
+    [drafts, outbox, queryClient, rest],
+  );
 }
 
 export function useDeleteWorkout(): UseMutationResult<

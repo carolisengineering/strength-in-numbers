@@ -65,6 +65,24 @@ afterEach(() => {
   observability.reportError.mockReset();
 });
 
+describe("06.7 AC14 — an active read in flight at landing can't bring the workout back (minor 627)", () => {
+  it("the landing cancels it, so the live copy it read never overwrites the null", async () => {
+    const t = setup();
+    let release!: (w: WorkoutDetail) => void;
+    // A refetch (reconnect or focus) that read the server before the finish committed.
+    void t.queryClient.fetchQuery({
+      queryKey: WORKOUT_KEYS.active,
+      queryFn: () => new Promise<WorkoutDetail>((resolve) => (release = resolve)),
+      staleTime: 0,
+    });
+    t.land(opOf(t.workout), { outcome: "landed", updated: updatedOf(t.workout) });
+    expect(t.queryClient.getQueryData(WORKOUT_KEYS.active)).toBeNull();
+    release(t.workout);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(t.queryClient.getQueryData(WORKOUT_KEYS.active)).toBeNull();
+  });
+});
+
 describe("06.7 AC14 — landing effects run in one place, once", () => {
   it("landed: §6.6's effects run in order, and the Hevy event goes last, with every cache already seeded", () => {
     const t = setup();
