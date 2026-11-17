@@ -23,6 +23,14 @@
   flex: 1;
 }
 
+/* Spec 17.12: at desktop widths there is no bottom nav under the bar, so it clears the home indicator itself (an
+   iPad in landscape; 0 in a desktop browser). Padding here, not on <main>, so its background still reaches the edge. */
+@media (min-width: 64rem) {
+  .bar {
+    padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  }
+}
+
 /* A status line under the buttons (why Finish is disabled, unsaved writes). */
 .hint {
   flex-basis: 100%;

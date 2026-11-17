@@ -232,6 +232,24 @@ describe("17.12 AC8 — the frame is still fixed, and the rail stays under the k
   });
 });
 
+// Final review #1: with no header and no bottom nav, nothing else pads the wide shell for an iPad's safe areas
+// (`viewport-fit=cover`); a bar at <main>'s bottom would sit under the home indicator.
+describe("17.12 AC8 — the safe areas at desktop widths", () => {
+  const actionBarCss = readFileSync(join(HERE, "..", "ui", "ActionBar.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("the wide shell clears the top inset itself, as the keyboard frame does (the same value, so never twice)", () => {
+    expect(rule(mediaBlock(shellCss, DESKTOP), '.shell[data-layout="wide"]')).toMatch(/padding-top:\s*env\(safe-area-inset-top\)/);
+  });
+
+  it("the rail clears the bottom inset", () => {
+    expect(rule(outsideMedia(shellCss), ".rail")).toMatch(/padding-bottom:[^;]*env\(safe-area-inset-bottom\)/);
+  });
+
+  it("a bottom action bar (the editor's, the workout's) clears the bottom inset at 64rem, where no nav is under it", () => {
+    expect(rule(mediaBlock(actionBarCss, DESKTOP), ".bar")).toMatch(/padding-bottom:\s*calc\(var\(--space-3\) \+ env\(safe-area-inset-bottom\)\)/);
+  });
+});
+
 describe("17.12 review focus 1 — a resize across 64rem keeps the page's state", () => {
   it("a half-typed field survives the switch both ways, as the same node", async () => {
     const user = userEvent.setup();
