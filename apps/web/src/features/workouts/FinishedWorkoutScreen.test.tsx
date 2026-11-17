@@ -18,6 +18,7 @@ const observability = vi.hoisted(() => ({ track: vi.fn(), reportError: vi.fn() }
 vi.mock("../../observability/track", () => ({ track: observability.track }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
+import { USER_ID } from "../../test/catalogHarness";
 import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -479,5 +480,38 @@ describe("18.0 AC1 — Edit workout on the summary", () => {
     await screen.findByText("Couldn't load this workout.");
     expect(screen.queryByRole("button", { name: "Workout menu" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit workout" })).toBeNull();
+  });
+});
+
+// The browser smoke after #341: a workout logged on this device leaves its id map in the outbox file, so the delete's
+// `dropWorkout` re-renders the summary (it reads the outbox since Spec 06.7 B2). That re-render must not find the
+// workout's detail already gone, or it re-reads the deleted workout: a 404 in the console, and a spinner then Not
+// found before the summary navigates away.
+describe("a delete never re-reads the workout it deleted", () => {
+  it.each(["workouts", "history"] as const)("from %s, with the workout's sets in the outbox's id map", async (section) => {
+    const workout = finished();
+    const fake = createWorkoutFake({ finished: [workout], active: null });
+    prepareApp({ auth, fake });
+    const setId = workout.exercises[0]!.sets[0]!.id;
+    window.localStorage.setItem(
+      `sin:workout:outbox:${USER_ID}`,
+      JSON.stringify({ v: 1, userId: USER_ID, ops: [], idMap: { "c-1": { setId, workoutId: workout.id } } }),
+    );
+    const stored = () => window.localStorage.getItem(`sin:workout:outbox:${USER_ID}`) ?? "";
+    const { user, router } = renderApp(`/app/${section}/${workout.id}`);
+    await screen.findByRole("heading", { name: "Workout summary" });
+    expect(stored()).toContain(workout.id);
+
+    await user.click(await revealDelete(user));
+    await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/${section}`));
+
+    const deleted = fake.requests.findIndex((r) => r.method === "DELETE");
+    expect(deleted).toBeGreaterThanOrEqual(0);
+    // Nothing reads the deleted workout again: not its detail, not its records (code review).
+    const reread = fake.requests.slice(deleted + 1).filter((r) => `${r.path}${r.search}`.includes(workout.id));
+    expect(reread).toEqual([]);
+    // The outbox read the seeded id map and `dropWorkout` took the entry out, so the re-render above really happened.
+    expect(stored()).not.toContain(workout.id);
   });
 });

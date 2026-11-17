@@ -286,9 +286,10 @@ function SummaryExercise({ row: { exercise, bracket, line, label } }: { row: Sup
 }
 
 /**
- * Its own component on purpose: the delete mutation removes this workout's cached detail, and a
- * component that also observes that query would rebuild it and refetch (a 404 flash) before the
- * navigation lands. Here the mutation's state changes re-render only this control.
+ * Its own component, so the mutation's state changes re-render only this control. The screen still re-renders
+ * during a delete (the outbox's readers hear `dropWorkout`), which is safe because the mutation removes this
+ * workout's detail and records only once nothing observes them (`removeWhenUnobserved`): a removed query that is
+ * still observed would be rebuilt and refetched (a 404, then Not found) before the navigation lands.
  */
 function DeleteWorkoutControl({
   workoutId,
