@@ -6,8 +6,11 @@ import { PaneContext, type PaneValue } from "./paneContext";
 import styles from "./Panes.module.css";
 
 export interface PanesProps {
-  /** The list pane's screen, drawn only at desktop widths. */
-  list: ReactNode;
+  /**
+   * The list pane's screen, drawn only at desktop widths. `null` draws the single-column structure at every width
+   * (Spec 17.12 AC26: a live workout keeps its column), with the detail in the same slot, so it never remounts.
+   */
+  list: ReactNode | null;
   /** The derived selection (`useSelectedId`), handed to both panes through `PaneContext`. */
   selectedId: string | null;
 }
@@ -21,7 +24,7 @@ export interface PanesProps {
  * name once ("History", then "Workout summary").
  */
 export function Panes({ list, selectedId }: PanesProps) {
-  const wide = useIsDesktop();
+  const wide = useIsDesktop() && list !== null;
   const { pathname } = useLocation();
   const detailRef = useRef<HTMLDivElement>(null);
   const listValue = useMemo<PaneValue>(() => ({ slot: "list", selectedId }), [selectedId]);
