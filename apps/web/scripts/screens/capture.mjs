@@ -1305,7 +1305,7 @@ async function checkRoutinePanes(page, { editBar }) {
     const bar = detail?.querySelector("[data-action-bar]");
     if (!detail || !bar) return ["no bar in the detail pane to scroll under"];
     detail.scrollTop = detail.scrollHeight;
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) => window.requestAnimationFrame(() => window.requestAnimationFrame(r)));
     const b = bar.getBoundingClientRect();
     const hits = [...detail.querySelectorAll("button, a, input, select, textarea, [role=button]")]
       .filter((el) => !bar.contains(el) && !el.closest("dialog"))
