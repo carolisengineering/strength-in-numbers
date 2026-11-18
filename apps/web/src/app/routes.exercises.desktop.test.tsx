@@ -218,7 +218,7 @@ describe("17.12 AC20 — Records at wide widths (review focus 1)", () => {
     const { router, user } = await setup(RECORDS_PATH);
     const records = await within(listPane()).findByRole("list", { name: "Exercises" });
     expect(await detailTitle("Barbell bench press")).toBeInTheDocument();
-    expect(within(viewSwitch()).getByRole("link", { name: EXERCISES_COPY.recordsView })).toHaveAttribute("aria-current", "page");
+    expect(within(viewSwitch()).getByRole("link", { name: EXERCISES_COPY.recordsView })).toHaveAttribute("aria-current", "true");
 
     await user.click(within(records).getByRole("link", { name: /^Pull-up/ }));
     expect(await detailTitle("Pull-up")).toBeInTheDocument();
@@ -231,6 +231,32 @@ describe("17.12 AC20 — Records at wide widths (review focus 1)", () => {
     await user.click(within(viewSwitch()).getByRole("link", { name: EXERCISES_COPY.allView }));
     await waitFor(() => expect(router.state.location.pathname).toBe(EXERCISES_PATH));
     expect(await within(listPane()).findByRole("list", { name: EXERCISES_COPY.listLabel })).toBeInTheDocument();
+  });
+});
+
+describe("17.12 AC22 — code review fixes", () => {
+  it("#1: a forked exercise's Records row (keyed by the built-in) is the selected one when the copy is open", async () => {
+    const fork = makeExercise({ id: FORK, name: "My bench", ownerUserId: USER_ID, forkedFromExerciseId: BENCH, createdAt: "2026-05-01T00:00:00.000Z" });
+    await setup(RECORDS_PATH, { catalog: [bench, pull, fork], fake: { progress: { ...PROGRESS, [FORK]: PROGRESS[BENCH]! } } });
+    expect(await detailTitle("My bench")).toBeInTheDocument();
+    const records = await within(listPane()).findByRole("list", { name: "Exercises" });
+    expect(within(records).getByRole("link", { name: /^Barbell bench press/ })).toHaveAttribute("aria-current", "page");
+    expect(within(records).getByRole("link", { name: /^Pull-up/ })).not.toHaveAttribute("aria-current");
+  });
+
+  it("#2: beside an exercise the shown view is current, not the current page (the row is the page)", async () => {
+    await setup(EXERCISES_PATH);
+    await detailTitle("Barbell bench press");
+    expect(within(viewSwitch()).getByRole("link", { name: EXERCISES_COPY.allView })).toHaveAttribute("aria-current", "true");
+    expect(within(listPane()).getAllByRole("link").filter((a) => a.getAttribute("aria-current") === "page")).toHaveLength(1);
+  });
+
+  it("#6: /app/exercises/records/ (a trailing slash) is still Records, never an exercise called \"records\"", async () => {
+    const { fake } = await setup(`${RECORDS_PATH}/`);
+    expect(await within(listPane()).findByRole("list", { name: "Exercises" })).toBeInTheDocument();
+    expect(await detailTitle("Barbell bench press")).toBeInTheDocument();
+    expect(fake.requests.some((r) => r.path.includes("/records") && r.path !== "/v1/personal-records")).toBe(false);
+    expect(fake.requests.some((r) => r.search.includes("exerciseId=records"))).toBe(false);
   });
 });
 

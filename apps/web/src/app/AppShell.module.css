@@ -85,6 +85,9 @@
      the row past the viewport instead of scrolling inside it. */
   min-height: 0;
   overflow-y: auto;
+  /* Code review #7 (Spec 17.12 AC23): a classic scrollbar's room is kept whether it shows or not (Windows; macOS with a
+     mouse; phones overlay theirs), so its coming and going never changes the width the exercise chart measures. */
+  scrollbar-gutter: stable;
   /* No padding here: a sticky `bottom: 0` bar stops at the scroller's padding edge, so any padding left a
      strip of scrolling content visible between the bar and the nav. `Screen` pads its own content. */
 }

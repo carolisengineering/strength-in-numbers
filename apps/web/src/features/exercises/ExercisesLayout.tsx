@@ -18,7 +18,8 @@ import { useExerciseList } from "./useExerciseList";
 export function ExercisesLayout() {
   const wide = useIsDesktop();
   const location = useLocation();
-  const onRecords = location.pathname === RECORDS_PATH;
+  // Matched like the route (a trailing slash, any case), never compared as a string (code review #6).
+  const onRecords = useMatch(RECORDS_PATH) !== null;
   // A layout's `useParams` doesn't see its child's `:id`; the static `records` segment would match `:id` here too.
   const match = useMatch(`${EXERCISES_PATH}/:id`);
   const routeId = onRecords ? null : (match?.params.id ?? null);
