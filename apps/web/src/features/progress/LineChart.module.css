@@ -1,3 +1,8 @@
+/* The measured box (Spec 17.12 AC23): its width, never the svg's, sets the drawing width. */
+.box {
+  width: 100%;
+}
+
 .chart {
   display: block;
   width: 100%;

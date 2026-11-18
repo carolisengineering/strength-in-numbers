@@ -1,5 +1,8 @@
+import { useRef } from "react";
+
+import { useMeasuredWidth } from "../../ui/useMeasuredWidth";
 import type { ChartPoint } from "./metrics";
-import { hitAreas, layoutChart, xLabels } from "./scale";
+import { hitAreas, layoutChart, viewFor, xLabels } from "./scale";
 import styles from "./LineChart.module.css";
 
 const TICK = new Intl.NumberFormat("en", { maximumFractionDigits: 2 });
@@ -12,14 +15,22 @@ export interface LineChartProps {
   onSelect: (id: string) => void;
   /** The accessible name — the chart is one image to assistive tech; the sessions list is the detail (D5). */
   summary: string;
+  /** Tests only: draw at this width instead of the measured one. */
+  width?: number;
 }
 
-/** One series, drawn in a fixed 360 × 220 viewBox that scales with its container (Spec 08.1 AC16, D1/D2). */
-export function LineChart({ points, integer = false, selectedId, onSelect, summary }: LineChartProps) {
-  const layout = layoutChart(points, { integer });
+/**
+ * One series (Spec 08.1 AC16, D1/D2), drawn in a viewBox as wide as its box in CSS px, so its text is the
+ * same size at every width (Spec 17.12 AC23); 360 × 220 where nothing measures it.
+ */
+export function LineChart({ points, integer = false, selectedId, onSelect, summary, width }: LineChartProps) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const measured = useMeasuredWidth(boxRef);
+  const layout = layoutChart(points, { integer, view: viewFor(width ?? measured) });
   const { view } = layout;
   const right = view.width - view.right;
   return (
+    <div ref={boxRef} className={styles.box}>
     <svg className={styles.chart} viewBox={`0 0 ${view.width} ${view.height}`} width="100%" role="img" aria-label={summary}>
       {layout.ticks.map((t) => (
         <g key={t.value}>
@@ -64,5 +75,6 @@ export function LineChart({ points, integer = false, selectedId, onSelect, summa
         />
       ))}
     </svg>
+    </div>
   );
 }
