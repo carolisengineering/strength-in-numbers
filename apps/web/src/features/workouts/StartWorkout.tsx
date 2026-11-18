@@ -83,7 +83,6 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children, lea
 
   return (
     <Screen title="Start a workout">
-      {inList ? startButton : null}
       <div className={styles.start}>
         <div className={styles.messages}>
           {lead}
@@ -95,6 +94,8 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children, lea
             </InlineNotice>
           ) : null}
         </div>
+        {/* Owner (2026-11-18): in the list pane the saved line and notices still lead (Spec 06.7 AC27), then Start. */}
+        {inList ? startButton : null}
         {children}
       </div>
       {/* Spec 06.1 §5.2: the Start button sits in the thumb zone — the bottom bar, below the routines. */}

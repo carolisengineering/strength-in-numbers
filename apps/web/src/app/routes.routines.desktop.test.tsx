@@ -375,6 +375,21 @@ describe("17.12 AC29 — code review: the open row still opens in a new tab", ()
   });
 });
 
+describe("17.12 AC25 — owner call (2026-11-18): the saved line and notices lead the list pane, as on the phone", () => {
+  it("a notice comes before Start empty workout in the list pane", async () => {
+    setDesktop(true);
+    const fake = createWorkoutFake({ routines: [pushA, pullB], catalog, active: null });
+    prepareApp({ auth, fake, catalog });
+    renderApp("/app/workouts", { notice: "routine-gone" });
+    await panesReady();
+    const notice = await within(listPane()).findByText(ROUTINE_GONE_NOTICE);
+    const start = within(listPane()).getByRole("button", { name: "Start empty workout" });
+    expect(notice.compareDocumentPosition(start) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const routines = within(listPane()).getByRole("heading", { name: "Routines" });
+    expect(start.compareDocumentPosition(routines) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
 describe("17.12 AC30 — regression guards: the phone sends today's requests", () => {
   it("review focus 6: the phone's requests on the three routes are today's, in today's order", async () => {
     const { fake, router } = await setup("/app/workouts", { wide: false });
