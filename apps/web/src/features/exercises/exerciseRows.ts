@@ -63,3 +63,11 @@ export function metaLine(item: ExerciseRow, today: string, usageKnown: boolean):
         );
   return `${lead} · ${type}`;
 }
+
+/**
+ * The exercise `/app/exercises` opens at desktop widths (Spec 17.12 AC21): the first row in list order whose lineage
+ * root has been logged, so the newest; null when none has, never the A–Z first row.
+ */
+export function mostRecentLoggedId(rows: readonly ExerciseRow[], usage: ReadonlyMap<string, string>): string | null {
+  return rows.find((r) => usage.has(lineageRootId(r.row)))?.row.id ?? null;
+}

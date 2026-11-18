@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { exerciseId, makeExercise } from "../../test/catalogFixtures";
 import { pinTimeZone } from "../../test/timeZone";
 import { visibleRows } from "../catalog/visibility";
-import { buildExerciseRows, metaLine, type ExerciseRow } from "./exerciseRows";
+import { buildExerciseRows, metaLine, mostRecentLoggedId, type ExerciseRow } from "./exerciseRows";
 
 const ME = "00000000-0000-4000-8000-0000000000aa";
 
@@ -122,5 +122,26 @@ describe("18.2 AC10 — row text", () => {
 
   it("shows only the type when usage is unknown", () => {
     expect(metaLine(item({ lastLoggedOn: null }), TODAY, false)).toBe("Weight × reps");
+  });
+});
+
+describe("17.12 AC21 — mostRecentLoggedId", () => {
+  const squat = makeExercise({ id: exerciseId(1), name: "Squat" });
+  const bench = makeExercise({ id: exerciseId(2), name: "Bench" });
+  const curl = makeExercise({ id: exerciseId(3), name: "Curl" });
+
+  it.each([
+    ["logged rows first: the newest", [squat, bench, curl], new Map([[exerciseId(1), "2026-10-01"], [exerciseId(3), "2026-10-20"]]), exerciseId(3)],
+    ["none logged: null, never the A–Z first row", [squat, bench, curl], new Map<string, string>(), null],
+    ["usage for exercises not in the list only: null", [squat], new Map([[exerciseId(9), "2026-10-01"]]), null],
+    ["an empty list: null", [], new Map([[exerciseId(1), "2026-10-01"]]), null],
+  ])("%s", (_label, visible, usage, expected) => {
+    expect(mostRecentLoggedId(buildExerciseRows(visible, usage), usage)).toBe(expected);
+  });
+
+  it("a fork stands in for its built-in's history", () => {
+    const fork = makeExercise({ id: exerciseId(4), name: "My squat", ownerUserId: ME, forkedFromExerciseId: exerciseId(1) });
+    const rows = buildExerciseRows(visibleRows([squat, fork, bench]), new Map([[exerciseId(1), "2026-10-01"]]));
+    expect(mostRecentLoggedId(rows, new Map([[exerciseId(1), "2026-10-01"]]))).toBe(exerciseId(4));
   });
 });

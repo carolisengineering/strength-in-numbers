@@ -71,3 +71,33 @@ describe("08.1 AC16 — the chart", () => {
     expect(container.querySelectorAll("svg [tabindex], svg a, svg button")).toHaveLength(0);
   });
 });
+
+describe("17.12 AC23 — the chart draws at its own width", () => {
+  const svgOf = (container: HTMLElement) => container.querySelector("svg")!;
+
+  it("with nothing to measure it (jsdom) the viewBox is today's 360 × 220", () => {
+    const { container } = renderChart();
+    expect(svgOf(container).getAttribute("viewBox")).toBe("0 0 360 220");
+  });
+
+  it("at 800 wide: an 800 × 320 viewBox, the last dot at 800 − 16, grid lines to the right margin, hit areas over 0..800", () => {
+    const { container } = render(<LineChart points={pts} selectedId="w3" onSelect={vi.fn()} summary="s" width={800} />);
+    expect(svgOf(container).getAttribute("viewBox")).toBe("0 0 800 320");
+    expect(screen.getAllByTestId("chart-dot").at(-1)!.getAttribute("cx")).toBe("784");
+    const grid = [...container.querySelectorAll("line")];
+    expect(grid.length).toBeGreaterThan(0);
+    for (const l of grid) expect([l.getAttribute("x1"), l.getAttribute("x2")]).toEqual(["48", "784"]);
+    const hits = screen.getAllByTestId("chart-hit");
+    expect(hits[0]!.getAttribute("x")).toBe("0");
+    const last = hits.at(-1)!;
+    expect(Number(last.getAttribute("x")) + Number(last.getAttribute("width"))).toBe(800);
+    for (const h of hits) expect(h.getAttribute("height")).toBe("320");
+  });
+
+  it("the svg sits in its own box, which is the thing measured", () => {
+    const { container } = renderChart();
+    const box = svgOf(container).parentElement!;
+    expect(box).not.toBe(container);
+    expect(box.tagName.toLowerCase()).toBe("div");
+  });
+});

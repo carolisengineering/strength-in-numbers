@@ -45,3 +45,10 @@
 .leadFill {
   align-self: stretch;
 }
+
+/* Spec 17.12 (minor 652): in a detail pane `BackLink` draws nothing, so a lead holding only it is empty; it leaves no
+   box and no gap above the h1. */
+.lead:empty,
+.leadFill:empty {
+  display: none;
+}

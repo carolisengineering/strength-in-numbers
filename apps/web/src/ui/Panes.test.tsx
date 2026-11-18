@@ -173,6 +173,14 @@ describe("17.12 AC13 — the pane rules", () => {
     expect(panesCss).toMatch(/min-height:\s*0;[^}]*overflow-y:\s*auto/);
   });
 
+  it("final review (Phase C): a pane keeps its scrollbar's room, so a classic scrollbar coming and going can't resize the measured chart in a loop", () => {
+    expect(panesCss).toMatch(/\.root\[data-wide\] > \.slot\s*\{[^}]*scrollbar-gutter:\s*stable/);
+  });
+
+  it("code review #7: the shell's own scroller keeps its scrollbar's room too (the measured chart on a narrow desktop window)", () => {
+    expect(shellCss).toMatch(/\.main\s*\{[^}]*scrollbar-gutter:\s*stable/);
+  });
+
   it("narrow: the wrappers are display: contents", () => {
     expect(panesCss).toMatch(/\.root,\s*\.slot\s*\{[^}]*display:\s*contents/);
   });

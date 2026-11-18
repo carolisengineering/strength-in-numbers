@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChartPoint } from "./metrics";
-import { VIEW, hitAreas, layoutChart, niceTicks, xLabels } from "./scale";
+import { DEFAULT_VIEW, MARGINS, hitAreas, layoutChart, niceTicks, viewFor, xLabels } from "./scale";
 
 const pt = (id: string, localDate: string, y: number): ChartPoint => ({ id, localDate, canonical: y, y });
 
@@ -61,12 +61,12 @@ describe("08.1 AC4 — chart geometry", () => {
     const layout = layoutChart([pt("a", "2026-09-01", 1), pt("b", "2026-09-02", 1), pt("c", "2026-09-23", 1)]);
     const [a, b, c] = layout.points;
     expect(c!.x - b!.x).toBeGreaterThan((b!.x - a!.x) * 10);
-    expect(a!.x).toBe(VIEW.left);
-    expect(c!.x).toBe(VIEW.width - VIEW.right);
+    expect(a!.x).toBe(DEFAULT_VIEW.left);
+    expect(c!.x).toBe(DEFAULT_VIEW.width - DEFAULT_VIEW.right);
   });
 
   it("one point, or all on one date, is centred", () => {
-    const centre = VIEW.left + (VIEW.width - VIEW.left - VIEW.right) / 2;
+    const centre = DEFAULT_VIEW.left + (DEFAULT_VIEW.width - DEFAULT_VIEW.left - DEFAULT_VIEW.right) / 2;
     expect(layoutChart([pt("a", "2026-09-01", 5)]).points[0]!.x).toBe(centre);
     const same = layoutChart([pt("a", "2026-09-01", 5), pt("b", "2026-09-01", 6)]);
     expect(same.points.map((p) => p.x)).toEqual([centre, centre]);
@@ -84,12 +84,12 @@ describe("08.1 AC4 — chart geometry", () => {
       const areas = hitAreas(layout);
       for (const a of areas) expect(a.width * a.height).toBeGreaterThan(0);
       for (let i = 0; i < areas.length; i++) for (let j = i + 1; j < areas.length; j++) expect(overlap(areas[i]!, areas[j]!)).toBe(false);
-      expect(areas.reduce((s, a) => s + a.width * a.height, 0)).toBeCloseTo(VIEW.width * VIEW.height, 6);
+      expect(areas.reduce((s, a) => s + a.width * a.height, 0)).toBeCloseTo(DEFAULT_VIEW.width * DEFAULT_VIEW.height, 6);
       layout.points.forEach((p, i) => expect(areas[i]!.y <= p.py && p.py <= areas[i]!.y + areas[i]!.height).toBe(true));
     });
 
     it("one point owns the whole viewBox", () => {
-      expect(hitAreas(layoutChart([pt("a", "2026-09-01", 1)]))).toEqual([{ id: "a", x: 0, y: 0, width: VIEW.width, height: VIEW.height }]);
+      expect(hitAreas(layoutChart([pt("a", "2026-09-01", 1)]))).toEqual([{ id: "a", x: 0, y: 0, width: DEFAULT_VIEW.width, height: DEFAULT_VIEW.height }]);
     });
 
     it("weekly sessions a year long with near-equal values: each dot lies in its own area only; areas tile the viewBox", () => {
@@ -107,7 +107,7 @@ describe("08.1 AC4 — chart geometry", () => {
         });
       });
       for (let i = 0; i < areas.length; i++) for (let j = i + 1; j < areas.length; j++) expect(overlap(areas[i]!, areas[j]!)).toBe(false);
-      expect(areas.reduce((s, a) => s + a.width * a.height, 0)).toBeCloseTo(VIEW.width * VIEW.height, 6);
+      expect(areas.reduce((s, a) => s + a.width * a.height, 0)).toBeCloseTo(DEFAULT_VIEW.width * DEFAULT_VIEW.height, 6);
     });
 
     it("the boundary between neighbours is their x midpoint", () => {
@@ -118,8 +118,8 @@ describe("08.1 AC4 — chart geometry", () => {
       expect(a!.x + a!.width).toBeCloseTo((pa!.x + pb!.x) / 2, 9);
       expect(b!.x).toBeCloseTo((pa!.x + pb!.x) / 2, 9);
       expect(b!.x + b!.width).toBeCloseTo((pb!.x + pc!.x) / 2, 9);
-      expect(c!.x + c!.width).toBe(VIEW.width);
-      for (const r of [a!, b!, c!]) expect([r.y, r.height]).toEqual([0, VIEW.height]);
+      expect(c!.x + c!.width).toBe(DEFAULT_VIEW.width);
+      for (const r of [a!, b!, c!]) expect([r.y, r.height]).toEqual([0, DEFAULT_VIEW.height]);
     });
 
     it("same-date sessions split their column at the y midpoint, higher value on top; other points keep full-width areas", () => {
@@ -130,7 +130,7 @@ describe("08.1 AC4 — chart geometry", () => {
       expect(c!.y).toBe(0);
       expect(c!.y + c!.height).toBeCloseTo(mid, 9);
       expect(b!.y).toBeCloseTo(mid, 9);
-      expect(b!.y + b!.height).toBe(VIEW.height);
+      expect(b!.y + b!.height).toBe(DEFAULT_VIEW.height);
       expect([b!.x, b!.width]).toEqual([c!.x, c!.width]);
       // a's area is not shrunk by the same-date pair: ≥ 56 units (44 CSS px at a 288 px chart) wide.
       expect(a!.width).toBeGreaterThanOrEqual(56);
@@ -174,5 +174,40 @@ describe("08.1 AC4 — chart geometry", () => {
       "Jan 2026",
       "Feb 2026",
     ]);
+  });
+});
+
+describe("17.12 AC23 — the chart's view is sized by its width", () => {
+  it.each([
+    [360, 220],
+    [640, 320],
+    [600, 300],
+    [300, 220],
+    [1000, 320],
+  ])("viewFor(%i) is %i tall", (width, height) => {
+    expect(viewFor(width)).toEqual({ ...MARGINS, width, height });
+  });
+
+  it("DEFAULT_VIEW is today's 360 × 220 view", () => {
+    expect(DEFAULT_VIEW).toEqual({ width: 360, height: 220, left: 48, right: 16, top: 12, bottom: 28 });
+  });
+
+  it("layoutChart, hitAreas and xLabels use the view they are given", () => {
+    const view = viewFor(720);
+    const layout = layoutChart([pt("a", "2026-09-01", 1), pt("b", "2026-09-23", 2)], { view });
+    expect(layout.view).toBe(view);
+    expect(layout.points[0]!.x).toBe(48);
+    expect(layout.points.at(-1)!.x).toBe(720 - 16);
+    const areas = hitAreas(layout);
+    expect(areas.at(-1)!.x + areas.at(-1)!.width).toBe(720);
+    expect(areas[0]!.height).toBe(view.height);
+    // A month start near the right edge of a wide chart has room to stay centered (it anchors "end" at 360).
+    const labels = xLabels(layoutChart([pt("a", "2025-11-20", 1), pt("b", "2026-02-03", 1)], { view: viewFor(1200) }));
+    expect(labels.at(-1)!.anchor).toBe("middle");
+  });
+
+  it("an empty layout still carries its view, and the default is DEFAULT_VIEW", () => {
+    expect(layoutChart([], { view: viewFor(500) }).view.width).toBe(500);
+    expect(layoutChart([]).view).toBe(DEFAULT_VIEW);
   });
 });

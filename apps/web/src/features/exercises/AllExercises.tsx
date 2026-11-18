@@ -1,9 +1,11 @@
 import type { Exercise } from "@sin/core";
 import { memo, useContext, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useOutletContext } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
+import { usePane } from "../../ui/paneContext";
+import selection from "../../ui/selectedRow.module.css";
 import { Sheet } from "../../ui/Sheet";
 import { Spinner } from "../../ui/Spinner";
 import { CreateExerciseForm } from "../catalog/CreateExerciseForm";
@@ -13,20 +15,37 @@ import { searchByName } from "../catalog/visibility";
 import { ProgressClockContext } from "../progress/queries";
 import { reportUnexpected } from "../workouts/reportUnexpected";
 import styles from "./AllExercises.module.css";
-import { buildExerciseRows, metaLine } from "./exerciseRows";
-import type { ExercisesOutletContext } from "./ExercisesLayout";
+import { metaLine } from "./exerciseRows";
+import { useExercisesTitle } from "./exercisesTitle";
 import { EXERCISES_COPY } from "./messages";
 import { exercisePath } from "./paths";
-import { useExerciseUsage } from "./usage";
+import { useExerciseList } from "./useExerciseList";
 
-const NO_USAGE: ReadonlyMap<string, string> = new Map();
-
-/** One row: a single link, the name first so the accessible name starts with it (AC11). Memoized for AC18. */
-const ExerciseListRow = memo(function ExerciseListRow({ id, name, meta }: { id: string; name: string; meta: string }) {
+/**
+ * One row: a single link, the name first so the accessible name starts with it (AC11). Memoized for AC18. Beside an
+ * exercise's page (Spec 17.12 AC22) the open one is `aria-current="page"` with the selected look.
+ */
+const ExerciseListRow = memo(function ExerciseListRow({
+  id,
+  name,
+  meta,
+  selected,
+}: {
+  id: string;
+  name: string;
+  meta: string;
+  selected: boolean;
+}) {
   return (
     <li>
-      <Link className={styles.row} to={exercisePath(id)}>
-        <span className={styles.name}>{name}</span>
+      <Link
+        className={selected ? `${styles.row} ${selection.selected}` : styles.row}
+        to={exercisePath(id)}
+        aria-current={selected ? "page" : undefined}
+      >
+        <span className={styles.name} data-row-title="">
+          {name}
+        </span>
         <span className={styles.meta}>{meta}</span>
       </Link>
     </li>
@@ -41,7 +60,7 @@ const ExerciseListRow = memo(function ExerciseListRow({ id, name, meta }: { id: 
 export function AllExercises() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { titleRef } = useOutletContext<ExercisesOutletContext>();
+  const { titleRef } = useExercisesTitle();
   const [notice, setNotice] = useState("");
 
   // Spec 18.2 AC50: a delete lands here with `{ notice: "deleted", name }` (display only); announce it once, clear
@@ -68,7 +87,8 @@ export function AllExercises() {
 
 function ExerciseList({ onSearch }: { onSearch: () => void }) {
   const { visible, state, refresh } = useCatalog();
-  const usage = useExerciseUsage();
+  const { rows, usage } = useExerciseList();
+  const { selectedId } = usePane();
   const today = useContext(ProgressClockContext)();
   const muscles = useMuscleGroups();
   const equipment = useEquipment();
@@ -80,7 +100,6 @@ function ExerciseList({ onSearch }: { onSearch: () => void }) {
     if (usage.error) reportUnexpected("load-exercise-usage", usage.error);
   }, [usage.error]);
 
-  const rows = useMemo(() => buildExerciseRows(visible, usage.data ?? NO_USAGE), [visible, usage.data]);
   const shown = useMemo(() => {
     const kept = new Set<Exercise>(searchByName(rows.map((r) => r.row), query));
     return rows.filter((r) => kept.has(r.row));
@@ -140,7 +159,13 @@ function ExerciseList({ onSearch }: { onSearch: () => void }) {
       ) : (
         <ul className={styles.list} aria-label={EXERCISES_COPY.listLabel}>
           {shown.map((item) => (
-            <ExerciseListRow key={item.row.id} id={item.row.id} name={item.row.name} meta={metaLine(item, today, usageKnown)} />
+            <ExerciseListRow
+              key={item.row.id}
+              id={item.row.id}
+              name={item.row.name}
+              meta={metaLine(item, today, usageKnown)}
+              selected={item.row.id === selectedId}
+            />
           ))}
         </ul>
       )}

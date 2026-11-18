@@ -7,11 +7,10 @@ import { HevyScreen } from "../features/hevy/HevyScreen";
 import { HevyImportRoute } from "../features/hevy/import/HevyImportRoute";
 import { PairingsScreen } from "../features/hevy/pairings/PairingsScreen";
 import { ProfileScreen } from "../features/me/ProfileScreen";
-import { AllExercises } from "../features/exercises/AllExercises";
 import { ExerciseRoute } from "../features/exercises/ExerciseScreen";
+import { ExercisesIndex } from "../features/exercises/ExercisesIndex";
 import { ExercisesLayout } from "../features/exercises/ExercisesLayout";
 import { RECORDS_PATH } from "../features/exercises/paths";
-import { RecordsView } from "../features/exercises/RecordsView";
 import { RedirectProgressExercise } from "../features/exercises/redirects";
 import { ImportEditRoute } from "../features/routines/import/ImportEdit";
 import { ImportNames } from "../features/routines/import/ImportNames";
@@ -53,9 +52,9 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app/history/:id                                                  > HistoryPanes > FinishedWorkoutScreen section="history" (Spec 08.0, 17.12)
  *   /app/history/:id/edit                                             > HistoryPanes > EditWorkoutScreen section="history" (Spec 18.0, 17.12)
  *   /app/history                                                      > HistoryPanes > HistoryIndex: HistoryScreen, or at 64rem the newest summary (Spec 08.0, 17.12)
- *   /app/exercises                                                    > ExercisesLayout > AllExercises (Spec 18.2)
- *   /app/exercises/records                                            > ExercisesLayout > RecordsView (Spec 18.2; outranks :id)
- *   /app/exercises/:id                                                > ExerciseScreen, keyed by id (Spec 18.2)
+ *   /app/exercises                                                    > ExercisesLayout > ExercisesIndex: All exercises, or at 64rem the most recent exercise (Spec 18.2, 17.12)
+ *   /app/exercises/records                                            > ExercisesLayout > ExercisesIndex: Records, or at 64rem as above (Spec 18.2, 17.12; outranks :id)
+ *   /app/exercises/:id                                                > ExercisesLayout > ExerciseScreen, keyed by id (Spec 18.2, 17.12)
  *   /app/progress                                                     > redirect (replace) to the Records view (Spec 18.2, permanent)
  *   /app/progress/:exerciseId                                         > redirect (replace) to the exercise page (Spec 18.2, permanent)
  *   /app/*       …                                                    > NotFound       protected catch-all
@@ -139,15 +138,16 @@ export const routes: RouteObject[] = [
                 ],
               },
               {
+                // Spec 17.12 Phase C: one layout route, so at desktop widths the list sits beside the open exercise.
                 path: "exercises",
                 element: <ExercisesLayout />,
                 children: [
-                  { index: true, element: <AllExercises /> },
-                  { path: "records", element: <RecordsView /> },
+                  { index: true, element: <ExercisesIndex view="all" /> },
+                  { path: "records", element: <ExercisesIndex view="records" /> },
+                  // Spec 17.12 AC20: a child; the phone still draws it without the list (Panes draws no list below 64rem).
+                  { path: ":id", element: <ExerciseRoute /> },
                 ],
               },
-              // Spec 18.2 D2: a sibling of the layout, since the page draws its own Screen.
-              { path: "exercises/:id", element: <ExerciseRoute /> },
               // Spec 18.2 AC3: the old Progress paths redirect for good (bookmarks, a captured returnTo).
               { path: "progress", element: <Navigate to={RECORDS_PATH} replace /> },
               { path: "progress/:exerciseId", element: <RedirectProgressExercise /> },

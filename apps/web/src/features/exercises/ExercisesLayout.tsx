@@ -1,39 +1,33 @@
-import { useRef, type RefObject } from "react";
-import { NavLink, Outlet } from "react-router";
+import { useLocation, useMatch } from "react-router";
 
-import buttonStyles from "../../ui/Button.module.css";
-import { Screen } from "../../ui/Screen";
-import choiceStyles from "../progress/ChoiceGroup.module.css";
-import styles from "./ExercisesLayout.module.css";
-import { EXERCISES_COPY } from "./messages";
-import { EXERCISES_PATH, RECORDS_PATH } from "./paths";
-
-/** What the layout hands its views: the `h1`, for a view that moves focus to it (Phase B's notices). */
-export type ExercisesOutletContext = { titleRef: RefObject<HTMLHeadingElement | null> };
-
-/** ChoiceGroup's chip as a link: a secondary Button (≥ 44 px), pressed look when current. */
-const viewClass = ({ isActive }: { isActive: boolean }): string =>
-  [buttonStyles.button, buttonStyles.secondary, styles.view, isActive ? choiceStyles.pressed : null].filter(Boolean).join(" ");
+import { useIsDesktop } from "../../ui/breakpoints";
+import { Panes } from "../../ui/Panes";
+import { useSelectedId } from "../../ui/selection";
+import { mostRecentLoggedId } from "./exerciseRows";
+import { ExercisesListScreen, type ExercisesView } from "./ExercisesListScreen";
+import { EXERCISES_PATH, isFromRecords, RECORDS_PATH } from "./paths";
+import { useExerciseList } from "./useExerciseList";
 
 /**
- * The Exercises tab (Spec 18.2 AC5): one `Screen`, then the view switch. The views are links (they
- * navigate and deep-link, so `NavLink` sets `aria-current`), and they replace, so toggling does not
- * stack history.
+ * Spec 17.12 Phase C (AC20–AC22): the Exercises tab's layout route. At desktop widths the list (All exercises or
+ * Records, with its switch) sits beside the open exercise's page; the detail is the child route, so the URLs are
+ * Spec 18.2's. The selection is derived: the route's id, else the most recently logged exercise (AC21, no redirect),
+ * else none. Below 64rem `Panes` draws only the child route, and the usage read is observed here only when wide, so
+ * the phone sends exactly today's requests.
  */
 export function ExercisesLayout() {
-  const titleRef = useRef<HTMLHeadingElement | null>(null);
-  const context: ExercisesOutletContext = { titleRef };
-  return (
-    <Screen title={EXERCISES_COPY.title} titleRef={titleRef} hideTitle>
-      <nav aria-label={EXERCISES_COPY.viewsLabel} className={styles.views}>
-        <NavLink to={EXERCISES_PATH} end replace className={viewClass}>
-          {EXERCISES_COPY.allView}
-        </NavLink>
-        <NavLink to={RECORDS_PATH} replace className={viewClass}>
-          {EXERCISES_COPY.recordsView}
-        </NavLink>
-      </nav>
-      <Outlet context={context} />
-    </Screen>
-  );
+  const wide = useIsDesktop();
+  const location = useLocation();
+  // Matched like the route (a trailing slash, any case), never compared as a string (code review #6).
+  const onRecords = useMatch(RECORDS_PATH) !== null;
+  // A layout's `useParams` doesn't see its child's `:id`; the static `records` segment would match `:id` here too.
+  const match = useMatch(`${EXERCISES_PATH}/:id`);
+  const routeId = onRecords ? null : (match?.params.id ?? null);
+  const { rows, usage } = useExerciseList({ enabled: wide });
+  const recent = usage.data === undefined ? null : mostRecentLoggedId(rows, usage.data);
+  const selectedId = useSelectedId(routeId, recent === null ? NONE : [recent]);
+  const listView: ExercisesView = onRecords || (routeId !== null && isFromRecords(location.state)) ? "records" : "all";
+  return <Panes list={<ExercisesListScreen view={listView} />} selectedId={selectedId} />;
 }
+
+const NONE: readonly string[] = [];

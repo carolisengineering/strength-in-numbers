@@ -6,11 +6,12 @@ const tests = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.
 >;
 
 /**
- * Spec 17.12 AC33: Phase A tags AC1–AC10, Phase B AC13–AC19. AC11 and AC12 are harness checks (`capture.mjs`'s
- * `desktopPass`), and so are AC31's 200% text and landmarks; Phases C and D extend this list with AC20–AC30. Only numbers written as "17.12 ACn" (or "17.12 ACn,
+ * Spec 17.12 AC33: Phase A tags AC1–AC10, Phase B AC13–AC19, Phase C AC20–AC24. AC11 and AC12 are harness checks
+ * (`capture.mjs`'s `desktopPass`), and so are AC31's 200% text and landmarks and AC23's 14 px chart text; Phase D
+ * extends this list with AC25–AC30. Only numbers written as "17.12 ACn" (or "17.12 ACn,
  * ACm") count.
  */
-const WANTED = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17, 18, 19];
+const WANTED = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
 
 describe("17.12 AC33 — every behavioral criterion has a committed, tagged test", () => {
   it("each wanted AC appears in a describe title as '17.12 ACn'", () => {

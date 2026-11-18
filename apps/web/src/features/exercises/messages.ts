@@ -22,6 +22,8 @@ export const EXERCISES_COPY = {
   yours: "Yours",
   backToExercises: "Back to Exercises",
   backToRecords: "Back to Records",
+  /** Spec 17.12 AC21: the detail pane while nothing has been logged. */
+  chooseExercise: "Choose an exercise",
   detailsLabel: "Exercise details",
   source: "Source",
   type: "Type",

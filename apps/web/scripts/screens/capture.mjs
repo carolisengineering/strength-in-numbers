@@ -645,9 +645,13 @@ async function checkExercisePage(page, label, { chart = true } = {}) {
     const svg = document.querySelector('svg[role="img"]');
     const nav = document.querySelector("nav");
     const summary = document.querySelector("details:not([open]) > summary");
+    const scale = svg?.getScreenCTM()?.a ?? 1;
     return {
       viewport: [window.innerWidth, window.innerHeight],
       chartBottom: svg ? svg.getBoundingClientRect().bottom : null,
+      // Spec 17.12 AC23: each label's size as drawn (its font size × the svg's scale), and the chart's height.
+      chartText: svg ? [...svg.querySelectorAll("text")].map((t) => Number((parseFloat(getComputedStyle(t).fontSize) * scale).toFixed(2))) : [],
+      chartHeight: svg ? svg.getBoundingClientRect().height : null,
       navTop: nav ? nav.getBoundingClientRect().top : window.innerHeight,
       mainOverflow: main ? main.scrollWidth - main.clientWidth : 0,
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -659,8 +663,29 @@ async function checkExercisePage(page, label, { chart = true } = {}) {
   if (chart && m.chartBottom !== null && m.chartBottom > m.navTop + 0.5) violations.push(`chart bottom ${m.chartBottom.toFixed(1)} is below the nav's top ${m.navTop.toFixed(1)}`);
   if (m.mainOverflow > 0 || m.pageOverflow > 0) violations.push(`horizontal overflow (main ${m.mainOverflow}px, page ${m.pageOverflow}px)`);
   if (m.summaryHeight !== null && m.summaryHeight < 43.5) violations.push(`the closed summary is ${m.summaryHeight.toFixed(1)} px tall`);
+  violations.push(...chartViolations(m));
   exercisePage.push({ shot: label, ...m, violations });
   for (const v of violations) console.error(`  EXERCISE PAGE ${label}: ${v}`);
+}
+// Spec 17.12 AC23: the chart's text, as drawn (font size × the svg's scale), is 14 px at every width, and the chart is
+// 220–320 px tall. The sizes are read in the page (`checkExercisePage`, and `desktopPass`'s `chart: true` shots).
+const CHART_TEXT_PX = 14;
+const readChart = (page) =>
+  page.evaluate(() => {
+    const svg = document.querySelector('main svg[role="img"]');
+    if (!svg) return { missing: true };
+    const scale = svg.getScreenCTM()?.a ?? 1;
+    return {
+      chartText: [...svg.querySelectorAll("text")].map((t) => Number((parseFloat(getComputedStyle(t).fontSize) * scale).toFixed(2))),
+      chartHeight: svg.getBoundingClientRect().height,
+    };
+  });
+function chartViolations({ chartText, chartHeight }) {
+  const out = [];
+  const off = (chartText ?? []).filter((px) => Math.abs(px - CHART_TEXT_PX) > 0.5);
+  if (off.length) out.push(`chart text drawn at ${[...new Set(off)].join(", ")} px, not ${CHART_TEXT_PX}`);
+  if (typeof chartHeight === "number" && (chartHeight < 219.5 || chartHeight > 320.5)) out.push(`the chart is ${chartHeight.toFixed(1)} px tall (want 220–320)`);
+  return out;
 }
 // Spec 17.11 AC11, AC17, AC24 and Review Focus 1, 3: the item sheet's plan rows. Every summary button is a full tap
 // target, the sheet doesn't scroll sideways (390 × 844, 1280, and 320 × 568 with a long typed value), Move keeps focus
@@ -1080,11 +1105,15 @@ const DESKTOP_SCREENS = [
   { name: "d1-workouts", path: "/app/workouts" },
   // Spec 17.12 Phase B: History as two panes (the newest open, a chosen workout, the edit screen in the pane).
   { name: "d2-history", path: "/app/history", panes: true },
-  { name: "d3-exercises", path: "/app/exercises" },
+  // Spec 17.12 Phase C: Exercises as two panes (the most recent open, Records beside it, a chosen exercise), and the
+  // chart's text measured at each width (AC23).
+  { name: "d3-exercises", path: "/app/exercises", panes: true, chart: true },
   { name: "d4-profile", path: "/app/profile" },
   { name: "d5-routine-editor", path: `/app/workouts/routines/${D.ids.PUSH_ID}/edit` },
   { name: "d7-history-workout", path: `/app/history/${D.ids.latestPush}`, panes: true },
   { name: "d8-history-edit", path: `/app/history/${D.ids.conditioning}/edit`, panes: true, editBar: true },
+  { name: "d9-exercises-records", path: "/app/exercises/records", panes: true, chart: true },
+  { name: "d10-exercise-bench", path: `/app/exercises/${D.ids.bench}`, panes: true, chart: true },
 ];
 /** Review Focus 3: a 60-character display name, which must ellipsize inside the rail. */
 const LONG_NAME = "Maximiliana Wolfeschlegelsteinhausenbergerdorff-Featherstone";
@@ -1143,6 +1172,14 @@ async function desktopPass(browser) {
             for (const v of found) console.error(`  DESKTOP ${entry.shot}: ${v}`);
             entry.violations.push(...found);
           }
+          // AC23: the chart's text at this width. On the tablet and the 200% shot the list is the page (no chart).
+          if (s.chart && config.wide === true) {
+            const m = await readChart(page);
+            const found = m.missing ? ["no chart"] : chartViolations(m);
+            for (const v of found) console.error(`  DESKTOP ${entry.shot}: ${v}`);
+            entry.chart = m;
+            entry.violations.push(...found);
+          }
           desktop.push(entry);
         });
       }
@@ -1178,14 +1215,28 @@ async function checkPanes(page, { editBar }) {
     const out = [];
     const h1s = [...document.querySelectorAll("h1")].length;
     if (h1s !== 1) out.push(`${h1s} h1 elements, not 1`);
-    const navs = document.querySelectorAll("nav").length;
+    // The shell's one nav is the rail. A screen may hold its own labeled nav (Exercises' "Exercise views", Spec 18.2
+    // AC5), which a screen reader lists by its name.
+    const navs = [...document.querySelectorAll("nav")].filter((n) => !n.closest("main")).length;
     const mains = document.querySelectorAll("main").length;
     const regions = [...document.querySelectorAll("[data-pane]")];
     if (navs !== 1 || mains !== 1 || regions.length !== 2) out.push(`landmarks: ${navs} nav, ${mains} main, ${regions.length} panes (want 1, 1, 2)`);
+    for (const n of document.querySelectorAll("main nav")) if (!n.getAttribute("aria-label")) out.push("a nav inside a screen has no label");
     // Owner (2026-11-17): the panes are no landmarks of their own; the screens in them are the regions, each named once.
     const names = [...document.querySelectorAll("main section[aria-labelledby]")].map((s) => document.getElementById(s.getAttribute("aria-labelledby"))?.textContent?.trim());
     if (new Set(names).size !== names.length) out.push(`two regions share a name: ${names.join(", ")}`);
     for (const r of regions) if (r.hasAttribute("role")) out.push("a pane has a role of its own");
+    // Minor 652 (Phase C): a lead whose BackLink draws nothing in the detail pane leaves no box above the heading. Only
+    // the pane's own screen (its direct `section`): a nested section may keep an empty live region on purpose.
+    regions.forEach((r, i) => {
+      if (!r.querySelector(":scope > section")) out.push(`the ${i === 0 ? "list" : "detail"} pane holds no screen section`);
+    });
+    for (const section of regions.flatMap((r) => [...r.querySelectorAll(":scope > section")])) {
+      for (const el of section.children) {
+        if (/^H[12]$/.test(el.tagName)) break;
+        if (el.matches(":empty") && getComputedStyle(el).display !== "none") out.push(`an empty ${el.tagName.toLowerCase()} is drawn above a pane's heading`);
+      }
+    }
     regions.forEach((r, i) => {
       if (getComputedStyle(r).overflowY !== "auto") out.push(`the ${i === 0 ? "list" : "detail"} pane doesn't scroll on its own`);
     });

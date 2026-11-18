@@ -11,14 +11,18 @@ import { pickRecents, sortByName, visibleRows } from "./visibility";
  *
  * Render from `visible` / `recents`, never from `state.rows` — the raw rows
  * can include forked origins.
+ *
+ * `refresh: false` only subscribes (Spec 17.12: the Exercises panes layout reads the
+ * catalog only at desktop widths, so a phone's Records view sends no sync); turning
+ * it on later refreshes then.
  */
-export function useCatalog() {
+export function useCatalog({ refresh = true }: { refresh?: boolean } = {}) {
   const store = useCatalogStore();
   const state = useSyncExternalStore(store.subscribe, store.getState);
 
   useEffect(() => {
-    void store.refresh();
-  }, [store]);
+    if (refresh) void store.refresh();
+  }, [store, refresh]);
 
   const visible = useMemo(() => sortByName(visibleRows(state.rows)), [state.rows]);
   const recents = useMemo(

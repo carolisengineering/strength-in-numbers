@@ -13,12 +13,14 @@ const toMap = (rows: UsageRows): ReadonlyMap<string, string> =>
  * `GET /v1/exercises/usage` (Spec 18.2 AC7): lineage root → last-logged local date. The map is built
  * in `select`, so structural sharing keeps the array (and the map's inputs) stable across `304`s.
  * `networkMode: "always"`: offline fails as a `network` error instead of pausing (AC15). Memory only;
- * nothing is stored.
+ * nothing is stored. `enabled: false` observes the cache without reading (Spec 17.12: the panes layout reads only
+ * at desktop widths, so the phone sends today's requests).
  */
-export function useExerciseUsage(): UseQueryResult<ReadonlyMap<string, string>> {
+export function useExerciseUsage({ enabled = true }: { enabled?: boolean } = {}): UseQueryResult<ReadonlyMap<string, string>> {
   const api = useApi();
   return useQuery({
     queryKey: EXERCISE_KEYS.usage,
+    enabled,
     queryFn: async () => (await api.get("/v1/exercises/usage", ExerciseUsageResponseSchema)).exercises,
     select: toMap,
     staleTime: 0,

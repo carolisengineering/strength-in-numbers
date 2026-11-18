@@ -1,10 +1,31 @@
 import { monthDayText, monthText } from "../../ui/dateText";
 import type { ChartPoint } from "./metrics";
 
-/** The chart's fixed coordinate system (Spec 08.1 §6.3); the browser scales it to the container's width. */
-export const VIEW = { width: 360, height: 220, left: 48, right: 16, top: 12, bottom: 28 } as const;
-const PLOT_W = VIEW.width - VIEW.left - VIEW.right; // 296
-const PLOT_H = VIEW.height - VIEW.top - VIEW.bottom; // 180
+/** The chart's coordinate system (Spec 08.1 §6.3): one unit is one CSS px since Spec 17.12 AC23. */
+export interface View {
+  width: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+export const MARGINS = { left: 48, right: 16, top: 12, bottom: 28 } as const;
+
+const MIN_HEIGHT = 220;
+const MAX_HEIGHT = 320;
+
+/** The view for a measured width: as wide as the box, half as tall, between 220 and 320 (Spec 17.12 AC23). */
+export function viewFor(width: number): View {
+  return { width, height: Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Math.round(width / 2))), ...MARGINS };
+}
+
+/** Today's 360 × 220 view: the chart where nothing measures it (jsdom; `ui/useMeasuredWidth`'s fallback). */
+export const DEFAULT_VIEW: View = viewFor(360);
+
+const plotWidth = (view: View) => view.width - view.left - view.right;
+const plotHeight = (view: View) => view.height - view.top - view.bottom;
 
 const decimalsOf = (step: number) => Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
 
@@ -52,6 +73,7 @@ export interface PlottedPoint extends ChartPoint {
 export interface ChartLayout {
   ticks: { value: number; y: number }[];
   points: PlottedPoint[];
+  view: View;
 }
 
 /** Days since 1970-01-01, from the date string in UTC — no local-zone input. */
@@ -60,20 +82,26 @@ const dayNumber = (localDate: string) => {
   return Date.UTC(y, m - 1, d) / 86_400_000;
 };
 
-export function layoutChart(points: readonly ChartPoint[], { integer = false }: { integer?: boolean } = {}): ChartLayout {
-  if (points.length === 0) return { ticks: [], points: [] };
+export function layoutChart(
+  points: readonly ChartPoint[],
+  { integer = false, view = DEFAULT_VIEW }: { integer?: boolean; view?: View } = {},
+): ChartLayout {
+  if (points.length === 0) return { ticks: [], points: [], view };
   const ys = points.map((p) => p.y);
   const values = niceTicks(Math.min(...ys), Math.max(...ys), 4, { integer });
   const t0 = values[0]!;
   const tN = values.at(-1)!;
-  const yOf = (v: number) => VIEW.top + PLOT_H * (1 - (v - t0) / (tN - t0));
+  const plotW = plotWidth(view);
+  const plotH = plotHeight(view);
+  const yOf = (v: number) => view.top + plotH * (1 - (v - t0) / (tN - t0));
   const day0 = dayNumber(points[0]!.localDate);
   const span = dayNumber(points.at(-1)!.localDate) - day0;
   const xOf = (localDate: string) =>
-    span === 0 ? VIEW.left + PLOT_W / 2 : VIEW.left + (PLOT_W * (dayNumber(localDate) - day0)) / span;
+    span === 0 ? view.left + plotW / 2 : view.left + (plotW * (dayNumber(localDate) - day0)) / span;
   return {
     ticks: values.map((value) => ({ value, y: yOf(value) })),
     points: points.map((p) => ({ ...p, x: xOf(p.localDate), py: yOf(p.y) })),
+    view,
   };
 }
 
@@ -93,6 +121,7 @@ export interface HitArea {
  * sparse point's area.
  */
 export function hitAreas(layout: ChartLayout): HitArea[] {
+  const { view } = layout;
   const columns: PlottedPoint[][] = [];
   for (const p of layout.points) {
     const last = columns.at(-1);
@@ -103,7 +132,7 @@ export function hitAreas(layout: ChartLayout): HitArea[] {
   columns.forEach((column, i) => {
     const x = column[0]!.x;
     const left = i === 0 ? 0 : (columns[i - 1]![0]!.x + x) / 2;
-    const right = i === columns.length - 1 ? VIEW.width : (x + columns[i + 1]![0]!.x) / 2;
+    const right = i === columns.length - 1 ? view.width : (x + columns[i + 1]![0]!.x) / 2;
     // Equal values on one date share a y slice, split side by side, so none is left with zero area (code review #6).
     const rows: PlottedPoint[][] = [];
     for (const p of [...column].sort((a, b) => a.py - b.py)) {
@@ -114,7 +143,7 @@ export function hitAreas(layout: ChartLayout): HitArea[] {
     rows.forEach((row, j) => {
       const py = row[0]!.py;
       const top = j === 0 ? 0 : (rows[j - 1]![0]!.py + py) / 2;
-      const bottom = j === rows.length - 1 ? VIEW.height : (py + rows[j + 1]![0]!.py) / 2;
+      const bottom = j === rows.length - 1 ? view.height : (py + rows[j + 1]![0]!.py) / 2;
       const width = (right - left) / row.length;
       row.forEach((p, k) => byId.set(p.id, { id: p.id, x: left + k * width, y: top, width, height: bottom - top }));
     });
@@ -128,9 +157,9 @@ export type LabelAnchor = "start" | "middle" | "end";
 const LABEL_CHAR_WIDTH = 8;
 
 /** A month label stays centered on its tick unless that would cross the viewBox's edge (Spec 17.13: years make it longer). */
-function monthAnchor(x: number, text: string): LabelAnchor {
+function monthAnchor(x: number, text: string, view: View): LabelAnchor {
   const half = (text.length * LABEL_CHAR_WIDTH) / 2;
-  if (x + half > VIEW.width) return "end";
+  if (x + half > view.width) return "end";
   if (x - half < 0) return "start";
   return "middle";
 }
@@ -147,9 +176,10 @@ export function xLabels(layout: ChartLayout): { x: number; text: string; anchor:
   const [fy, fm] = first.localDate.split("-").map(Number) as [number, number];
   const [ly, lm] = last.localDate.split("-").map(Number) as [number, number];
   const withYear = fy !== ly;
+  const { view } = layout;
   const span = dayNumber(last.localDate) - dayNumber(first.localDate);
   const xOf = (localDate: string) =>
-    span === 0 ? first.x : VIEW.left + (PLOT_W * (dayNumber(localDate) - dayNumber(first.localDate))) / span;
+    span === 0 ? first.x : view.left + (plotWidth(view) * (dayNumber(localDate) - dayNumber(first.localDate))) / span;
 
   const starts: { localDate: string; y: number; m: number }[] = [];
   let y = fy;
@@ -171,7 +201,7 @@ export function xLabels(layout: ChartLayout): { x: number; text: string; anchor:
       .map((s) => {
         const x = xOf(s.localDate);
         const text = monthText(s.y, s.m, { withYear });
-        return { x, text, anchor: monthAnchor(x, text) };
+        return { x, text, anchor: monthAnchor(x, text, view) };
       });
   }
   const dayMonth = (p: PlottedPoint) => monthDayText(p.localDate, { withYear });
