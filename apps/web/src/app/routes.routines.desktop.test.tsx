@@ -267,7 +267,10 @@ describe("17.12 review focus — the routine panes' edge cases", () => {
     expect(router.state.location.pathname).toBe("/app/workouts");
   });
 
-  it("6: the phone's requests on the three routes are today's, in today's order", async () => {
+});
+
+describe("17.12 AC30 — regression guards: the phone sends today's requests", () => {
+  it("review focus 6: the phone's requests on the three routes are today's, in today's order", async () => {
     const { fake, router } = await setup("/app/workouts", { wide: false });
     await screen.findByRole("link", { name: /^Push A/ });
     await waitFor(() => expect(gets(fake)).toEqual(PHONE_INDEX));
