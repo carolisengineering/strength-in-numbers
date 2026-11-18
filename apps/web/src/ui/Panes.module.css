@@ -18,9 +18,13 @@
     height: 100%;
   }
 
+  /* `scrollbar-gutter: stable` keeps a classic scrollbar's room whether it shows or not (Windows; macOS with a mouse),
+     so its coming and going never changes the width the exercise chart measures (Spec 17.12 AC23): a chart that grows
+     the pane past its height would otherwise bring the bar, narrow, shrink, lose the bar and grow again, every frame. */
   .root[data-wide] > .slot {
     display: block;
     min-height: 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
   }
 }

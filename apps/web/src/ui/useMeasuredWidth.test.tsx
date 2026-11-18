@@ -69,6 +69,18 @@ describe("17.12 AC23 — useMeasuredWidth", () => {
     expect(seen.every((w) => Number.isFinite(w) && w > 0)).toBe(true);
   });
 
+  it("measures the box on mount, before paint, so a wide chart never shows a frame at 360 (final review)", () => {
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: 612.7 } as DOMRect);
+    try {
+      const { getByTestId } = render(<Probe seen={[]} />);
+      // No observer callback has run: the layout effect's own read set it, in the same commit.
+      expect(getByTestId("box").dataset.width).toBe("612");
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
   it("stops observing on unmount", () => {
     vi.stubGlobal("ResizeObserver", FakeResizeObserver);
     const { unmount } = render(<Probe seen={[]} />);

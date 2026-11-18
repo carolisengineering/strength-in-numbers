@@ -132,6 +132,16 @@ describe("17.12 AC20 — Exercises' URLs don't change, and the phone is today's"
   });
 });
 
+describe("17.12 AC20 — the phone's Records view sends today's requests (AC30, final review I1)", () => {
+  it("narrow /app/exercises/records reads the records list and nothing else (no catalog sync)", async () => {
+    const { fake } = await setup(RECORDS_PATH, { wide: false });
+    expect(await screen.findByRole("list", { name: "Exercises" })).toBeInTheDocument();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    const gets = fake.requests.filter((r) => r.method === "GET").map((r) => `${r.path}${r.search}`);
+    expect(gets).toEqual(["/v1/personal-records"]);
+  });
+});
+
 /** Pinned from `main` (3c51077a) before Phase C (review focus 6). */
 const PHONE_EXERCISE_PAGE_GETS: string[] = [
   `/v1/personal-records?exerciseId=${BENCH}`,

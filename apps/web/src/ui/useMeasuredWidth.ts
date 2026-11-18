@@ -10,10 +10,14 @@ export function useMeasuredWidth(ref: RefObject<Element | null>, fallback = 360)
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver((entries) => {
-      const measured = Math.floor(entries[0]?.contentRect.width ?? 0);
+    const take = (raw: number) => {
+      const measured = Math.floor(raw);
       if (measured > 0) setWidth(measured);
-    });
+    };
+    // Read once now: a set state in a layout effect renders before paint, while the observer's first callback lands a
+    // frame later, so a wide chart would first paint at the fallback width (final review).
+    take(el.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => take(entries[0]?.contentRect.width ?? 0));
     observer.observe(el);
     return () => observer.disconnect();
   }, [ref]);

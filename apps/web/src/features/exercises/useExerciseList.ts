@@ -17,10 +17,11 @@ export interface ExerciseList {
 
 /**
  * All exercises' list model, shared by the list (`AllExercises`) and, at desktop widths, the panes layout and its
- * index (Spec 17.12 AC21). `enabled: false` reads nothing new: it only observes the usage cache.
+ * index (Spec 17.12 AC21). `enabled: false` reads nothing new: it only observes the usage cache and the catalog
+ * store, with no sync (final review I1: the phone's Records view never read the catalog).
  */
 export function useExerciseList({ enabled = true }: { enabled?: boolean } = {}): ExerciseList {
-  const { visible, state } = useCatalog();
+  const { visible, state } = useCatalog({ refresh: enabled });
   const usage = useExerciseUsage({ enabled });
   const rows = useMemo(() => buildExerciseRows(visible, usage.data ?? NO_USAGE), [visible, usage.data]);
   const catalogReady = visible.length > 0 || (state.lastRefreshAt !== null && state.status !== "loading");
