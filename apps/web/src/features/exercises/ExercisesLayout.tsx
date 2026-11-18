@@ -5,7 +5,7 @@ import { Panes } from "../../ui/Panes";
 import { useSelectedId } from "../../ui/selection";
 import { mostRecentLoggedId } from "./exerciseRows";
 import { ExercisesListScreen, type ExercisesView } from "./ExercisesListScreen";
-import { isFromRecords, RECORDS_PATH } from "./paths";
+import { EXERCISES_PATH, isFromRecords, RECORDS_PATH } from "./paths";
 import { useExerciseList } from "./useExerciseList";
 
 /**
@@ -20,7 +20,7 @@ export function ExercisesLayout() {
   const location = useLocation();
   const onRecords = location.pathname === RECORDS_PATH;
   // A layout's `useParams` doesn't see its child's `:id`; the static `records` segment would match `:id` here too.
-  const match = useMatch("/app/exercises/:id");
+  const match = useMatch(`${EXERCISES_PATH}/:id`);
   const routeId = onRecords ? null : (match?.params.id ?? null);
   const { rows, usage } = useExerciseList({ enabled: wide });
   const recent = usage.data === undefined ? null : mostRecentLoggedId(rows, usage.data);
