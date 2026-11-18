@@ -18,9 +18,9 @@ import { ImportPaste } from "../features/routines/import/ImportPaste";
 import { ImportLayout } from "../features/routines/import/ImportSession";
 import { RoutineEditorRoute } from "../features/routines/RoutineEditor";
 import { RoutinePreviewRoute } from "../features/routines/RoutinePreview";
+import { RoutinesPanes, WorkoutsIndex } from "../features/routines/RoutinesPanes";
 import { EditWorkoutScreen } from "../features/workouts/edit/EditWorkoutScreen";
 import { FinishedWorkoutScreen } from "../features/workouts/FinishedWorkoutScreen";
-import { WorkoutsScreen } from "../features/workouts/WorkoutsScreen";
 import { NotFound } from "../screens/NotFound";
 import { BootstrapGate } from "./BootstrapGate";
 import { ProtectedLayout } from "./ProtectedLayout";
@@ -39,7 +39,7 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app/profile/hevy                                                 > HevyRoute (status gate) > HevyScreen (Spec 20.0, owner-only)
  *   /app/profile/hevy/pairings                                        > HevyRoute > PairingsScreen (Spec 20.0 Phase B)
  *   /app/profile/hevy/import                                          > HevyRoute > HevyImportRoute (Spec 20.1)
- *   /app/workouts                                                     > WorkoutsScreen protected (Spec 06.1: active session or Start)
+ *   /app/workouts                                                     > RoutinesPanes > WorkoutsIndex: WorkoutsScreen (Spec 06.1: active session or Start), or at 64rem with no live workout "Choose a routine" beside Start (Spec 17.12)
  *   /app/workouts/:id                                                 > FinishedWorkoutScreen section="workouts" (Spec 06.1)
  *   /app/workouts/:id/edit                                            > EditWorkoutScreen section="workouts" (Spec 18.0)
  *   /app/workouts/routines                                            > redirect (replace) to /app/workouts (Spec 10.0)
@@ -47,8 +47,8 @@ import { RootErrorBoundary } from "./RootErrorBoundary";
  *   /app/workouts/routines/import                                     > ImportLayout (session) > ImportPaste (Spec 10.4)
  *   /app/workouts/routines/import/names                               > ImportLayout > Check exercise names (Spec 10.4)
  *   /app/workouts/routines/import/edit                                > ImportLayout > the editor (Spec 10.4 Phase C)
- *   /app/workouts/routines/:id                                        > RoutinePreview (Spec 10.0)
- *   /app/workouts/routines/:id/edit                                   > RoutineEditor, edit (Spec 10.0)
+ *   /app/workouts/routines/:id                                        > RoutinesPanes > RoutinePreview (Spec 10.0, 17.12)
+ *   /app/workouts/routines/:id/edit                                   > RoutinesPanes > RoutineEditor, edit (Spec 10.0, 17.12)
  *   /app/history/:id                                                  > HistoryPanes > FinishedWorkoutScreen section="history" (Spec 08.0, 17.12)
  *   /app/history/:id/edit                                             > HistoryPanes > EditWorkoutScreen section="history" (Spec 18.0, 17.12)
  *   /app/history                                                      > HistoryPanes > HistoryIndex: HistoryScreen, or at 64rem the newest summary (Spec 08.0, 17.12)
@@ -109,7 +109,6 @@ export const routes: RouteObject[] = [
                   </HevyRoute>
                 ),
               },
-              { path: "workouts", element: <WorkoutsScreen /> },
               { path: "workouts/:id", element: <FinishedWorkoutScreen section="workouts" /> },
               { path: "workouts/:id/edit", element: <EditWorkoutScreen section="workouts" /> },
               // Spec 10.0 §6.1: the bare path would otherwise match `workouts/:id` with id "routines".
@@ -125,8 +124,16 @@ export const routes: RouteObject[] = [
                   { path: "edit", element: <ImportEditRoute /> },
                 ],
               },
-              { path: "workouts/routines/:id", element: <RoutinePreviewRoute /> },
-              { path: "workouts/routines/:id/edit", element: <RoutineEditorRoute mode="edit" /> },
+              // Spec 17.12 AC25: a pathless group of exactly these three, so `workouts/:id`, `routines/new` and
+              // `routines/import/*` stay single columns; the static segments above still outrank `:id`.
+              {
+                element: <RoutinesPanes />,
+                children: [
+                  { path: "workouts", element: <WorkoutsIndex /> },
+                  { path: "workouts/routines/:id", element: <RoutinePreviewRoute /> },
+                  { path: "workouts/routines/:id/edit", element: <RoutineEditorRoute mode="edit" /> },
+                ],
+              },
               {
                 // Spec 17.12 Phase B: one layout route, so at desktop widths the list sits beside the open workout.
                 path: "history",

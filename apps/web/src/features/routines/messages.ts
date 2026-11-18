@@ -13,6 +13,8 @@ export const LOAD_LIST_FAILED = "Couldn't load routines";
 export const REFRESH_LIST_FAILED = "Couldn't refresh your routines";
 export const LOAD_ONE_FAILED = "Couldn't load this routine";
 export const EMPTY_ROUTINES = "Routines are reusable workouts — build one, then start it in a tap.";
+/** Spec 17.12 AC25: the detail pane's title beside the routine list while no routine is open. */
+export const CHOOSE_ROUTINE = "Choose a routine";
 export const ADJUSTED_NOTICE = "Supersets were adjusted so grouped exercises sit together";
 export const START_RETIRED = "One of this routine's exercises is no longer available. Edit the routine to replace it.";
 export const ACTIVE_BLOCKS_START = "Finish your current workout first";

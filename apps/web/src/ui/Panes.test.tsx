@@ -101,6 +101,56 @@ describe("17.12 AC13 — Panes: two panes at desktop widths, today's screen belo
   });
 });
 
+describe("17.12 AC26 — Panes with no list draws one column at every width", () => {
+  function Toggle() {
+    const [withList, setWithList] = useState(false);
+    return (
+      <>
+        <button onClick={() => setWithList((on) => !on)}>Toggle list</button>
+        <Panes list={withList ? <ListScreen /> : null} selectedId={null} />
+      </>
+    );
+  }
+
+  function renderToggle() {
+    const router = createMemoryRouter([{ path: "/list", element: <Toggle />, children: [{ index: true, element: <FirstDetail /> }] }], {
+      initialEntries: ["/list"],
+    });
+    return render(<RouterProvider router={router} />);
+  }
+
+  it("wide with list={null}: no pane, the detail drawn as on a phone (its h1, its back link)", () => {
+    setDesktop(true);
+    const { container } = render(
+      <RouterProvider
+        router={createMemoryRouter(
+          [{ path: "/list", element: <Panes list={null} selectedId={null} />, children: [{ index: true, element: <FirstDetail /> }] }],
+          { initialEntries: ["/list"] },
+        )}
+      />,
+    );
+    expect(panes()).toEqual([]);
+    expect(container.querySelector("[data-wide]")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "Workout summary" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to History" })).toBeInTheDocument();
+  });
+
+  it("the detail is the same node, its state kept, as the list comes and goes", async () => {
+    const user = userEvent.setup();
+    setDesktop(true);
+    renderToggle();
+    const field = screen.getByRole("textbox", { name: "Title" });
+    await user.type(field, "Push");
+    await user.click(screen.getByRole("button", { name: "Toggle list" }));
+    expect(panes()).toHaveLength(2);
+    expect(screen.getByRole("textbox", { name: "Title" })).toBe(field);
+    await user.click(screen.getByRole("button", { name: "Toggle list" }));
+    expect(panes()).toEqual([]);
+    expect(screen.getByRole("textbox", { name: "Title" })).toBe(field);
+    expect(field).toHaveValue("Push");
+  });
+});
+
 describe("17.12 AC16 — opening another item scrolls the detail to its top, and leaves the list where it was", () => {
   it("wide: the detail pane's scroll goes to 0, the list's stays", async () => {
     setDesktop(true);
