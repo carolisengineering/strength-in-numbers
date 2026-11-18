@@ -1102,18 +1102,22 @@ async function zoomPass(browser) {
 // text. Phases B–D add their shots to DESKTOP_SCREENS and inherit every config.
 const desktop = [];
 const DESKTOP_SCREENS = [
-  { name: "d1-workouts", path: "/app/workouts" },
+  // Spec 17.12 Phase D: Start and the routine list beside "Choose a routine" (nothing open, so no row is marked), the
+  // preview and the editor (its Cancel / Save bar at the detail pane's bottom), and a live workout's single column.
+  { name: "d1-workouts", path: "/app/workouts", panes: true, selected: false, routines: true },
   // Spec 17.12 Phase B: History as two panes (the newest open, a chosen workout, the edit screen in the pane).
   { name: "d2-history", path: "/app/history", panes: true },
   // Spec 17.12 Phase C: Exercises as two panes (the most recent open, Records beside it, a chosen exercise), and the
   // chart's text measured at each width (AC23).
   { name: "d3-exercises", path: "/app/exercises", panes: true, chart: true },
   { name: "d4-profile", path: "/app/profile" },
-  { name: "d5-routine-editor", path: `/app/workouts/routines/${D.ids.PUSH_ID}/edit` },
+  { name: "d5-routine-editor", path: `/app/workouts/routines/${D.ids.PUSH_ID}/edit`, panes: true, editBar: true, routines: true },
   { name: "d7-history-workout", path: `/app/history/${D.ids.latestPush}`, panes: true },
   { name: "d8-history-edit", path: `/app/history/${D.ids.conditioning}/edit`, panes: true, editBar: true },
   { name: "d9-exercises-records", path: "/app/exercises/records", panes: true, chart: true },
   { name: "d10-exercise-bench", path: `/app/exercises/${D.ids.bench}`, panes: true, chart: true },
+  { name: "d11-routine-preview", path: `/app/workouts/routines/${D.ids.PUSH_ID}`, panes: true, routines: true },
+  { name: "d12-workouts-live", path: "/app/workouts", live: true },
 ];
 /** Review Focus 3: a 60-character display name, which must ellipsize inside the rail. */
 const LONG_NAME = "Maximiliana Wolfeschlegelsteinhausenbergerdorff-Featherstone";
@@ -1156,10 +1160,17 @@ async function desktopPass(browser) {
       const { device, viewport, fontSize, deviceScaleFactor = 1 } = config;
       const ctx = await browser.newContext({ viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await ctx.route(isSinApi, makeHandler({ active: false }));
-      const page = await ctx.newPage();
-      page.setDefaultTimeout(8000);
-      page.on("pageerror", (err) => consoleErrors.push(`${device} ${page.url()}: PAGEERROR ${err.message.slice(0, 300)}`));
+      const quietPage = await ctx.newPage();
+      // Spec 17.12 AC26: a live workout's shots get a context of their own, whose fake has one in progress.
+      const liveCtx = await browser.newContext({ viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      await liveCtx.route(isSinApi, makeHandler({ active: true }));
+      const livePage = await liveCtx.newPage();
+      for (const p of [quietPage, livePage]) {
+        p.setDefaultTimeout(8000);
+        p.on("pageerror", (err) => consoleErrors.push(`${device} ${p.url()}: PAGEERROR ${err.message.slice(0, 300)}`));
+      }
       for (const s of DESKTOP_SCREENS) {
+        const page = s.live ? livePage : quietPage;
         await tryStep(`desktop ${theme} ${device} ${s.name}`, async () => {
           await page.goto(BASE + s.path);
           if (fontSize) await page.evaluate((f) => { document.documentElement.style.fontSize = f; }, fontSize);
@@ -1180,10 +1191,25 @@ async function desktopPass(browser) {
             entry.chart = m;
             entry.violations.push(...found);
           }
+          // Phase D (AC25, AC26, AC28): the routine screens' one primary and the editor's bar; a live workout's column.
+          if (s.routines && config.wide === true) {
+            const found = await checkRoutinePanes(page, s);
+            for (const v of found) console.error(`  DESKTOP ${entry.shot}: ${v}`);
+            entry.violations.push(...found);
+          }
+          if (s.live) {
+            const panes = await page.locator("[data-pane]").count();
+            if (panes > 0) {
+              const v = `${panes} panes drawn beside a live workout`;
+              console.error(`  DESKTOP ${entry.shot}: ${v}`);
+              entry.violations.push(v);
+            }
+          }
           desktop.push(entry);
         });
       }
       await ctx.close();
+      await liveCtx.close();
     }
     // Review Focus 3: a long display name at 1024 keeps the rail at 240 px and stays inside it.
     await tryStep(`desktop ${theme} long name`, async () => {
@@ -1210,8 +1236,8 @@ async function desktopPass(browser) {
  * scroll on their own (AC13); a selected row carries aria-current (AC16); the edit screen's Done bar sits at the detail
  * pane's bottom (AC18, within 1 px).
  */
-async function checkPanes(page, { editBar }) {
-  const found = await page.evaluate((wantBar) => {
+async function checkPanes(page, { editBar, selected = true }) {
+  const found = await page.evaluate(({ wantBar, wantSelected }) => {
     const out = [];
     const h1s = [...document.querySelectorAll("h1")].length;
     if (h1s !== 1) out.push(`${h1s} h1 elements, not 1`);
@@ -1241,18 +1267,57 @@ async function checkPanes(page, { editBar }) {
       if (getComputedStyle(r).overflowY !== "auto") out.push(`the ${i === 0 ? "list" : "detail"} pane doesn't scroll on its own`);
     });
     const list = regions[0];
-    if (list && !list.querySelector('a[aria-current="page"]')) out.push("no row in the list is marked as the open one");
+    // Phase D: beside "Choose a routine" nothing is open, so no row is marked (`selected: false`).
+    if (wantSelected && list && !list.querySelector('a[aria-current="page"]')) out.push("no row in the list is marked as the open one");
     if (wantBar) {
-      const bar = document.querySelector('[data-testid="edit-bar"]');
+      // Any screen's bottom bar in the detail pane: History's Done (Phase B) and the routine editor's Cancel / Save.
       const detail = regions[1];
+      const bar = detail?.querySelector("[data-action-bar]");
       if (!bar || !detail) out.push("no edit bar in the detail pane");
       else if (Math.abs(bar.getBoundingClientRect().bottom - detail.getBoundingClientRect().bottom) > 1) {
         out.push(`the edit bar ends at ${Math.round(bar.getBoundingClientRect().bottom)}, the detail pane at ${Math.round(detail.getBoundingClientRect().bottom)}`);
       }
     }
     return out;
-  }, Boolean(editBar));
+  }, { wantBar: Boolean(editBar), wantSelected: selected !== false });
   return found;
+}
+
+/**
+ * Spec 17.12 Phase D: the routine panes' own checks. One primary button in view (M2: Start is secondary while the
+ * preview's Start or the editor's Save is the primary); with the editor's bar, the detail pane scrolled to its end
+ * leaves no control under the bar (AC28).
+ */
+async function checkRoutinePanes(page, { editBar }) {
+  const found = await page.evaluate(() => {
+    const out = [];
+    const shown = (el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight && !el.closest("dialog:not([open])");
+    };
+    const primaries = [...document.querySelectorAll('main [data-variant="primary"]')].filter(shown);
+    if (primaries.length > 1) out.push(`two primaries in view: ${primaries.map((b) => `"${b.textContent.trim()}"`).join(", ")}`);
+    return out;
+  });
+  if (!editBar) return found;
+  const covered = await page.evaluate(async () => {
+    const detail = document.querySelectorAll("[data-pane]")[1];
+    const bar = detail?.querySelector("[data-action-bar]");
+    if (!detail || !bar) return ["no bar in the detail pane to scroll under"];
+    detail.scrollTop = detail.scrollHeight;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const b = bar.getBoundingClientRect();
+    const hits = [...detail.querySelectorAll("button, a, input, select, textarea, [role=button]")]
+      .filter((el) => !bar.contains(el) && !el.closest("dialog"))
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top) > 2 && Math.min(r.right, b.right) - Math.max(r.left, b.left) > 2;
+      })
+      .map((el) => `${el.tagName.toLowerCase()} "${(el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 40)}"`);
+    detail.scrollTop = 0;
+    return hits.map((h) => `${h} is under the editor's bar at the pane's end`);
+  });
+  return [...found, ...covered];
 }
 
 /** One desktop-pass shot's checks (AC11, AC12): sideways scroll, rail targets, overlaps, and the layout for the width. */
