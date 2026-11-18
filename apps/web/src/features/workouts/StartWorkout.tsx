@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { useMatch } from "react-router";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { useLocation, useMatch, useNavigate } from "react-router";
 
 import { ActionBar } from "../../ui/ActionBar";
 import { Button } from "../../ui/Button";
@@ -46,10 +46,28 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children, lea
     else if (outcome?.kind === "blocked") setBlocked(outcome.message);
   }
 
+  // Spec 17.12 AC26: beside an open routine, Start first leaves it for /app/workouts, so the editor's leave guard can ask
+  // before anything is created; this screen (still mounted in the list pane) starts on arrival, once per location.
+  const navigate = useNavigate();
+  const location = useLocation();
+  const startedFor = useRef<string | null>(null);
+  const startOnArrival = useEffectEvent(() => void onStart());
+  useEffect(() => {
+    if (!inList || !isStartEmpty(location.state) || startedFor.current === location.key) return;
+    startedFor.current = location.key;
+    void navigate(location.pathname, { replace: true, state: null });
+    startOnArrival();
+  }, [inList, location.key, location.state, location.pathname, navigate]);
+
+  function onStartTap() {
+    if (inList && routineOpen) void navigate("/app/workouts", { state: { startEmpty: true } });
+    else void onStart();
+  }
+
   const error = failure === null ? null : failure.kind === "validation" ? START_CLOCK_MESSAGE : START_FAILED_MESSAGE;
 
   const startButton = (
-    <Button busy={busy} onClick={() => void onStart()} {...(inList ? { block: true, variant: routineOpen ? "secondary" : "primary" } : {})}>
+    <Button busy={busy} onClick={onStartTap} {...(inList ? { block: true, variant: routineOpen ? "secondary" : "primary" } : {})}>
       Start empty workout
     </Button>
   );
@@ -74,4 +92,8 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children, lea
       {inList ? null : <ActionBar>{startButton}</ActionBar>}
     </Screen>
   );
+}
+
+function isStartEmpty(state: unknown): boolean {
+  return typeof state === "object" && state !== null && (state as Record<string, unknown>)["startEmpty"] === true;
 }

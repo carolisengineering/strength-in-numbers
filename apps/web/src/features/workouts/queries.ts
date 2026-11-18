@@ -25,11 +25,13 @@ export function useWorkoutClient(): WorkoutClient {
  * Refetches on mount and on window focus (a phone coming back from another app) — overriding the
  * app-wide `refetchOnWindowFocus: false`. `retry: false`: the error notice's button is the retry.
  */
-export function useActiveWorkout(): UseQueryResult<WorkoutDetail | null> {
+export function useActiveWorkout({ enabled = true }: { enabled?: boolean } = {}): UseQueryResult<WorkoutDetail | null> {
   const client = useWorkoutClient();
   return useQuery({
     queryKey: WORKOUT_KEYS.active,
     queryFn: () => client.getActive(),
+    // Spec 17.12 AC30: the routines layout reads it only at desktop widths, so a phone sends today's requests.
+    enabled,
     staleTime: 0,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
