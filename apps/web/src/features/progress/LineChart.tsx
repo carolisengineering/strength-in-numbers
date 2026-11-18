@@ -1,5 +1,5 @@
 import type { ChartPoint } from "./metrics";
-import { VIEW, hitAreas, layoutChart, xLabels } from "./scale";
+import { hitAreas, layoutChart, xLabels } from "./scale";
 import styles from "./LineChart.module.css";
 
 const TICK = new Intl.NumberFormat("en", { maximumFractionDigits: 2 });
@@ -17,19 +17,20 @@ export interface LineChartProps {
 /** One series, drawn in a fixed 360 × 220 viewBox that scales with its container (Spec 08.1 AC16, D1/D2). */
 export function LineChart({ points, integer = false, selectedId, onSelect, summary }: LineChartProps) {
   const layout = layoutChart(points, { integer });
-  const right = VIEW.width - VIEW.right;
+  const { view } = layout;
+  const right = view.width - view.right;
   return (
-    <svg className={styles.chart} viewBox={`0 0 ${VIEW.width} ${VIEW.height}`} width="100%" role="img" aria-label={summary}>
+    <svg className={styles.chart} viewBox={`0 0 ${view.width} ${view.height}`} width="100%" role="img" aria-label={summary}>
       {layout.ticks.map((t) => (
         <g key={t.value}>
-          <line className={styles.grid} x1={VIEW.left} x2={right} y1={t.y} y2={t.y} />
-          <text className={styles.tick} x={VIEW.left - 6} y={t.y} textAnchor="end" dominantBaseline="middle">
+          <line className={styles.grid} x1={view.left} x2={right} y1={t.y} y2={t.y} />
+          <text className={styles.tick} x={view.left - 6} y={t.y} textAnchor="end" dominantBaseline="middle">
             {TICK.format(t.value)}
           </text>
         </g>
       ))}
       {xLabels(layout).map((l) => (
-        <text key={`${l.x}:${l.text}`} className={styles.xLabel} x={l.x} y={VIEW.height - 8} textAnchor={l.anchor}>
+        <text key={`${l.x}:${l.text}`} className={styles.xLabel} x={l.x} y={view.height - 8} textAnchor={l.anchor}>
           {l.text}
         </text>
       ))}
