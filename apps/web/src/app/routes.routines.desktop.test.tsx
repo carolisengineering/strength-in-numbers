@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
@@ -18,7 +18,12 @@ import { catalog, pushA } from "../test/routineFixtures";
 import { makeRoutine, makeSet, makeWorkoutDetail, routineId } from "../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../test/workoutHarness";
-import { RESUMED_NOTICE, ROUTINE_GONE_NOTICE } from "../features/workouts/WorkoutsScreen";
+import { GONE_NOTICE, RESUMED_NOTICE, ROUTINE_GONE_NOTICE } from "../features/workouts/WorkoutsScreen";
+import { GONE_TITLE } from "../features/workouts/messages";
+import { outboxKey } from "../features/workouts/outbox/outbox";
+import { localStorageAdapter } from "../storage/storage";
+import { USER_ID } from "../test/catalogHarness";
+import { optionsButton } from "../test/sessionHelpers";
 
 afterEach(() => {
   resetDesktop();
@@ -308,6 +313,65 @@ describe("17.12 AC26 — final review: a start beside a routine starts once, and
     await act(() => router.navigate(-1));
     expect(await screen.findByRole("heading", { level: 1, name: "Workout" })).toBeInTheDocument();
     expect(screen.queryByText(RESUMED_NOTICE)).toBeNull();
+  });
+});
+
+describe("17.12 AC26 — code review: what a live workout leaves behind keeps its single column or its notice", () => {
+  it("#1: a workout the server no longer has: the list pane says so once the panes come back", async () => {
+    const live = makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1 })] }] });
+    const { fake, user } = await setup("/app/workouts", { active: live });
+    await screen.findByRole("heading", { level: 1, name: "Workout" });
+    fake.failNext({ method: "DELETE", path: /\/workout-exercises\// }, () => problemResponse(409, "workout-finished"));
+    fake.state.active = null;
+    await user.click(optionsButton("X"));
+    await user.click(within(screen.getByRole("article", { name: "X" })).getByRole("button", { name: "Remove exercise" }));
+    await user.click(within(await screen.findByRole("dialog", { name: /^Remove X/ })).getByRole("button", { name: "Remove" }));
+    await panesReady();
+    expect(await within(listPane()).findByText(GONE_NOTICE)).toBeInTheDocument();
+  });
+
+  it("#2: a refused finish whose workout is gone keeps the whole column for its card, not the list pane", async () => {
+    setDesktop(true);
+    const w = makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "Bench", sets: [makeSet({ setNumber: 1 })] }] });
+    const fake = createWorkoutFake({ routines: [pushA, pullB], catalog, active: null });
+    prepareApp({ auth, fake, catalog });
+    const op = {
+      id: "finish-op",
+      kind: "finish",
+      workoutId: w.id,
+      userId: USER_ID,
+      status: "failed",
+      attempted: true,
+      attempts: 1,
+      nextAttemptAt: 0,
+      enqueuedAt: 0,
+      failure: { status: 404, type: "about:blank", requestId: "r-1" },
+      body: { endedAt: "2026-10-02T11:00:00.000Z" },
+      meta: { startedAt: w.startedAt, exerciseCount: 1, setCount: 1, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false },
+    };
+    localStorageAdapter().set(outboxKey(USER_ID), JSON.stringify({ v: 1, userId: USER_ID, idMap: {}, ops: [op] }));
+    renderApp("/app/workouts");
+    expect(await screen.findByRole("heading", { name: GONE_TITLE })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(panes()).toEqual([]);
+    expect(screen.queryByRole("heading", { name: "Choose a routine" })).toBeNull();
+  });
+});
+
+describe("17.12 AC29 — code review: the open row still opens in a new tab", () => {
+  it("#9: a plain click on the open row does nothing; a cmd-click is left to the browser, at the routine's own path", async () => {
+    const { router } = await setup(editPath(A));
+    await panesReady();
+    await nameField();
+    const open = rowOf("Push A");
+    expect(open).toHaveAttribute("href", previewPath(A));
+    const cmdClick = createEvent.click(open, { metaKey: true });
+    fireEvent(open, cmdClick);
+    expect(cmdClick.defaultPrevented).toBe(false);
+    const plain = createEvent.click(open, { button: 0 });
+    fireEvent(open, plain);
+    expect(plain.defaultPrevented).toBe(true);
+    expect(router.state.location.pathname).toBe(editPath(A));
   });
 });
 

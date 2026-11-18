@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
-import { Link, useLocation } from "react-router";
+import type { MouseEvent } from "react";
+import { Link } from "react-router";
 import { ROUTINES_PER_USER_MAX } from "@sin/core";
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
@@ -23,7 +24,6 @@ export function RoutinesSection() {
   // current path would still navigate (a replace with no state), dropping the editor's "came from the preview" flag,
   // so its Cancel and Save would replace instead of going back (final review M1).
   const pane = usePane();
-  const { pathname } = useLocation();
   // The row title marker only in the list pane, so the phone's rows keep today's markup (Spec 10.5 AC2's snapshot).
   const rowTitle = pane.slot === "list" ? { "data-row-title": "" } : {};
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Spec 10.5 AC4: read once per list data change, never on a timer
@@ -65,9 +65,9 @@ export function RoutinesSection() {
               <li key={routine.id}>
                 <Link
                   className={selected ? `${styles.row} ${selection.selected}` : styles.row}
-                  to={selected ? pathname : routinePath(routine.id)}
+                  to={routinePath(routine.id)}
                   aria-current={selected ? "page" : undefined}
-                  onClick={selected ? (event) => event.preventDefault() : undefined}
+                  onClick={selected ? stayOnOpenRoutine : undefined}
                 >
                   {isOneOff(routine) ? (
                     // Spec 10.5 AC2: the tag is text on the name line, inside the link (not color alone).
@@ -118,4 +118,9 @@ export function RoutinesSection() {
       )}
     </section>
   );
+}
+
+/** The open routine's row: a plain click does nothing, and a cmd-, ctrl- or middle-click still opens a new tab. */
+function stayOnOpenRoutine(event: MouseEvent<HTMLAnchorElement>) {
+  if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) event.preventDefault();
 }

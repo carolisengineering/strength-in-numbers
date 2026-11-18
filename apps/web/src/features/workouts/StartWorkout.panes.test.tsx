@@ -173,14 +173,14 @@ describe("17.12 AC25 — Start empty workout at the top of the list pane", () =>
 });
 
 describe("17.12 AC29 — the open routine's row is marked", () => {
-  it("wide: the open routine's row is aria-current and links to the current path; the others link to their preview", async () => {
+  it("wide: the open routine's row is aria-current (a plain click stays put); every row links to its preview", async () => {
     setDesktop(true);
     const { router } = await renderPanes(`/app/workouts/routines/${routineId(1)}/edit`);
     const list = listPane();
     const open = await within(list).findByRole("link", { name: /Push A/ });
     const other = within(list).getByRole("link", { name: /Pull B/ });
     expect(open).toHaveAttribute("aria-current", "page");
-    expect(open).toHaveAttribute("href", `/app/workouts/routines/${routineId(1)}/edit`);
+    expect(open).toHaveAttribute("href", `/app/workouts/routines/${routineId(1)}`);
     expect(open.querySelector("[data-row-title]")).toHaveTextContent("Push A");
     expect(other).not.toHaveAttribute("aria-current");
     expect(other).toHaveAttribute("href", `/app/workouts/routines/${routineId(2)}`);

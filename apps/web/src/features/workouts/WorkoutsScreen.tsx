@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
 
@@ -17,6 +17,7 @@ import { LandedLine } from "./LandedLine";
 import { WaitingFinishCard } from "./WaitingFinishCard";
 import { useWaitingFinish } from "./useWaitingFinish";
 import { useFinishTap } from "./finishTap";
+import { useWorkoutsNotices } from "./workoutsNotices";
 
 export const GONE_NOTICE = "That workout was already finished or removed.";
 export const REFRESH_FAILED_NOTICE = "Couldn't refresh your workout — showing the last copy we have.";
@@ -67,7 +68,8 @@ export function WorkoutsScreen() {
   const location = useLocation();
   const navigate = useNavigate();
   const inList = usePane().slot === "list";
-  const [notice, setNotice] = useState<string | null>(() => noticeFromLocation(location.state));
+  // At desktop widths the routines layout shares these across the screen's moves between panes (code review #1).
+  const { notice, setNotice, goneId, setGoneId } = useWorkoutsNotices(() => noticeFromLocation(location.state));
   // Spec 17.12 AC26: beside a routine this screen stays mounted across navigation, so a notice handed over later (the
   // preview's "gone", a resumed start) arrives on a new location rather than at mount. Only a location that holds one
   // sets it; any other navigation leaves the line as it is.
@@ -81,24 +83,22 @@ export function WorkoutsScreen() {
     if (locationNotice === RESUMED_NOTICE) void navigate(location.pathname, { replace: true, state: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per location: the key is the event, not the text
   }, [location.key]);
-  // The workout a write reported gone (§5.8). What to say about it is derived from what the refetch
+  // `goneId` is the workout a write reported gone (§5.8). What to say about it is derived from what the refetch
   // finds, not decided up front: the API answers 404 for a set or exercise that vanished while the
   // workout itself is fine, and "already finished or removed" would then be false.
-  const [goneId, setGoneId] = useState<string | null>(null);
-
   const markGone = useCallback(
     (workoutId: string, refetched = false) => {
       setGoneId(workoutId);
       if (!refetched) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.active });
     },
-    [queryClient],
+    [queryClient, setGoneId],
   );
 
   // Clears the state the notice is derived from, so a banner clearing later cannot bring it back.
   const dismissNotice = useCallback(() => {
     setNotice(null);
     setGoneId(null);
-  }, []);
+  }, [setNotice, setGoneId]);
 
   const goneNotice =
     goneId === null ? null : active.data?.id === goneId ? STALE_NOTICE : GONE_NOTICE;

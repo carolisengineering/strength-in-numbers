@@ -1198,12 +1198,13 @@ async function desktopPass(browser) {
             entry.violations.push(...found);
           }
           if (s.live) {
+            // The session must be on screen first, or a spinner or an error (one column too) would pass (code review).
+            const found = [];
+            if ((await page.locator("[data-session-bar]").count()) === 0) found.push("the live workout's session isn't drawn");
             const panes = await page.locator("[data-pane]").count();
-            if (panes > 0) {
-              const v = `${panes} panes drawn beside a live workout`;
-              console.error(`  DESKTOP ${entry.shot}: ${v}`);
-              entry.violations.push(v);
-            }
+            if (panes > 0) found.push(`${panes} panes drawn beside a live workout`);
+            for (const v of found) console.error(`  DESKTOP ${entry.shot}: ${v}`);
+            entry.violations.push(...found);
           }
           desktop.push(entry);
         });

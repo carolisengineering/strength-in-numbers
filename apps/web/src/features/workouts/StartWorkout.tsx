@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
-import { useLocation, useMatch, useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
 import { ActionBar } from "../../ui/ActionBar";
 import { Button } from "../../ui/Button";
@@ -31,8 +31,10 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children, lea
   const { begin, busy, failure } = useBeginWorkout();
   // Spec 17.12 AC25: in the list pane Start sits under the title (no bottom bar); M2: secondary while a routine's
   // preview or editor is open beside it, whose Start or Save is then the screen's one primary.
-  const inList = usePane().slot === "list";
-  const routineOpen = useMatch("/app/workouts/routines/:id/*") !== null;
+  const pane = usePane();
+  const inList = pane.slot === "list";
+  // The routines layout's selection is the open routine (code review #6: one source for "a routine is open").
+  const routineOpen = pane.selectedId !== null;
   // Spec 06.7 AC18: a finish op is in the outbox; nothing was sent.
   const [blockedAt, setBlocked] = useState<string | null>(null);
   // Said only while a finish op is still there: once it lands, Start works and the warning would contradict the line.
