@@ -269,6 +269,48 @@ describe("17.12 review focus — the routine panes' edge cases", () => {
 
 });
 
+describe("17.12 AC27 — final review: choosing the open routine changes nothing, so Back still works", () => {
+  it("M1: preview → Edit → the open row → Cancel goes back to the preview, and Back from there reaches the list", async () => {
+    const { router, user } = await setup("/app/workouts");
+    await panesReady();
+    await user.click(await within(listPane()).findByRole("link", { name: /^Push A/ }));
+    await user.click(await within(detailPane()).findByRole("link", { name: "Edit" }));
+    await nameField();
+    await user.click(rowOf("Push A"));
+    await user.click(within(detailPane()).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(previewPath(A)));
+    await act(() => router.navigate(-1));
+    expect(router.state.location.pathname).toBe("/app/workouts");
+  });
+});
+
+describe("17.12 AC26 — final review: a start beside a routine starts once, and only from its own tap", () => {
+  it("M4: a stale startEmpty entry (no tap on this screen) starts nothing", async () => {
+    setDesktop(true);
+    const fake = createWorkoutFake({ routines: [pushA, pullB], catalog, active: null });
+    prepareApp({ auth, fake, catalog });
+    renderApp("/app/workouts", { startEmpty: true });
+    await panesReady();
+    await within(listPane()).findByRole("link", { name: /^Push A/ });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(startPosts(fake)).toEqual([]);
+    expect(within(detailPane()).getByRole("heading", { level: 1, name: "Choose a routine" })).toBeInTheDocument();
+  });
+
+  it("M3: the resumed notice isn't left in the history entry, so Back doesn't say it again", async () => {
+    const { fake, router, user } = await setup("/app/workouts");
+    await panesReady();
+    fake.state.active = makeWorkoutDetail();
+    await user.click(within(listPane()).getByRole("button", { name: "Start empty workout" }));
+    expect(await screen.findByText(RESUMED_NOTICE)).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.state).toBeNull());
+    await act(() => router.navigate("/app/history"));
+    await act(() => router.navigate(-1));
+    expect(await screen.findByRole("heading", { level: 1, name: "Workout" })).toBeInTheDocument();
+    expect(screen.queryByText(RESUMED_NOTICE)).toBeNull();
+  });
+});
+
 describe("17.12 AC30 — regression guards: the phone sends today's requests", () => {
   it("review focus 6: the phone's requests on the three routes are today's, in today's order", async () => {
     const { fake, router } = await setup("/app/workouts", { wide: false });

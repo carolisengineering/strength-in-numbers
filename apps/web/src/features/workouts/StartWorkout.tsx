@@ -51,17 +51,24 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children, lea
   const navigate = useNavigate();
   const location = useLocation();
   const startedFor = useRef<string | null>(null);
+  // Only this instance's own tap starts (final review M4): an entry left with `startEmpty` (the panes were off when it
+  // landed, then came back on Back) is cleared, never acted on.
+  const armed = useRef(false);
   const startOnArrival = useEffectEvent(() => void onStart());
   useEffect(() => {
     if (!inList || !isStartEmpty(location.state) || startedFor.current === location.key) return;
     startedFor.current = location.key;
     void navigate(location.pathname, { replace: true, state: null });
+    if (!armed.current) return;
+    armed.current = false;
     startOnArrival();
   }, [inList, location.key, location.state, location.pathname, navigate]);
 
   function onStartTap() {
-    if (inList && routineOpen) void navigate("/app/workouts", { state: { startEmpty: true } });
-    else void onStart();
+    if (inList && routineOpen) {
+      armed.current = true;
+      void navigate("/app/workouts", { state: { startEmpty: true } });
+    } else void onStart();
   }
 
   const error = failure === null ? null : failure.kind === "validation" ? START_CLOCK_MESSAGE : START_FAILED_MESSAGE;

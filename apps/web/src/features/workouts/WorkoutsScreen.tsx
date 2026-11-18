@@ -76,6 +76,9 @@ export function WorkoutsScreen() {
     if (locationNotice === null) return;
     setNotice(locationNotice);
     setGoneId(null);
+    // The list pane's "resumed" hand-off is read once and taken out of the entry, so a reload or a Back into it never
+    // says it again (final review M3). The phone's own notices keep today's behavior.
+    if (locationNotice === RESUMED_NOTICE) void navigate(location.pathname, { replace: true, state: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per location: the key is the event, not the text
   }, [location.key]);
   // The workout a write reported gone (§5.8). What to say about it is derived from what the refetch

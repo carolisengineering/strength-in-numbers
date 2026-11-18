@@ -19,8 +19,9 @@ import { routineSummary } from "./targetFormat";
 export function RoutinesSection() {
   const routines = useRoutines();
   const list = routines.data;
-  // Spec 17.12 AC29: the routine open in the detail pane beside the list; its row links to the open path, so choosing
-  // it again never navigates (and never asks the editor's leave guard).
+  // Spec 17.12 AC29: the routine open in the detail pane beside the list. Choosing it again does nothing: a Link to the
+  // current path would still navigate (a replace with no state), dropping the editor's "came from the preview" flag,
+  // so its Cancel and Save would replace instead of going back (final review M1).
   const pane = usePane();
   const { pathname } = useLocation();
   // The row title marker only in the list pane, so the phone's rows keep today's markup (Spec 10.5 AC2's snapshot).
@@ -66,6 +67,7 @@ export function RoutinesSection() {
                   className={selected ? `${styles.row} ${selection.selected}` : styles.row}
                   to={selected ? pathname : routinePath(routine.id)}
                   aria-current={selected ? "page" : undefined}
+                  onClick={selected ? (event) => event.preventDefault() : undefined}
                 >
                   {isOneOff(routine) ? (
                     // Spec 10.5 AC2: the tag is text on the name line, inside the link (not color alone).
