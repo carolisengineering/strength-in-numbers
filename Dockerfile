@@ -4,7 +4,7 @@
 # Issue #9 — patch tag + multi-arch index digest (arm64 dev Macs and amd64
 # Render/CI both resolve through it). Dependabot bumps tag and digest together;
 # to do it by hand: `docker buildx imagetools inspect node:<tag>-slim`.
-FROM node:22.23.4-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS base
+FROM node:22.23.5-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS base
 ENV PNPM_HOME=/pnpm PATH="/pnpm:$PATH"
 # openssl: Prisma's query engine needs it (node:22-slim omits it → the engine
 # picks the wrong libssl target and fails to load). ca-certificates: TLS to Neon.
