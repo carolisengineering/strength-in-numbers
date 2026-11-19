@@ -42,6 +42,7 @@ import {
   RoutineWriteSchema,
   type Routine,
   WORKOUT_SUMMARY_NAMES_MAX,
+  liftsWithBeatenRecords,
   forbiddenMeasuresFor,
   requiredMeasuresFor,
   toCanonicalMeters,
@@ -217,8 +218,8 @@ function summaryOf(detail: WorkoutDetail, records: readonly PersonalRecord[]) {
       .map((e) => e.exerciseNameSnapshot),
     workingSetCount,
     totalVolume: qualifying ? volume : null,
-    // Spec 07.3: the served count does not include set-volume records, so a History row matches the finish summary.
-    recordCount: records.filter((r) => r.workoutId === detail.id && r.recordType !== "best_set_volume").length,
+    // Spec 07.6: the served count is lifts with a beaten non-volume record, the API's rule over the same rows.
+    recordCount: liftsWithBeatenRecords(records.filter((r) => r.workoutId === detail.id)),
     // Spec 09.5 AC25: a History row's timed sections, in position order, each scored by `sectionScore`.
     timedSections: [...detail.sections]
       .filter((s) => s.timer !== null)

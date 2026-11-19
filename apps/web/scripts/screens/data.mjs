@@ -1,6 +1,6 @@
 // Fake API data for the screenshot harness. Every payload is validated against the real
 // @sin/core response schemas in the browser before capture (payloadChecks), so the SPA's strict local-env parse accepts it.
-import { sectionScore } from "@sin/core";
+import { liftsWithBeatenRecords, sectionScore } from "@sin/core";
 
 const TZ = "America/Chicago";
 
@@ -738,7 +738,7 @@ export function summaryOf(w) {
     workingSetCount: working.length,
     totalVolume: vol > 0 ? round(vol) : null,
     // Spec 07.3: the served count excludes set-volume records.
-    recordCount: records.filter((r) => r.workoutId === w.id && r.recordType !== "best_set_volume").length,
+    recordCount: liftsWithBeatenRecords(records.filter((r) => r.workoutId === w.id)), // Spec 07.6: lifts, as the API counts
     // Spec 09.5 AC25: the timed sections in position order, each scored by @sin/core's `sectionScore`.
     timedSections: sections
       .filter((s) => s.timer !== null)

@@ -329,7 +329,7 @@ describe("08.0 AC21 — finish lands on a summary with its PRs and no extra fetc
     expect(fake.requests.some((r) => r.path === "/v1/personal-records")).toBe(false);
 
     await user.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name: "History" }));
-    const row = await screen.findByRole("link", { name: /1 personal record/ });
+    const row = await screen.findByRole("link", { name: /Records on 1 lift/ });
     expect(row).toHaveAttribute("href", `/app/history/${active.id}`);
   });
 });
