@@ -236,7 +236,8 @@ export const WorkoutSummarySchema = WorkoutSchema.extend({
   totalVolume: z.number().positive().nullable(),
   /**
    * The number of lifts (lineage roots) that hold at least one beaten, non-volume record in this workout now (Spec 07.6):
-   * the count the finish summary's heading names. A first-ever record beat nothing and is not counted.
+   * the count the finish summary's heading names. A first-ever record beat nothing and is not counted. One exception
+   * (07.6 D9): a lift whose only gains round away on screen is counted here, while the summary draws it uncounted.
    */
   recordCount: z.number().int().min(0),
   /** Spec 09.5 AC25 — the workout's timed sections in position order, each with its derived score; `[]` when none. */

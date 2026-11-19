@@ -1,16 +1,14 @@
 // apps/api/src/repositories/workout-history.prisma.ts
 import { Prisma } from "@prisma/client";
-import { parseWeightKgMilli, sumVolumeMilli, WORKOUT_SUMMARY_NAMES_MAX, type RecordType } from "@sin/core";
+import { HISTORY_COUNT_EXCLUDES, parseWeightKgMilli, sumVolumeMilli, WORKOUT_SUMMARY_NAMES_MAX } from "@sin/core";
 import { timedFieldsFromColumns, timedFieldsJson, type TimedColumns } from "./section-timer-columns.js";
 import { decodeWorkoutCursor, encodeWorkoutCursor } from "./workout-cursor.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import type { ListFinishedWorkoutsOptions, WorkoutHistoryPage, WorkoutSummaryRecord } from "./workout.js";
 
-/**
- * Spec 07.3 / 07.6: set volume never counts. Since 07.6 the History row counts lifts (`exercise_id`, the lineage root)
- * holding a beaten record (`previous_value IS NOT NULL`), the summary heading's count. Bound, never interpolated.
- */
-const HISTORY_COUNT_EXCLUDES: RecordType = "best_set_volume";
+// Spec 07.3 / 07.6: `HISTORY_COUNT_EXCLUDES` (set volume, from @sin/core, shared with `liftsWithBeatenRecords`) never
+// counts; the History row counts lifts (`exercise_id`, the lineage root) holding a beaten record (`previous_value IS NOT
+// NULL`), the summary heading's count. Bound, never interpolated.
 
 /**
  * Spec 07.1 §6.1 — the history list: a keyset page query with correlated

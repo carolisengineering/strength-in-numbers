@@ -1,7 +1,7 @@
 /**
  * Spec 07.1 AC20 — history page latency over ~2 years of one user's history. Spec 09.5 AC25 adds a second run
  * where every workout has two timed sections (a Set Timer with 20 rounds, an AMRAP with 20 readings and a result).
- * Spec 07.6 AC10: weights rise each session and records are rebuilt first, so the History count reads real rows.
+ * Spec 07.6 AC10: each lift peaks in its own workout and records are rebuilt first, so the History count reads real rows.
  * A dev tool, not a CI gate. Needs Docker (Testcontainers):
  *   PATH="$HOME/.docker/bin:$PATH" pnpm --filter @sin/api run bench:history
  */
@@ -23,17 +23,19 @@ const db = await startIntegrationDb();
 try {
   const user = await insertUser(db);
   // Spec 07.6 AC10: a record stays with the workout that holds the best, so each lift peaks in its own workout. Session n
-  // logs pool[3n..3n+5]: the first three for the second time and heavier (beaten records it keeps), the last three for
-  // the first time (they move to session n + 1). Every workout but the first then counts 3 lifts.
+  // logs pool[HALF·n .. HALF·n + EXERCISES): the first HALF for the second time and heavier (beaten records it keeps), the
+  // last HALF for the first time (they move to session n + 1). Every workout but the first then counts HALF lifts.
+  const HALF = EXERCISES / 2;
+  if (!Number.isInteger(HALF)) throw new Error("EXERCISES must be even: half repeat, half new");
   const pool: string[] = [];
-  for (let i = 0; i < 3 * SESSIONS + 3; i++) pool.push(await insertExercise(db));
+  for (let i = 0; i < HALF * (SESSIONS + 1); i++) pool.push(await insertExercise(db));
   const firstAt = Date.now() - (SESSIONS + 1) * 3.5 * 86_400_000;
   for (let n = 0; n < SESSIONS; n++) {
     await logWorkout(db, user, {
       startedAt: new Date(firstAt + n * 3.5 * 86_400_000),
-      exercises: pool.slice(3 * n, 3 * n + EXERCISES).map((exerciseId, i) => ({
+      exercises: pool.slice(HALF * n, HALF * n + EXERCISES).map((exerciseId, i) => ({
         exerciseId,
-        sets: Array.from({ length: SETS }, (_, s) => ({ reps: 5 + (s % 3), weight: (i < 3 && n > 0 ? 70 : 60) + s * 2.5 })),
+        sets: Array.from({ length: SETS }, (_, s) => ({ reps: 5 + (s % 3), weight: (i < HALF && n > 0 ? 70 : 60) + s * 2.5 })),
       })),
     });
   }
@@ -52,6 +54,8 @@ try {
   const deep = await repo.listFinishedWorkouts(user, { limit: 150 }); // 150 rows down
   const counted = (await repo.listFinishedWorkouts(user, { limit: 200 })).items.filter((w) => w.recordCount > 0).length;
   process.stdout.write(`workouts with a counted record: ${counted} of ${SESSIONS}\n`);
+  // A fixture that leaves the count nothing to read would be fast and measure nothing.
+  if (counted < SESSIONS - 1) throw new Error(`expected ${SESSIONS - 1} workouts with a counted record, got ${counted}`);
   // Spec 21.1: RLS hides rows rather than failing, and a page with no rows would be fast and measure nothing.
   if (deep.items.length !== 150 || deep.next === null) throw new Error(`expected 150 visible workouts and a next page, got ${deep.items.length}`);
   const deepCursor = deep.next;

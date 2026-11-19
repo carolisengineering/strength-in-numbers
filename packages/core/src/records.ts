@@ -304,6 +304,9 @@ export function setChangeAffectsRecords(before: RecordRelevantSet | null, after:
   return measures.some((m) => MEASURE_FIELD[m](before) !== MEASURE_FIELD[m](after));
 }
 
+/** Spec 07.3 / 07.6: the one record type History's count never counts. The API binds it into its SQL; `liftsWithBeatenRecords` reads it. */
+export const HISTORY_COUNT_EXCLUDES: RecordType = "best_set_volume";
+
 /**
  * Spec 07.6 D6: History's `recordCount` rule over DTOs — the number of lifts (lineage roots, `exerciseId`) holding at
  * least one beaten record other than set volume. A record is beaten when it has a `previousValue` (07.0 D16); a
@@ -314,6 +317,6 @@ export function liftsWithBeatenRecords(
   records: readonly { readonly exerciseId: string; readonly recordType: RecordType; readonly previousValue: number | null }[],
 ): number {
   const lifts = new Set<string>();
-  for (const r of records) if (r.recordType !== "best_set_volume" && r.previousValue !== null) lifts.add(r.exerciseId);
+  for (const r of records) if (r.recordType !== HISTORY_COUNT_EXCLUDES && r.previousValue !== null) lifts.add(r.exerciseId);
   return lifts.size;
 }

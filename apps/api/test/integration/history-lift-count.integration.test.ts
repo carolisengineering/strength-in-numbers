@@ -86,7 +86,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.6 — History counts lifts (HT
       const bench = await insertExercise(db);
       const fork = await insertExercise(db, { ownerUserId: l.userId, forkedFrom: bench });
       await l.finishAt(1, [{ exerciseId: bench, sets: [set(100, 5)] }]);
-      return l.finishAt(2, [{ exerciseId: bench, sets: [set(102.5, 5)] }, { exerciseId: fork, sets: [set(105, 5)] }]);
+      // The origin holds the heaviest weight, the copy the estimate and set volume: two source exercises, one root.
+      return l.finishAt(2, [{ exerciseId: bench, sets: [set(110, 3)] }, { exerciseId: fork, sets: [set(100, 10)] }]);
     }],
     ["seven-lifts", 7, async (l) => {
       const ids: string[] = [];

@@ -16,7 +16,7 @@ Categories:
 
 ## Summary
 
-241 statements: 112 user-filtered, 54 anchored, 30 shared on purpose, 14 cross-user maintenance, 31 fragment. **1 need review.**
+241 statements: 112 user-filtered, 54 anchored, 30 shared on purpose, 14 cross-user maintenance, 31 fragment.
 
 ### Statements that rely on an earlier check (anchored)
 

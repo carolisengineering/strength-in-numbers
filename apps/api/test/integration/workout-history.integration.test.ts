@@ -238,7 +238,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
       expect(await countOf(u, heavier)).toBe(1);
       await finishAt(u, 5, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]); // backdated, ties every record → earliest wins
       expect(await countOf(u, later)).toBe(0);
-      expect(await rowCount(later)).toBe(0);
+      const held = await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "personal_record" WHERE workout_id = $1::uuid`, later);
+      expect(held[0]!.n).toBe(0); // every tied record, set volume included, went to the backdated workout (07.0 D6)
       expect(await countOf(u, heavier)).toBe(1);
     });
   });
@@ -349,15 +350,17 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
   });
 
   describe("07.6 AC2 — a lift counts once", () => {
-    it("a fork and its origin in one workout, both heavier than before, count 1", async () => {
+    it("a fork and its origin in one workout, each holding a beaten record, count 1", async () => {
       const u = await insertUser(db);
       const bench = await insertExercise(db);
       const fork = await insertExercise(db, { ownerUserId: u, forkedFrom: bench });
       await finishAt(u, 1, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
       const { workoutId } = await finishAt(u, 2, [
-        { exerciseId: bench, sets: [{ reps: 5, weight: 102.5 }] },
-        { exerciseId: fork, sets: [{ reps: 5, weight: 105 }] },
+        { exerciseId: bench, sets: [{ reps: 3, weight: 110 }] }, // the origin holds the heaviest weight
+        { exerciseId: fork, sets: [{ reps: 10, weight: 100 }] }, // the copy holds the estimate (133.333) and set volume
       ]);
+      const held = await createPersonalRecordRepository(db.prisma).list(u, { workoutId });
+      expect(new Set(held.filter((r) => r.previousValue !== null).map((r) => r.sourceExerciseId))).toEqual(new Set([bench, fork]));
       expect(await countOf(u, workoutId)).toBe(1);
       expect(await oracle(u, workoutId)).toBe(1);
     });
@@ -418,6 +421,17 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
       expect([await countOf(u, first), await countOf(u, second)]).toEqual([0, 1]);
       await repo().updateWorkout(u, second, { startedAt: at(1).toISOString() });
       expect([await countOf(u, first), await countOf(u, second)]).toEqual([0, 0]); // 105 is now first; 100 later beats nothing
+      for (const id of [first, second]) expect(await countOf(u, id)).toBe(await oracle(u, id));
+    });
+
+    it("a re-time that moves the workout after the other changes both counts", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      const { workoutId: first } = await finishAt(u, 3, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      const { workoutId: second } = await finishAt(u, 5, [{ exerciseId: bench, sets: [{ reps: 5, weight: 95 }] }]);
+      expect([await countOf(u, first), await countOf(u, second)]).toEqual([0, 0]);
+      await repo().updateWorkout(u, first, { startedAt: at(7).toISOString() });
+      expect([await countOf(u, first), await countOf(u, second)]).toEqual([1, 0]); // 100 now comes after 95 and beats it
       for (const id of [first, second]) expect(await countOf(u, id)).toBe(await oracle(u, id));
     });
 

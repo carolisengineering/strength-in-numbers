@@ -149,6 +149,7 @@ const EXPECTED = [
   "estimate1rm",
   "computeRecords",
   "liftsWithBeatenRecords",
+  "HISTORY_COUNT_EXCLUDES",
   "setVolumeMilli",
   "sumVolumeMilli",
   "setRecordValueMilli",
