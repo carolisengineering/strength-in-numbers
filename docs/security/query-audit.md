@@ -16,7 +16,7 @@ Categories:
 
 ## Summary
 
-241 statements: 112 user-filtered, 54 anchored, 29 shared on purpose, 14 cross-user maintenance, 31 fragment, 1 uncategorized. **1 need review.**
+241 statements: 112 user-filtered, 54 anchored, 30 shared on purpose, 14 cross-user maintenance, 31 fragment. **1 need review.**
 
 ### Statements that rely on an earlier check (anchored)
 
@@ -342,7 +342,7 @@ Categories:
 |---|---|---|---|---|---|---|
 | `src/repositories/workout-history.prisma.ts#loadWorkingSetRows#1` | query | user-filtered | ok | — | `b7c9327626ed` | Reads set_entry, workout_exercise; filtered on the workout exercise's own user_id (Spec 21.1) |
 | `src/repositories/workout-history.prisma.ts#listFinishedWorkouts#1` | fragment | fragment | ok | callers: src/repositories/workout-history.prisma.ts#listFinishedWorkouts#2 | `0d1812a17fd9` | SQL piece composed into the callers listed |
-| `src/repositories/workout-history.prisma.ts#listFinishedWorkouts#2` | query | user-filtered | ok | — | `e4d973a15972` | Reads workout_exercise, set_entry, personal_record, workout_section, workout, workout_section_round |
+| `src/repositories/workout-history.prisma.ts#listFinishedWorkouts#2` | query | user-filtered | ok | — | `68ca593ac0c5` | Reads workout_exercise, set_entry, personal_record, workout_section, workout, workout_section_round |
 
 ## src/repositories/workout-retime.prisma.ts
 

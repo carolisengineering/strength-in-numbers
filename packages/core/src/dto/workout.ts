@@ -234,7 +234,10 @@ export const WorkoutSummarySchema = WorkoutSchema.extend({
   workingSetCount: z.number().int().min(0),
   /** kg × reps over qualifying working sets; `null` when none qualifies — never 0. */
   totalVolume: z.number().positive().nullable(),
-  /** `personal_record` rows this workout holds now (07.0 D18), not counting `best_set_volume` (Spec 07.3): the figure the finish summary lists. */
+  /**
+   * The number of lifts (lineage roots) that hold at least one beaten, non-volume record in this workout now (Spec 07.6):
+   * the count the finish summary's heading names. A first-ever record beat nothing and is not counted.
+   */
   recordCount: z.number().int().min(0),
   /** Spec 09.5 AC25 — the workout's timed sections in position order, each with its derived score; `[]` when none. */
   timedSections: z.array(TimedSectionSummarySchema),
