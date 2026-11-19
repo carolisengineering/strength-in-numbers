@@ -33,7 +33,8 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
     >
       <span className={styles.top} data-row-title="">
         <span className={styles.date}>{formatLocalDate(workout.localDate)}</span>
-        {label === null ? null : <span className={styles.label}>{` · ${label}`}</span>}
+        {/* A no-break space: a flex item drops an ordinary leading space, and `pre` would keep a title's own runs of spaces. */}
+        {label === null ? null : <span className={styles.label}>{`\u00a0· ${label}`}</span>}
         {workout.recordCount > 0 ? (
           <span className={styles.badge} role="img" aria-label={badge.name}>
             <TrophyIcon />

@@ -1065,7 +1065,6 @@ async function zoomPass(browser) {
         if (s.open) await s.open(page);
         await shoot(page, device, s.name, `Spec 17.13 AC19: ${s.name.slice(3)} at ${fontSize ? `${viewport.width} × ${viewport.height}, ${fontSize} text` : `${viewport.width} × ${viewport.height}`}`);
         // Spec 07.6 AC15: History's badge with large text — on one line, inside its row, the day left whole.
-        if (s.name === "z5-history") await checkHistoryBadges(page, `${THEME}/${device}/${s.name}`);
         const shot = `light/${device}/${s.name}`;
         const found = await page.evaluate(() => {
           const out = [];
@@ -1094,6 +1093,8 @@ async function zoomPass(browser) {
         const known = ZOOM_KNOWN.filter((k) => k.shot === shot);
         const violations = found.filter((item) => !known.some((k) => k.item === item));
         zoom.push({ shot, found, known, violations });
+        // Spec 07.6 AC15: History's badge with large text, after the screen's own checks so a throw here skips none.
+        if (s.name === "z5-history") await checkHistoryBadges(page, `${THEME}/${device}/${s.name}`);
         for (const v of violations) console.error(`  ZOOM ${shot}: ${v}`);
       });
     }
@@ -1194,7 +1195,7 @@ async function desktopPass(browser) {
             entry.violations.push(...found);
           }
           // Spec 07.6 AC15: the record badge on one line in the list pane (20rem at 1024).
-          if (s.name === "d2-history" && config.wide === true) entry.violations.push(...(await checkHistoryBadges(page, entry.shot)));
+          if (s.name === "d2-history" && config.wide === true) await checkHistoryBadges(page, entry.shot); // fails the run through historyBadges
           // Phase D (AC25, AC26, AC28): the routine screens' one primary and the editor's bar; a live workout's column.
           if (s.routines && config.wide === true) {
             const found = await checkRoutinePanes(page, s);
@@ -1347,67 +1348,49 @@ const historyOffsets = [];
 // in the desktop list pane (20rem at 1024). Each entry: { where, badges: [text], violations }.
 const historyBadges = [];
 async function checkHistoryBadges(page, where) {
-  const tight = await page.evaluate(() => {
-    // Every row: the " · " after the day keeps its space (a flex item drops a leading space under white-space: nowrap).
-    const out = [];
-    for (const row of document.querySelectorAll('main a[href^="/app/history/"]')) {
-      const day = row.querySelector("[data-row-title] > span:first-child");
-      const label = day?.nextElementSibling;
-      const text = label && !label.matches('[role="img"]') ? label.firstChild : null;
-      if (!day || !text || !text.textContent.includes("·")) continue;
-      const range = document.createRange();
-      const at = text.textContent.indexOf("·");
-      range.setStart(text, at);
-      range.setEnd(text, at + 1);
-      if (range.getBoundingClientRect().left - day.getBoundingClientRect().right < 2) out.push(day.textContent);
-    }
-    return out;
-  });
-  const found = await page.evaluate(() => {
-    const out = [];
-    for (const row of document.querySelectorAll('main a[href^="/app/history/"]')) {
-      const badge = row.querySelector('[role="img"]');
-      if (!badge) continue;
-      const text = badge.querySelector("[aria-hidden='true']:not(svg)") ?? badge;
-      const line = parseFloat(getComputedStyle(text).lineHeight) || parseFloat(getComputedStyle(text).fontSize) * 1.4;
+  const rows = await page.evaluate(() =>
+    [...document.querySelectorAll('main a[href^="/app/history/"]')].map((row) => {
       const r = row.getBoundingClientRect();
-      const b = badge.getBoundingClientRect();
-      // The day ("Tue, Nov 17") must stay whole: only a routine name or title after it may truncate.
-      const dateBox = row.querySelector("[data-row-title] > span:first-child");
-      const walker = dateBox ? document.createTreeWalker(dateBox, window.NodeFilter.SHOW_TEXT) : null;
-      const first = walker?.nextNode();
-      let dayClipped = false;
-      let day = "";
-      if (first && dateBox) {
-        const raw = first.textContent;
-        const end = raw.includes(" · ") ? raw.indexOf(" · ") : raw.length;
-        day = raw.slice(0, end);
+      // The first line is the day, then the routine name or title (" · …", which may truncate), then the badge.
+      const day = row.querySelector("[data-row-title] > span:first-child");
+      const next = day?.nextElementSibling;
+      const label = next && !next.matches('[role="img"]') ? next.firstChild : null;
+      let spaced = true;
+      if (day && label && label.textContent.includes("·")) {
         const range = document.createRange();
-        range.setStart(first, 0);
-        range.setEnd(first, end);
-        dayClipped = range.getBoundingClientRect().right > dateBox.getBoundingClientRect().right + 0.5;
+        const at = label.textContent.indexOf("·");
+        range.setStart(label, at);
+        range.setEnd(label, at + 1);
+        spaced = range.getBoundingClientRect().left - day.getBoundingClientRect().right >= 2;
       }
-      out.push({
-        day,
-        dayClipped,
-        text: text.textContent.trim(),
-        wraps: text.getBoundingClientRect().height > line * 1.5,
-        outside: b.right > r.right + 0.5 || b.left < r.left - 0.5,
+      const badge = row.querySelector('[role="img"]');
+      const text = badge?.querySelector("[aria-hidden='true']:not(svg)") ?? badge;
+      const line = text ? parseFloat(getComputedStyle(text).lineHeight) || parseFloat(getComputedStyle(text).fontSize) * 1.4 : 0;
+      const b = badge?.getBoundingClientRect();
+      return {
+        day: day?.textContent ?? "",
+        spaced,
+        dayClipped: !!day && (day.scrollWidth > day.clientWidth + 1 || day.getBoundingClientRect().right > r.right + 0.5),
+        text: text ? text.textContent.trim() : null,
+        wraps: !!text && text.getBoundingClientRect().height > line * 1.5,
+        outside: !!b && (b.right > r.right + 0.5 || b.left < r.left - 0.5),
         sideways: row.scrollWidth > row.clientWidth + 1,
-      });
-    }
-    return out;
-  });
-  const violations = tight.map((d) => `no space between "${d}" and the " · " after it`);
-  for (const f of found) {
+      };
+    }),
+  );
+  const violations = [];
+  for (const f of rows) {
+    if (!f.spaced) violations.push(`no space between "${f.day}" and the " · " after it`);
+    if (f.dayClipped) violations.push(`the day "${f.day}" is cut off`);
+    if (f.text === null) continue;
     if (f.wraps) violations.push(`"${f.text}" wraps onto a second line`);
     if (f.outside) violations.push(`"${f.text}" pokes out of its row`);
     if (f.sideways) violations.push(`the row with "${f.text}" scrolls sideways`);
-    if (f.dayClipped) violations.push(`the day "${f.day}" is cut off beside "${f.text}"`);
   }
-  if (found.length === 0) violations.push("no record badge found on History");
+  const badges = rows.flatMap((f) => (f.text === null ? [] : [f.text]));
+  if (badges.length === 0) violations.push("no record badge found on History");
   for (const v of violations) console.error(`  HISTORY BADGE ${where}: ${v}`);
-  historyBadges.push({ where, badges: found.map((f) => f.text), violations });
+  historyBadges.push({ where, badges, violations });
   return violations;
 }
 // AC22: `form.top − article.top` of the current card in 01-workout-active at 390 × 844, measured on main at 970b06b3
@@ -2453,11 +2436,16 @@ try {
       historyOffsets.push({ offset });
       if (offset === null || offset > HISTORY_ROW_MAX_OFFSET) console.error(`  HISTORY OFFSET: the first row is ${offset} px from main's top (want <= ${HISTORY_ROW_MAX_OFFSET})`);
       await checkHistoryBadges(page, `${THEME}/${device}/12-history 390`);
-      await page.setViewportSize({ width: 320, height: 568 });
-      await settle(page);
-      await checkHistoryBadges(page, `${THEME}/${device}/12-history 320`);
-      await page.setViewportSize({ width: 390, height: 844 });
-      await settle(page);
+      await tryStep(`history badge 320 ${THEME}`, async () => {
+        try {
+          await page.setViewportSize({ width: 320, height: 568 });
+          await settle(page);
+          await checkHistoryBadges(page, `${THEME}/${device}/12-history 320`);
+        } finally {
+          await page.setViewportSize({ width: 390, height: 844 });
+          await settle(page);
+        }
+      });
     }
     await go(`/app/history/${D.ids.latestFinished}`);
     await shoot(page, device, "13-history-detail", "History detail: Lower A, 2 days ago, with PR block");

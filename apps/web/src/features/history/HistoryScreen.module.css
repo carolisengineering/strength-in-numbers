@@ -78,8 +78,7 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* pre, not nowrap: a flex item would drop the space before " · " at its start. */
-  white-space: pre;
+  white-space: nowrap;
 }
 
 /* A record: brass, and only here and on the records block (Spec 17.0 §6.2). */

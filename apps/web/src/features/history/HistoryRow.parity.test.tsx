@@ -19,6 +19,7 @@ vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
+import { API_BASE_URL } from "../../test/catalogHarness";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 
 beforeEach(() => {
@@ -94,21 +95,9 @@ describe("07.6 AC15 — the badge names lifts", () => {
 
 describe("07.6 AC17 — the fake counts lifts, as the API does", () => {
   it("six beaten non-volume rows over three lifts serve recordCount 3", async () => {
-    const workout = makeWorkoutDetail({
-      endedAt: "2026-10-02T11:00:00.000Z",
-      exercises: Array.from({ length: 3 }, (_, i) => ({ modality: "weight_reps" as const, name: `Lift ${i + 1}`, sets: [makeSet({ reps: 5, weight: 100, weightKg: 100 })] })),
-    });
-    const records = workout.exercises.flatMap((e) =>
-      (["heaviest_weight", "best_est_1rm"] as const).map((recordType) =>
-        makePersonalRecord({ workoutId: workout.id, exerciseId: e.exerciseId, sourceExerciseId: e.exerciseId, sourceSetId: e.sets[0]!.id, recordType, value: 100, previousValue: 90 }),
-      ),
-    );
-    expect(records).toHaveLength(6);
-    const fake = createWorkoutFake({ finished: [workout], records });
-    prepareApp({ auth, fake });
-    renderApp("/app/history");
-    const row = await screen.findByRole("link", { name: /Lift 1/ });
-    expect(within(row).getByRole("img", { name: "Records on 3 lifts" })).toBeInTheDocument();
+    setupLifts(3);
+    const body = (await (await fetch(`${API_BASE_URL}/v1/workouts?limit=20`)).json()) as { items: { recordCount: number }[] };
+    expect(body.items[0]!.recordCount).toBe(3);
   });
 });
 
