@@ -151,17 +151,28 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.6 — History counts lifts (HT
   });
 
   describe("07.6 AC11 — after Spec 21.1: other users, and the page's statement count", () => {
-    it("another user's records in the same weeks never change A's count", async () => {
+    it("another user's record pointing at A's workout never counts for A, under RLS or by the predicate alone", async () => {
       const a = await lifter("a");
       const b = await lifter("b");
       try {
         const bench = await insertExercise(db);
         await a.finishAt(1, [{ exerciseId: bench, sets: [set(100, 5)] }]);
         const aWeek2 = await a.finishAt(8, [{ exerciseId: bench, sets: [set(102.5, 5)] }]);
-        expect(await a.recordCount(aWeek2)).toBe(1);
-        await b.finishAt(1, [{ exerciseId: bench, sets: [set(140, 5)] }]);
-        await b.finishAt(8, [{ exerciseId: bench, sets: [set(150, 5)] }]);
-        expect(await a.recordCount(aWeek2)).toBe(1);
+        const bLogged = await logWorkout(db, b.userId, { startedAt: at(8), exercises: [{ exerciseId: bench, sets: [set(140, 5)] }] });
+        // As the owner (no RLS): a beaten row of B's, on another lift, pointing at A's workout. Nothing in the schema ties a
+        // record's user to its workout's user, so only RLS and `pr.user_id = w.user_id` keep it out of A's count.
+        const otherLift = await insertExercise(db);
+        await db.prisma.$executeRawUnsafe(
+          `INSERT INTO "personal_record" (id, user_id, exercise_id, record_type, value, unit, previous_value, source_set_entry_id, workout_id, achieved_at, local_date)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'heaviest_weight', 200, 'kg', 150, $3::uuid, $4::uuid, now(), '2026-01-09')`,
+          b.userId,
+          otherLift,
+          bLogged.setIds[0]![0]!,
+          aWeek2,
+        );
+        expect(await a.recordCount(aWeek2)).toBe(1); // over HTTP on sin_app: RLS hides B's row
+        const ownerView = (await repo().listFinishedWorkouts(a.userId, { limit: 50 })).items.find((w) => w.id === aWeek2)!;
+        expect(ownerView.recordCount).toBe(1); // on the owner login (RLS skipped): the predicate alone
       } finally {
         await a.app.close();
         await b.app.close();

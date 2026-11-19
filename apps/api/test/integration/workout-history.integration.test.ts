@@ -80,7 +80,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
     });
   });
 
-  describe("AC4 — keyset paging has no gaps and no duplicates", () => {
+  describe("AC4 / 07.6 AC9 — keyset paging has no gaps and no duplicates (unchanged by the lift count)", () => {
     it("45 rows at limit 20 → 20/20/5, concatenation equals the full order", async () => {
       const u = await insertUser(db);
       const all = await seedDays(u, 45);
