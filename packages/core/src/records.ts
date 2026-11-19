@@ -10,6 +10,7 @@
  * ≈ 2.1e12, far inside Number.MAX_SAFE_INTEGER, so no BigInt is needed.
  */
 import { RECORD_TYPE_VALUES, RECORD_UNIT_BY_TYPE, type Modality, type RecordType, type RecordUnit, type SetType } from "./enums.js";
+import type { PersonalRecord } from "./dto/personal-record.js";
 
 /** One qualifying set (working, in a finished workout), caller-sorted by
  * (workout started_at, workout id, workout_exercise position, set_number). */
@@ -302,4 +303,15 @@ export function setChangeAffectsRecords(before: RecordRelevantSet | null, after:
   if (before === null || after === null || wasWorking !== isWorking) return true;
   const measures = RECORD_MEASURES_BY_MODALITY[after.modality as Modality] ?? [];
   return measures.some((m) => MEASURE_FIELD[m](before) !== MEASURE_FIELD[m](after));
+}
+
+/**
+ * Spec 07.6 D6: History's `recordCount` rule over DTOs — the number of lifts (lineage roots, `exerciseId`) holding at
+ * least one beaten record other than set volume. A record is beaten when it has a `previousValue` (07.0 D16); a
+ * first-ever number beat nothing. No arithmetic on record values: a gain that rounds away on screen still counts (D9).
+ */
+export function liftsWithBeatenRecords(records: readonly Pick<PersonalRecord, "exerciseId" | "recordType" | "previousValue">[]): number {
+  const lifts = new Set<string>();
+  for (const r of records) if (r.recordType !== "best_set_volume" && r.previousValue !== null) lifts.add(r.exerciseId);
+  return lifts.size;
 }

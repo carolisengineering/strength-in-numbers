@@ -148,6 +148,7 @@ const EXPECTED = [
   "milliToDecimalString",
   "estimate1rm",
   "computeRecords",
+  "liftsWithBeatenRecords",
   "setVolumeMilli",
   "sumVolumeMilli",
   "setRecordValueMilli",
