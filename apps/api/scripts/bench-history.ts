@@ -1,11 +1,14 @@
 /**
  * Spec 07.1 AC20 — history page latency over ~2 years of one user's history. Spec 09.5 AC25 adds a second run
  * where every workout has two timed sections (a Set Timer with 20 rounds, an AMRAP with 20 readings and a result).
+ * Spec 07.6 AC10: each lift peaks in its own workout and records are rebuilt first, so the History count reads real rows.
  * A dev tool, not a CI gate. Needs Docker (Testcontainers):
  *   PATH="$HOME/.docker/bin:$PATH" pnpm --filter @sin/api run bench:history
  */
 import { createExerciseRepository } from "../src/repositories/exercise.prisma.js";
 import { createWorkoutRepository } from "../src/repositories/workout.prisma.js";
+import { lockUserRecords } from "../src/repositories/personal-record.prisma.js";
+import { rebuildUserRecords } from "../src/records/rebuild.js";
 import { createScopedDb } from "../src/db/scoped.js";
 import { assertMeasuringAsApp, benchLoginLine } from "./lib/bench-login.js";
 import { startIntegrationDb } from "../test/integration/helpers.js";
@@ -19,23 +22,40 @@ const RUNS = 50;
 const db = await startIntegrationDb();
 try {
   const user = await insertUser(db);
-  const exerciseIds: string[] = [];
-  for (let i = 0; i < EXERCISES; i++) exerciseIds.push(await insertExercise(db));
+  // Spec 07.6 AC10: a record stays with the workout that holds the best, so each lift peaks in its own workout. Session n
+  // logs pool[HALF·n .. HALF·n + EXERCISES): the first HALF for the second time and heavier (beaten records it keeps), the
+  // last HALF for the first time (they move to session n + 1). Every workout but the first then counts HALF lifts.
+  const HALF = EXERCISES / 2;
+  if (!Number.isInteger(HALF)) throw new Error("EXERCISES must be even: half repeat, half new");
+  const pool: string[] = [];
+  for (let i = 0; i < HALF * (SESSIONS + 1); i++) pool.push(await insertExercise(db));
   const firstAt = Date.now() - (SESSIONS + 1) * 3.5 * 86_400_000;
   for (let n = 0; n < SESSIONS; n++) {
     await logWorkout(db, user, {
       startedAt: new Date(firstAt + n * 3.5 * 86_400_000),
-      exercises: exerciseIds.map((exerciseId) => ({
+      exercises: pool.slice(HALF * n, HALF * n + EXERCISES).map((exerciseId, i) => ({
         exerciseId,
-        sets: Array.from({ length: SETS }, (_, s) => ({ reps: 5 + (s % 3), weight: 60 + (n % 40) + s * 2.5 })),
+        sets: Array.from({ length: SETS }, (_, s) => ({ reps: 5 + (s % 3), weight: (i < HALF && n > 0 ? 70 : 60) + s * 2.5 })),
       })),
     });
   }
+  // Spec 07.6 AC10: the fixture is stored finished without the recompute; rebuild once so the count has rows to read.
+  await db.prisma.$transaction(
+    async (tx) => {
+      await lockUserRecords(tx, user);
+      await rebuildUserRecords(tx, user);
+    },
+    { timeout: 120_000 },
+  );
   // Spec 21.1 AC37: measured through sin_app with RLS on, as server.ts wires it; fixtures stay on the owner client.
   process.stdout.write(`${benchLoginLine(await assertMeasuringAsApp(db.app))}\n`);
   const scoped = createScopedDb(db.app);
   const repo = createWorkoutRepository(scoped, createExerciseRepository(scoped));
   const deep = await repo.listFinishedWorkouts(user, { limit: 150 }); // 150 rows down
+  const counted = (await repo.listFinishedWorkouts(user, { limit: 200 })).items.filter((w) => w.recordCount > 0).length;
+  process.stdout.write(`workouts with a counted record: ${counted} of ${SESSIONS}\n`);
+  // A fixture that leaves the count nothing to read would be fast and measure nothing.
+  if (counted < SESSIONS - 1) throw new Error(`expected ${SESSIONS - 1} workouts with a counted record, got ${counted}`);
   // Spec 21.1: RLS hides rows rather than failing, and a page with no rows would be fast and measure nothing.
   if (deep.items.length !== 150 || deep.next === null) throw new Error(`expected 150 visible workouts and a next page, got ${deep.items.length}`);
   const deepCursor = deep.next;

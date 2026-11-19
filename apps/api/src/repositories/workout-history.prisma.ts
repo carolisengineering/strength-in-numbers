@@ -1,13 +1,14 @@
 // apps/api/src/repositories/workout-history.prisma.ts
 import { Prisma } from "@prisma/client";
-import { parseWeightKgMilli, sumVolumeMilli, WORKOUT_SUMMARY_NAMES_MAX, type RecordType } from "@sin/core";
+import { HISTORY_COUNT_EXCLUDES, parseWeightKgMilli, sumVolumeMilli, WORKOUT_SUMMARY_NAMES_MAX } from "@sin/core";
 import { timedFieldsFromColumns, timedFieldsJson, type TimedColumns } from "./section-timer-columns.js";
 import { decodeWorkoutCursor, encodeWorkoutCursor } from "./workout-cursor.js";
 import type { RawClient } from "./set-entry.prisma.js";
 import type { ListFinishedWorkoutsOptions, WorkoutHistoryPage, WorkoutSummaryRecord } from "./workout.js";
 
-/** Spec 07.3: the History row counts the records the finish summary lists, which hides set volume. Bound, never interpolated. */
-const HISTORY_COUNT_EXCLUDES: RecordType = "best_set_volume";
+// Spec 07.3 / 07.6: `HISTORY_COUNT_EXCLUDES` (set volume, from @sin/core, shared with `liftsWithBeatenRecords`) never
+// counts; the History row counts lifts (`exercise_id`, the lineage root) holding a beaten record (`previous_value IS NOT
+// NULL`), the summary heading's count. Bound, never interpolated.
 
 /**
  * Spec 07.1 §6.1 — the history list: a keyset page query with correlated
@@ -94,8 +95,10 @@ export async function listFinishedWorkouts(
            (SELECT count(*)::int FROM "set_entry" se
               JOIN "workout_exercise" we ON we.id = se.workout_exercise_id
              WHERE we.workout_id = w.id AND se.set_type = 'working') AS working_set_count,
-           (SELECT count(*)::int FROM "personal_record" pr
-             WHERE pr.workout_id = w.id AND pr.record_type <> ${HISTORY_COUNT_EXCLUDES}) AS record_count,
+           (SELECT count(DISTINCT pr.exercise_id)::int FROM "personal_record" pr
+             WHERE pr.workout_id = w.id AND pr.user_id = w.user_id
+               AND pr.record_type <> ${HISTORY_COUNT_EXCLUDES}
+               AND pr.previous_value IS NOT NULL) AS record_count,
            COALESCE((
              SELECT json_agg(json_build_object('id', s.id, 'position', s.position, 'name', s.name, ${timedFieldsJson("s")})
                     ORDER BY s.position)

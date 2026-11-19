@@ -1,12 +1,13 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { uuidv7 } from "uuidv7";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
+import { createPersonalRecordRepository } from "../../src/repositories/personal-record.prisma.js";
 import { createWorkoutRepository } from "../../src/repositories/workout.prisma.js";
 import { ValidationError } from "../../src/errors/app-error.js";
 import { encodeWorkoutCursor } from "../../src/repositories/workout-cursor.js";
 import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
-import { sectionScore, WorkoutHistoryResponseSchema } from "@sin/core";
+import { liftsWithBeatenRecords, sectionScore, WorkoutHistoryResponseSchema } from "@sin/core";
 import { settleCapture, startCapture } from "./one-off-helpers.js";
 import { addTimedSection, insertWorkoutSection, recordRounds, setResult } from "./section-helpers.js";
 import { buildApp } from "../../src/app.js";
@@ -79,7 +80,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
     });
   });
 
-  describe("AC4 — keyset paging has no gaps and no duplicates", () => {
+  describe("AC4 / 07.6 AC9 — keyset paging has no gaps and no duplicates (unchanged by the lift count)", () => {
     it("45 rows at limit 20 → 20/20/5, concatenation equals the full order", async () => {
       const u = await insertUser(db);
       const all = await seedDays(u, 45);
@@ -215,80 +216,230 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
     });
   });
 
-  describe("AC14 / 07.3 AC1 / 07.3 AC4 — recordCount is the records a workout holds now, set volume excluded", () => {
-    it("matches personal_record and drops after a backdated finish takes a tie", async () => {
+  /** Logs a live workout and finishes it through the repository, so the PR recompute runs (Spec 07.0). */
+  const finishAt = async (u: string, day: number, exercises: { exerciseId: string; modality?: string; sets: { reps: number; weight?: number; weightUnit?: "kg" | "lb" }[] }[]) => {
+    const logged = await logWorkout(db, u, { startedAt: at(day), finish: "none", exercises });
+    await repo().updateWorkout(u, logged.workoutId, { endedAt: new Date(at(day).getTime() + 3_600_000).toISOString() });
+    return logged;
+  };
+  const countOf = async (u: string, workoutId: string) => (await list(u, 50)).items.find((r) => r.id === workoutId)!.recordCount;
+  /** Spec 07.6 AC6: the rule applied to what `GET /v1/personal-records?workoutId=` serves for that workout. */
+  const oracle = async (u: string, workoutId: string) => liftsWithBeatenRecords(await createPersonalRecordRepository(db.prisma).list(u, { workoutId }));
+  const rowCount = async (workoutId: string) =>
+    (await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "personal_record" WHERE workout_id = $1::uuid AND record_type <> 'best_set_volume'`, workoutId))[0]!.n;
+
+  describe("07.6 AC6 / 07.1 AC14 — recordCount is the lifts a workout holds beaten records on, now", () => {
+    it("a first workout counts 0, a heavier one 1, and a backdated tie takes the first one's records", async () => {
       const u = await insertUser(db);
       const bench = await insertExercise(db);
-      const w = repo();
-      const finish = async (day: number) => {
-        const { workoutId } = await logWorkout(db, u, { startedAt: at(day), finish: "none", exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }] });
-        await w.updateWorkout(u, workoutId, { endedAt: new Date(at(day).getTime() + 3_600_000).toISOString() });
-        return workoutId;
-      };
-      const later = await finish(10);
-      expect((await list(u, 1)).items[0]).toMatchObject({ id: later, recordCount: 2 }); // 07.3: heaviest weight + est. 1RM; set volume is not counted
-      await finish(5); // backdated, ties every record → earliest wins
-      const rows = (await list(u, 10)).items;
-      expect(rows.find((r) => r.id === later)!.recordCount).toBe(0);
-      const counts = await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "personal_record" WHERE workout_id = $1::uuid`, later);
-      expect(counts[0]!.n).toBe(0);
+      const { workoutId: later } = await finishAt(u, 10, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      expect(await countOf(u, later)).toBe(0); // first-ever records beat nothing (17.6 D1)
+      const { workoutId: heavier } = await finishAt(u, 12, [{ exerciseId: bench, sets: [{ reps: 5, weight: 105 }] }]);
+      expect(await countOf(u, heavier)).toBe(1);
+      await finishAt(u, 5, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]); // backdated, ties every record → earliest wins
+      expect(await countOf(u, later)).toBe(0);
+      const held = await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "personal_record" WHERE workout_id = $1::uuid`, later);
+      expect(held[0]!.n).toBe(0); // every tied record, set volume included, went to the backdated workout (07.0 D6)
+      expect(await countOf(u, heavier)).toBe(1);
     });
   });
 
-  describe("07.3 AC2 — a volume-only workout counts zero", () => {
-    it("lists recordCount 0 while the set-volume row still exists", async () => {
+  describe("07.6 AC4 — set volume is still excluded", () => {
+    it("a workout that beat only set volume counts 0", async () => {
       const u = await insertUser(db);
       const bench = await insertExercise(db);
-      const { workoutId } = await logWorkout(db, u, { startedAt: at(1), finish: "none", exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }] });
-      await repo().updateWorkout(u, workoutId, { endedAt: new Date(at(1).getTime() + 3_600_000).toISOString() });
-      await db.prisma.$executeRawUnsafe(`DELETE FROM "personal_record" WHERE workout_id = $1::uuid AND record_type <> 'best_set_volume'`, workoutId);
-      expect((await list(u, 1)).items[0]).toMatchObject({ id: workoutId, recordCount: 0 });
-      const rows = await db.prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM "personal_record" WHERE workout_id = $1::uuid`, workoutId);
-      expect(rows[0]!.n).toBe(1);
+      await finishAt(u, 0, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      const { workoutId } = await finishAt(u, 1, [{ exerciseId: bench, sets: [{ reps: 10, weight: 80 }] }]); // 800 > 500 volume; lighter, lower estimate
+      const types = await createPersonalRecordRepository(db.prisma).list(u, { workoutId });
+      expect(types.map((r) => [r.recordType, r.previousValue !== null])).toEqual([["best_set_volume", true]]);
+      expect(await countOf(u, workoutId)).toBe(0);
+    });
+
+    it("beaten set volume beside a beaten weight counts the lift once", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      await finishAt(u, 0, [{ exerciseId: bench, sets: [{ reps: 5, weight: 95 }] }]);
+      const { workoutId } = await finishAt(u, 1, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      expect(await rowCount(workoutId)).toBe(2);
+      expect(await countOf(u, workoutId)).toBe(1);
     });
   });
 
-  describe("07.3 AC3 — other record types still count", () => {
-    const finishOne = async (u: string, exercises: { exerciseId: string; modality?: string; sets: { reps: number; weight?: number }[] }[]) => {
-      const { workoutId } = await logWorkout(db, u, { startedAt: at(1), finish: "none", exercises });
-      await repo().updateWorkout(u, workoutId, { endedAt: new Date(at(1).getTime() + 3_600_000).toISOString() });
-      return workoutId;
-    };
-    const types = async (workoutId: string) =>
-      (await db.prisma.$queryRawUnsafe<{ record_type: string }[]>(`SELECT record_type FROM "personal_record" WHERE workout_id = $1::uuid`, workoutId)).map((r) => r.record_type);
-
-    it("a max_reps record is counted", async () => {
+  describe("07.6 AC3 — first records are not counted", () => {
+    it("a max_reps record counts once beaten, not when first", async () => {
       const u = await insertUser(db);
       const pushups = await insertExercise(db, { modality: "bodyweight_reps" });
-      const id = await finishOne(u, [{ exerciseId: pushups, modality: "bodyweight_reps", sets: [{ reps: 20 }] }]);
-      const held = await types(id);
-      expect(held).toContain("max_reps");
-      expect((await list(u, 1)).items[0]!.recordCount).toBe(held.filter((t) => t !== "best_set_volume").length);
-      expect((await list(u, 1)).items[0]!.recordCount).toBeGreaterThanOrEqual(1);
+      const { workoutId: firstTime } = await finishAt(u, 1, [{ exerciseId: pushups, modality: "bodyweight_reps", sets: [{ reps: 20 }] }]);
+      expect(await countOf(u, firstTime)).toBe(0);
+      const { workoutId: beaten } = await finishAt(u, 2, [{ exerciseId: pushups, modality: "bodyweight_reps", sets: [{ reps: 25 }] }]);
+      expect(await countOf(u, beaten)).toBe(1);
     });
 
-    it("three types across a weight_reps and a bodyweight_reps exercise count three", async () => {
+    it("a weight_reps and a bodyweight_reps lift count 0 first, then 2 beaten", async () => {
       const u = await insertUser(db);
       const bench = await insertExercise(db);
       const pushups = await insertExercise(db, { modality: "bodyweight_reps" });
-      const id = await finishOne(u, [
+      const { workoutId: firstTime } = await finishAt(u, 1, [
         { exerciseId: bench, sets: [{ reps: 5, weight: 100 }] },
         { exerciseId: pushups, modality: "bodyweight_reps", sets: [{ reps: 20 }] },
       ]);
-      expect(await types(id)).toEqual(expect.arrayContaining(["heaviest_weight", "best_est_1rm", "best_set_volume", "max_reps"]));
-      expect((await list(u, 1)).items[0]).toMatchObject({ id, recordCount: 3 });
+      expect(await rowCount(firstTime)).toBe(3);
+      expect(await countOf(u, firstTime)).toBe(0);
+      const { workoutId: beaten } = await finishAt(u, 2, [
+        { exerciseId: bench, sets: [{ reps: 5, weight: 105 }] },
+        { exerciseId: pushups, modality: "bodyweight_reps", sets: [{ reps: 25 }] },
+      ]);
+      expect(await countOf(u, beaten)).toBe(2);
     });
-  });
 
-  describe("07.3 AC5 — the finish response still lists set volume", () => {
-    it("newRecords has 3 entries while the History row says 2", async () => {
+    it("a lift with a beaten row and a first row counts once", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      await finishAt(u, 1, [{ exerciseId: bench, sets: [{ reps: 15, weight: 60 }] }]); // no estimate above 12 reps
+      const { workoutId } = await finishAt(u, 2, [{ exerciseId: bench, sets: [{ reps: 5, weight: 62.5 }] }]);
+      const held = await createPersonalRecordRepository(db.prisma).list(u, { workoutId });
+      expect(held.find((r) => r.recordType === "heaviest_weight")!.previousValue).not.toBeNull();
+      expect(held.find((r) => r.recordType === "best_est_1rm")!.previousValue).toBeNull();
+      expect(await countOf(u, workoutId)).toBe(1);
+    });
+
+    it("spec §5: bench beaten twice, OHP first-only, row beaten count 2", async () => {
+      const u = await insertUser(db);
+      const [bench, ohp, row] = [await insertExercise(db), await insertExercise(db), await insertExercise(db)];
+      await finishAt(u, 1, [
+        { exerciseId: bench, sets: [{ reps: 5, weight: 80 }] },
+        { exerciseId: row, sets: [{ reps: 5, weight: 60 }] },
+      ]);
+      const { workoutId } = await finishAt(u, 2, [
+        { exerciseId: bench, sets: [{ reps: 5, weight: 82.5 }] },
+        { exerciseId: ohp, sets: [{ reps: 5, weight: 40 }] },
+        { exerciseId: row, sets: [{ reps: 5, weight: 62.5 }] },
+      ]);
+      expect(await rowCount(workoutId)).toBe(6);
+      expect(await countOf(u, workoutId)).toBe(2);
+    });
+
+    it("the finish response still lists set volume and first records while the History row says 0", async () => {
       const u = await insertUser(db);
       const bench = await insertExercise(db);
       const { workoutId } = await logWorkout(db, u, { startedAt: at(1), finish: "none", exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }] });
       const finished = await repo().updateWorkout(u, workoutId, { endedAt: new Date(at(1).getTime() + 3_600_000).toISOString() });
       expect(finished.newRecords).toHaveLength(3);
       expect(finished.newRecords.map((r) => r.recordType)).toContain("best_set_volume");
-      expect((await list(u, 1)).items[0]).toMatchObject({ id: workoutId, recordCount: 2 });
+      expect(await countOf(u, workoutId)).toBe(0);
+    });
+  });
+
+  describe("07.6 AC1 — lifts, not rows", () => {
+    it("three lifts that each beat weight and estimate count 3 over 6 rows", async () => {
+      const u = await insertUser(db);
+      const [bench, squat, row] = [await insertExercise(db), await insertExercise(db), await insertExercise(db)];
+      await finishAt(u, 1, [
+        { exerciseId: bench, sets: [{ reps: 5, weight: 100 }] },
+        { exerciseId: squat, sets: [{ reps: 5, weight: 140 }] },
+        { exerciseId: row, sets: [{ reps: 5, weight: 80 }] },
+      ]);
+      const { workoutId } = await finishAt(u, 8, [
+        { exerciseId: bench, sets: [{ reps: 5, weight: 102.5 }] },
+        { exerciseId: squat, sets: [{ reps: 5, weight: 142.5 }] },
+        { exerciseId: row, sets: [{ reps: 5, weight: 82.5 }] },
+      ]);
+      expect(await rowCount(workoutId)).toBe(6);
+      expect(await countOf(u, workoutId)).toBe(3);
+    });
+  });
+
+  describe("07.6 AC2 — a lift counts once", () => {
+    it("a fork and its origin in one workout, each holding a beaten record, count 1", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      const fork = await insertExercise(db, { ownerUserId: u, forkedFrom: bench });
+      await finishAt(u, 1, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      const { workoutId } = await finishAt(u, 2, [
+        { exerciseId: bench, sets: [{ reps: 3, weight: 110 }] }, // the origin holds the heaviest weight
+        { exerciseId: fork, sets: [{ reps: 10, weight: 100 }] }, // the copy holds the estimate (133.333) and set volume
+      ]);
+      const held = await createPersonalRecordRepository(db.prisma).list(u, { workoutId });
+      expect(new Set(held.filter((r) => r.previousValue !== null).map((r) => r.sourceExerciseId))).toEqual(new Set([bench, fork]));
+      expect(await countOf(u, workoutId)).toBe(1);
+      expect(await oracle(u, workoutId)).toBe(1);
+    });
+  });
+
+  describe("07.6 AC6 — held now: edits, deletes and re-times move the count", () => {
+    it("a backdated finish that takes the record lowers the later workout's count", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      await finishAt(u, 10, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      const { workoutId: later } = await finishAt(u, 12, [{ exerciseId: bench, sets: [{ reps: 5, weight: 105 }] }]);
+      expect(await countOf(u, later)).toBe(1);
+      const { workoutId: backdated } = await finishAt(u, 11, [{ exerciseId: bench, sets: [{ reps: 5, weight: 110 }] }]);
+      expect(await countOf(u, later)).toBe(0);
+      expect(await countOf(u, backdated)).toBe(1);
+      for (const id of [later, backdated]) expect(await countOf(u, id)).toBe(await oracle(u, id));
+    });
+
+    it("deleting the earlier workout turns a beaten row into a first row", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      const { workoutId: earlier } = await finishAt(u, 1, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      const { workoutId: later } = await finishAt(u, 2, [{ exerciseId: bench, sets: [{ reps: 5, weight: 105 }] }]);
+      expect(await countOf(u, later)).toBe(1);
+      await repo().deleteWorkout(u, earlier);
+      expect(await countOf(u, later)).toBe(0);
+      expect(await oracle(u, later)).toBe(0);
+    });
+
+    it("a finished-mode edit that raises a set above the old best raises the count", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      await finishAt(u, 1, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      const { workoutId, setIds } = await finishAt(u, 2, [{ exerciseId: bench, sets: [{ reps: 5, weight: 95 }] }]);
+      expect(await countOf(u, workoutId)).toBe(0);
+      await repo().updateSet(u, setIds[0]![0]!, { weight: 110 });
+      expect(await countOf(u, workoutId)).toBe(1);
+      expect(await oracle(u, workoutId)).toBe(1);
+    });
+
+    it("lowering the holder hands the record to the next-best set's workout", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      await finishAt(u, 1, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      const holder = await finishAt(u, 2, [{ exerciseId: bench, sets: [{ reps: 5, weight: 105 }] }]);
+      const { workoutId: third } = await finishAt(u, 3, [{ exerciseId: bench, sets: [{ reps: 5, weight: 103 }] }]);
+      expect([await countOf(u, holder.workoutId), await countOf(u, third)]).toEqual([1, 0]);
+      await repo().updateSet(u, holder.setIds[0]![0]!, { weight: 90 });
+      expect([await countOf(u, holder.workoutId), await countOf(u, third)]).toEqual([0, 1]);
+      for (const id of [holder.workoutId, third]) expect(await countOf(u, id)).toBe(await oracle(u, id));
+    });
+
+    it("a re-time that moves the workout before the other changes both counts", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      const { workoutId: first } = await finishAt(u, 3, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      const { workoutId: second } = await finishAt(u, 5, [{ exerciseId: bench, sets: [{ reps: 5, weight: 105 }] }]);
+      expect([await countOf(u, first), await countOf(u, second)]).toEqual([0, 1]);
+      await repo().updateWorkout(u, second, { startedAt: at(1).toISOString() });
+      expect([await countOf(u, first), await countOf(u, second)]).toEqual([0, 0]); // 105 is now first; 100 later beats nothing
+      for (const id of [first, second]) expect(await countOf(u, id)).toBe(await oracle(u, id));
+    });
+
+    it("a re-time that moves the workout after the other changes both counts", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      const { workoutId: first } = await finishAt(u, 3, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
+      const { workoutId: second } = await finishAt(u, 5, [{ exerciseId: bench, sets: [{ reps: 5, weight: 95 }] }]);
+      expect([await countOf(u, first), await countOf(u, second)]).toEqual([0, 0]);
+      await repo().updateWorkout(u, first, { startedAt: at(7).toISOString() });
+      expect([await countOf(u, first), await countOf(u, second)]).toEqual([1, 0]); // 100 now comes after 95 and beats it
+      for (const id of [first, second]) expect(await countOf(u, id)).toBe(await oracle(u, id));
+    });
+
+    it("a workout finished without the recompute holds no rows and counts 0", async () => {
+      const u = await insertUser(db);
+      const bench = await insertExercise(db);
+      const { workoutId } = await logWorkout(db, u, { startedAt: at(1), exercises: [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }] });
+      expect(await countOf(u, workoutId)).toBe(0);
     });
   });
 
