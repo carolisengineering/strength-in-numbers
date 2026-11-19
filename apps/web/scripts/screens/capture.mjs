@@ -1064,6 +1064,8 @@ async function zoomPass(browser) {
         await settle(page);
         if (s.open) await s.open(page);
         await shoot(page, device, s.name, `Spec 17.13 AC19: ${s.name.slice(3)} at ${fontSize ? `${viewport.width} × ${viewport.height}, ${fontSize} text` : `${viewport.width} × ${viewport.height}`}`);
+        // Spec 07.6 AC15: History's badge with large text — on one line, inside its row, the day left whole.
+        if (s.name === "z5-history") await checkHistoryBadges(page, `${THEME}/${device}/${s.name}`);
         const shot = `light/${device}/${s.name}`;
         const found = await page.evaluate(() => {
           const out = [];
@@ -1345,6 +1347,22 @@ const historyOffsets = [];
 // in the desktop list pane (20rem at 1024). Each entry: { where, badges: [text], violations }.
 const historyBadges = [];
 async function checkHistoryBadges(page, where) {
+  const tight = await page.evaluate(() => {
+    // Every row: the " · " after the day keeps its space (a flex item drops a leading space under white-space: nowrap).
+    const out = [];
+    for (const row of document.querySelectorAll('main a[href^="/app/history/"]')) {
+      const day = row.querySelector("[data-row-title] > span:first-child");
+      const label = day?.nextElementSibling;
+      const text = label && !label.matches('[role="img"]') ? label.firstChild : null;
+      if (!day || !text || !text.textContent.includes("·")) continue;
+      const range = document.createRange();
+      const at = text.textContent.indexOf("·");
+      range.setStart(text, at);
+      range.setEnd(text, at + 1);
+      if (range.getBoundingClientRect().left - day.getBoundingClientRect().right < 2) out.push(day.textContent);
+    }
+    return out;
+  });
   const found = await page.evaluate(() => {
     const out = [];
     for (const row of document.querySelectorAll('main a[href^="/app/history/"]')) {
@@ -1354,7 +1372,24 @@ async function checkHistoryBadges(page, where) {
       const line = parseFloat(getComputedStyle(text).lineHeight) || parseFloat(getComputedStyle(text).fontSize) * 1.4;
       const r = row.getBoundingClientRect();
       const b = badge.getBoundingClientRect();
+      // The day ("Tue, Nov 17") must stay whole: only a routine name or title after it may truncate.
+      const dateBox = row.querySelector("[data-row-title] > span:first-child");
+      const walker = dateBox ? document.createTreeWalker(dateBox, window.NodeFilter.SHOW_TEXT) : null;
+      const first = walker?.nextNode();
+      let dayClipped = false;
+      let day = "";
+      if (first && dateBox) {
+        const raw = first.textContent;
+        const end = raw.includes(" · ") ? raw.indexOf(" · ") : raw.length;
+        day = raw.slice(0, end);
+        const range = document.createRange();
+        range.setStart(first, 0);
+        range.setEnd(first, end);
+        dayClipped = range.getBoundingClientRect().right > dateBox.getBoundingClientRect().right + 0.5;
+      }
       out.push({
+        day,
+        dayClipped,
         text: text.textContent.trim(),
         wraps: text.getBoundingClientRect().height > line * 1.5,
         outside: b.right > r.right + 0.5 || b.left < r.left - 0.5,
@@ -1363,11 +1398,12 @@ async function checkHistoryBadges(page, where) {
     }
     return out;
   });
-  const violations = [];
+  const violations = tight.map((d) => `no space between "${d}" and the " · " after it`);
   for (const f of found) {
     if (f.wraps) violations.push(`"${f.text}" wraps onto a second line`);
     if (f.outside) violations.push(`"${f.text}" pokes out of its row`);
     if (f.sideways) violations.push(`the row with "${f.text}" scrolls sideways`);
+    if (f.dayClipped) violations.push(`the day "${f.day}" is cut off beside "${f.text}"`);
   }
   if (found.length === 0) violations.push("no record badge found on History");
   for (const v of violations) console.error(`  HISTORY BADGE ${where}: ${v}`);

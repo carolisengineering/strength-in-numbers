@@ -20,10 +20,12 @@
   text-decoration: none;
 }
 
+/* Spec 07.6 AC15: three items — the day, the routine name or title, the record badge. The line wraps only when the day
+   and the badge can't share it (large text); the badge then sits under the day, at the right. */
 .top {
   display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
   font-weight: 600;
 }
 
@@ -63,18 +65,29 @@
   color: var(--color-signal);
 }
 
-/* Spec 10.1 AC25: a long routine name truncates on one line; the record badge keeps its box. */
+/* Spec 07.6 AC15: the day is always whole. */
 .date {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Spec 10.1 AC25: a long routine name truncates on one line; the record badge keeps its box. Its basis is 0, so it
+   never pushes the badge onto a new line; it takes what the day and the badge leave. */
+.label {
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  /* pre, not nowrap: a flex item would drop the space before " · " at its start. */
+  white-space: pre;
 }
 
 /* A record: brass, and only here and on the records block (Spec 17.0 §6.2). */
 .badge {
   display: inline-flex;
   flex-shrink: 0;
+  margin-left: auto;
+  padding-left: var(--space-2);
   align-items: center;
   gap: var(--space-1);
   color: var(--color-pr);

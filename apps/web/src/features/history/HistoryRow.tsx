@@ -32,10 +32,8 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
       aria-current={selected ? "page" : undefined}
     >
       <span className={styles.top} data-row-title="">
-        <span className={styles.date}>
-          {formatLocalDate(workout.localDate)}
-          {label === null ? null : ` · ${label}`}
-        </span>
+        <span className={styles.date}>{formatLocalDate(workout.localDate)}</span>
+        {label === null ? null : <span className={styles.label}>{` · ${label}`}</span>}
         {workout.recordCount > 0 ? (
           <span className={styles.badge} role="img" aria-label={badge.name}>
             <TrophyIcon />
