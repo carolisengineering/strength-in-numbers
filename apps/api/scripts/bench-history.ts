@@ -22,16 +22,18 @@ const RUNS = 50;
 const db = await startIntegrationDb();
 try {
   const user = await insertUser(db);
-  const exerciseIds: string[] = [];
-  for (let i = 0; i < EXERCISES; i++) exerciseIds.push(await insertExercise(db));
+  // Spec 07.6 AC10: a record stays with the workout that holds the best, so each lift peaks in its own workout. Session n
+  // logs pool[3n..3n+5]: the first three for the second time and heavier (beaten records it keeps), the last three for
+  // the first time (they move to session n + 1). Every workout but the first then counts 3 lifts.
+  const pool: string[] = [];
+  for (let i = 0; i < 3 * SESSIONS + 3; i++) pool.push(await insertExercise(db));
   const firstAt = Date.now() - (SESSIONS + 1) * 3.5 * 86_400_000;
   for (let n = 0; n < SESSIONS; n++) {
     await logWorkout(db, user, {
       startedAt: new Date(firstAt + n * 3.5 * 86_400_000),
-      exercises: exerciseIds.map((exerciseId) => ({
+      exercises: pool.slice(3 * n, 3 * n + EXERCISES).map((exerciseId, i) => ({
         exerciseId,
-        // Spec 07.6 AC10: weights rise every session, so after the rebuild below nearly every workout holds beaten records.
-        sets: Array.from({ length: SETS }, (_, s) => ({ reps: 5 + (s % 3), weight: 60 + n * 0.5 + s * 2.5 })),
+        sets: Array.from({ length: SETS }, (_, s) => ({ reps: 5 + (s % 3), weight: (i < 3 && n > 0 ? 70 : 60) + s * 2.5 })),
       })),
     });
   }
