@@ -9,6 +9,11 @@ import { recordLabel } from "./labels";
  * the heading counts, which "from your …" line goes where, the order) is made here and table-tested; the components only
  * render it. No PR math: this formats what 07.0 stored, and every figure goes through `formatRecordPair`.
  */
+/** "3 lifts" / "1 lift": the summary heading's count, also History's badge (Spec 07.6 AC16), so the two say it alike. */
+export function liftCountText(n: number): string {
+  return `${n} ${n === 1 ? "lift" : "lifts"}`;
+}
+
 export type LedgerSection = "workouts" | "history";
 
 export interface LedgerRow {
@@ -83,7 +88,7 @@ const rose = (lift: LedgerLift): boolean => lift.rows.some((r) => r.gainText !==
 function headingOf(lifts: readonly LedgerLift[], counted: number, section: LedgerSection): string | null {
   if (counted === 0) return null;
   const oneRow = lifts.length === 1 && lifts[0]!.rows.length === 1;
-  const count = `${counted} ${counted === 1 ? "lift" : "lifts"}`;
+  const count = liftCountText(counted);
   // AC15 (D5): a workout opened from History did not just set its records; they are the ones it holds now.
   if (section === "history") return oneRow ? "Record from this workout" : `Records from this workout on ${count}`;
   return oneRow ? "New record" : `New records on ${count}`;

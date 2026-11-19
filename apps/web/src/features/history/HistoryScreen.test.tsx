@@ -175,7 +175,7 @@ describe("18.0 AC56 — History shows the title", () => {
     expect(titled).not.toHaveTextContent("Push Day");
     expect(plain).toHaveTextContent(/^Wed, Sep 2 · Pull Day/);
     expect(screen.queryByText(/Shoulder felt tight/)).toBeNull();
-    expect(within(titled).getByRole("img", { name: "1 personal record" }).className).toMatch(/badge/);
+    expect(within(titled).getByRole("img", { name: "Records on 1 lift" }).className).toMatch(/badge/);
   });
 });
 
@@ -185,7 +185,7 @@ describe("17.0 AC7 — the record badge is a brass trophy icon, not an emoji", (
     setup(ws, { records: [makePersonalRecord({ workoutId: ws[0]!.id })] });
     await screen.findByRole("list", { name: "Finished workouts" });
 
-    const badge = screen.getByRole("img", { name: "1 personal record" });
+    const badge = screen.getByRole("img", { name: "Records on 1 lift" });
     expect(badge.className).toMatch(/badge/);
     expect(badge.querySelector("svg")).not.toBeNull();
     expect(badge.textContent).not.toMatch(/\u{1F3C6}/u);
@@ -193,7 +193,7 @@ describe("17.0 AC7 — the record badge is a brass trophy icon, not an emoji", (
 });
 
 describe("08.0 AC12 — the record badge", () => {
-  it("0 → no badge; 1 → '1 personal record'; 2 → '2 personal records'", async () => {
+  it("0 → no badge; 1 → 'Records on 1 lift'; 2 → 'Records on 2 lifts' (Spec 07.6)", async () => {
     const ws = finishedWorkouts(3);
     setup(ws, {
       records: [
@@ -204,9 +204,9 @@ describe("08.0 AC12 — the record badge", () => {
     });
     await screen.findByRole("list", { name: "Finished workouts" });
 
-    expect(screen.getByRole("img", { name: "2 personal records" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "1 personal record" })).toBeInTheDocument();
-    expect(screen.getAllByRole("img", { name: /personal record/ })).toHaveLength(2);
+    expect(screen.getByRole("img", { name: "Records on 2 lifts" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Records on 1 lift" })).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: /^Records on / })).toHaveLength(2);
   });
 });
 
@@ -446,12 +446,12 @@ describe("10.1 AC25 — the History row shows the routine name", () => {
     expect(newest!.firstElementChild!.firstElementChild!.textContent).toMatch(/^Wed, Sep 2$/);
     const date = older!.querySelector("span > span")!;
     expect(date.className).toMatch(/date/);
-    expect(within(older!).getByRole("img", { name: "1 personal record" }).className).toMatch(/badge/);
+    expect(within(older!).getByRole("img", { name: "Records on 1 lift" }).className).toMatch(/badge/);
   });
 });
 
 describe("17.2 AC31 / AC33 — the badge is a trophy with a count, only when the workout holds records", () => {
-  it("shows N PR / N PRs in the row for recordCount above zero, and nothing for zero", async () => {
+  it("shows 'PR on N lift(s)' in the row for recordCount above zero, and nothing for zero (Spec 07.6)", async () => {
     const ws = finishedWorkouts(3);
     setup(ws, {
       records: [
@@ -461,9 +461,9 @@ describe("17.2 AC31 / AC33 — the badge is a trophy with a count, only when the
       ],
     });
     await screen.findByRole("list", { name: "Finished workouts" });
-    const [newest, middle, oldest] = rows(); // newest first: ws[2] holds 2 records, ws[1] holds 1, ws[0] none
-    expect(within(newest!).getByRole("img", { name: "2 personal records" })).toHaveTextContent("2 PRs");
-    expect(within(middle!).getByRole("img", { name: "1 personal record" })).toHaveTextContent("1 PR");
+    const [newest, middle, oldest] = rows(); // newest first: ws[2] holds beaten records on 2 lifts, ws[1] on 1, ws[0] none
+    expect(within(newest!).getByRole("img", { name: "Records on 2 lifts" })).toHaveTextContent("PR on 2 lifts");
+    expect(within(middle!).getByRole("img", { name: "Records on 1 lift" })).toHaveTextContent("PR on 1 lift");
     expect(within(oldest!).queryByRole("img")).toBeNull(); // zero records: no badge, the row is unchanged
     expect(oldest).not.toHaveTextContent(/\bPRs?\b/);
   });
@@ -472,8 +472,8 @@ describe("17.2 AC31 / AC33 — the badge is a trophy with a count, only when the
     const ws = finishedWorkouts(1);
     setup(ws, { records: [makePersonalRecord({ workoutId: ws[0]!.id })] });
     await screen.findByRole("list", { name: "Finished workouts" });
-    const badge = screen.getByRole("img", { name: "1 personal record" });
+    const badge = screen.getByRole("img", { name: "Records on 1 lift" });
     expect(badge.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
-    expect(badge.textContent?.trim()).toBe("1 PR");
+    expect(badge.textContent?.trim()).toBe("PR on 1 lift");
   });
 });

@@ -7,6 +7,7 @@ import { formatVolumeKg } from "../units/format";
 import { historyTimedLines } from "../sectionTimer/timedSectionLine";
 import { timedMore } from "../sectionTimer/timerCopy";
 import { formatLocalDate } from "../workouts/format";
+import { historyBadgeText } from "./historyCopy";
 import styles from "./HistoryScreen.module.css";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -16,6 +17,8 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummary; unitPreference: UnitPreference }) {
   const more = workout.exerciseCount - workout.exerciseNames.length;
   const label = workout.title ?? workout.routineName;
+  // Spec 07.6: the count is served as is (lifts with a beaten record); the web never re-derives it.
+  const badge = historyBadgeText(workout.recordCount);
   const volume = workout.totalVolume === null ? "" : ` · ${formatVolumeKg(workout.totalVolume, unitPreference)}`;
   // Spec 10.7 AC21: scored timed sections only, so a row with none (or only unscored ones) is unchanged.
   const timed = historyTimedLines(workout.timedSections);
@@ -29,15 +32,14 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
       aria-current={selected ? "page" : undefined}
     >
       <span className={styles.top} data-row-title="">
-        <span className={styles.date}>
-          {formatLocalDate(workout.localDate)}
-          {label === null ? null : ` · ${label}`}
-        </span>
+        <span className={styles.date}>{formatLocalDate(workout.localDate)}</span>
+        {/* A no-break space: a flex item drops an ordinary leading space, and `pre` would keep a title's own runs of spaces. */}
+        {label === null ? null : <span className={styles.label}>{`\u00a0· ${label}`}</span>}
         {workout.recordCount > 0 ? (
-          <span className={styles.badge} role="img" aria-label={plural(workout.recordCount, "personal record", "personal records")}>
+          <span className={styles.badge} role="img" aria-label={badge.name}>
             <TrophyIcon />
             <span className={styles.badgeText} aria-hidden="true">
-              {plural(workout.recordCount, "PR", "PRs")}
+              {badge.visible}
             </span>
           </span>
         ) : null}

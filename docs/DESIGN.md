@@ -1384,7 +1384,8 @@ with rationale so the "why" survives.
   lead) in the cards, the Progress records list and the chart readout, and nothing in `@sin/core` changes; History's badge
   is a brass trophy with "N PRs", only when the workout holds records, using Spec 07.3's `recordCount` as served so the row
   and the summary agree. First records still count (D13). *Amended by Spec 07.6 (2026-11-19): the count is lifts with a beaten
-  record, first records not counted (§4.5).* See Spec 17.2 §6, D1–D17. *Amended by Spec 17.6 (2026-11-10):
+  record, first records not counted (§4.5); the badge reads "PR on N lifts", named "Records on N lifts", and the row's day
+  never truncates (the badge drops under it with large text).* See Spec 17.2 §6, D1–D17. *Amended by Spec 17.6 (2026-11-10):
   the summary shows one record ledger (a row per record, the heading counts lifts); a first-ever number is a quiet
   "First time logged" line, not brass and not counted (17.6 D1 reverses D13); "Est. 1-rep max" everywhere. Phase B
   (17.6 D7): the summary reads records, stats, workout notes, exercises, the owner's Hevy block, then the routine note

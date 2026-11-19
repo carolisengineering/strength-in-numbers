@@ -203,7 +203,7 @@ describe("08.0 AC23 — History and the records block, accessibly", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     const links = within(list).getAllByRole("link");
     for (const link of links) expect(link).toHaveAccessibleName();
-    expect(links[0]).toHaveAccessibleName(/1 personal record/);
+    expect(links[0]).toHaveAccessibleName(/Records on 1 lift/);
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
   });
 
