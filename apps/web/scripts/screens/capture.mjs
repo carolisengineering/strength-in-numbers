@@ -1191,6 +1191,8 @@ async function desktopPass(browser) {
             entry.chart = m;
             entry.violations.push(...found);
           }
+          // Spec 07.6 AC15: the record badge on one line in the list pane (20rem at 1024).
+          if (s.name === "d2-history" && config.wide === true) entry.violations.push(...(await checkHistoryBadges(page, entry.shot)));
           // Phase D (AC25, AC26, AC28): the routine screens' one primary and the editor's bar; a live workout's column.
           if (s.routines && config.wide === true) {
             const found = await checkRoutinePanes(page, s);
@@ -1339,6 +1341,39 @@ async function checkShell(page, shot, { wide, mainWidth }) {
 // header's word said again by a visible h1); the page gives back at least 40 px.
 const HISTORY_ROW_MAX_OFFSET = 27;
 const historyOffsets = [];
+// Spec 07.6 AC15, AC17: History's record badge ("PR on 3 lifts") stays on one line inside its row at 390 and 320 px and
+// in the desktop list pane (20rem at 1024). Each entry: { where, badges: [text], violations }.
+const historyBadges = [];
+async function checkHistoryBadges(page, where) {
+  const found = await page.evaluate(() => {
+    const out = [];
+    for (const row of document.querySelectorAll('main a[href^="/app/history/"]')) {
+      const badge = row.querySelector('[role="img"]');
+      if (!badge) continue;
+      const text = badge.querySelector("[aria-hidden='true']:not(svg)") ?? badge;
+      const line = parseFloat(getComputedStyle(text).lineHeight) || parseFloat(getComputedStyle(text).fontSize) * 1.4;
+      const r = row.getBoundingClientRect();
+      const b = badge.getBoundingClientRect();
+      out.push({
+        text: text.textContent.trim(),
+        wraps: text.getBoundingClientRect().height > line * 1.5,
+        outside: b.right > r.right + 0.5 || b.left < r.left - 0.5,
+        sideways: row.scrollWidth > row.clientWidth + 1,
+      });
+    }
+    return out;
+  });
+  const violations = [];
+  for (const f of found) {
+    if (f.wraps) violations.push(`"${f.text}" wraps onto a second line`);
+    if (f.outside) violations.push(`"${f.text}" pokes out of its row`);
+    if (f.sideways) violations.push(`the row with "${f.text}" scrolls sideways`);
+  }
+  if (found.length === 0) violations.push("no record badge found on History");
+  for (const v of violations) console.error(`  HISTORY BADGE ${where}: ${v}`);
+  historyBadges.push({ where, badges: found.map((f) => f.text), violations });
+  return violations;
+}
 // AC22: `form.top − article.top` of the current card in 01-workout-active at 390 × 844, measured on main at 970b06b3
 // (Phase A merged, none of Phase B) on 2026-11-09. Phase B must take at least 60 px off it.
 const CARD_HEADER_BASE_390 = 204;
@@ -2381,6 +2416,12 @@ try {
       });
       historyOffsets.push({ offset });
       if (offset === null || offset > HISTORY_ROW_MAX_OFFSET) console.error(`  HISTORY OFFSET: the first row is ${offset} px from main's top (want <= ${HISTORY_ROW_MAX_OFFSET})`);
+      await checkHistoryBadges(page, `${THEME}/${device}/12-history 390`);
+      await page.setViewportSize({ width: 320, height: 568 });
+      await settle(page);
+      await checkHistoryBadges(page, `${THEME}/${device}/12-history 320`);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await settle(page);
     }
     await go(`/app/history/${D.ids.latestFinished}`);
     await shoot(page, device, "13-history-detail", "History detail: Lower A, 2 days ago, with PR block");
@@ -3505,6 +3546,16 @@ if (DEVICE_FILTER.includes("mobile") && !["/09n-item-row-narrow", "/09o-item-row
   process.exitCode = 1;
 }
 if (offCenter.length) process.exitCode = 1;
+// Spec 07.6 AC15, AC17: a badge check that failed, never ran, or never saw the 3-lift row must not read as a pass.
+if (historyBadges.some((h) => h.violations.length)) process.exitCode = 1;
+if (DEVICE_FILTER.includes("mobile") && !["390", "320"].every((w) => historyBadges.some((h) => h.where.endsWith(`12-history ${w}`)))) {
+  console.error("  HISTORY BADGE: the phone check did not run at 390 and 320");
+  process.exitCode = 1;
+}
+if (historyBadges.length && !historyBadges.some((h) => h.badges.includes("PR on 3 lifts"))) {
+  console.error("  HISTORY BADGE: no row showed \"PR on 3 lifts\" (Heavy bench day: 6 records over 3 lifts)");
+  process.exitCode = 1;
+}
 if (loggingLoop.some((l) => l.violations.length)) process.exitCode = 1;
 if (segments.some((l) => l.violations.length)) process.exitCode = 1;
 // Spec 17.7 AC2: a segmented-widths step that never reported must not read as a pass either.
