@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { PersonalRecord } from "@sin/core";
@@ -59,5 +60,47 @@ describe("17.11 AC7 — a failed records read beside rows (Review Focus 4)", () 
     const block = screen.getByRole("region", { name: "Personal records" });
     expect(within(block).getByText("Couldn't load records")).toBeInTheDocument();
     expect(screen.queryByRole("list")).toBeNull();
+  });
+});
+
+describe("07.5 AC39 — the exercise page lists one line per weight", () => {
+  const ROOT = "10000000-0000-4000-8000-0000000000e2";
+  const reps = (atWeightKg: number, day: number, value = 15, previousValue: number | null = 13) =>
+    makePersonalRecord({
+      exerciseId: ROOT,
+      sourceExerciseId: ROOT,
+      exerciseName: "Lateral Raise",
+      recordType: "max_reps_at_weight",
+      unit: "reps",
+      value,
+      previousValue,
+      atWeightKg,
+      achievedAt: `2026-10-${String(day).padStart(2, "0")}T10:00:00.000Z`,
+    });
+  const rowTexts = () =>
+    within(screen.getByRole("list"))
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+
+  it("a row reads Most reps at 12.5 kg, 15 reps, was 13 reps; a first time reads First record", () => {
+    render(<RecordsSection query={success([reps(12.5, 2), reps(15, 3, 8, null)])} unitPreference="kg" />);
+    const [heavier, lighter] = rowTexts();
+    expect(lighter).toContain("Most reps at 12.5 kg");
+    expect(lighter).toContain("15 reps");
+    expect(lighter).toContain("was 13 reps");
+    expect(heavier).toContain("Most reps at 15 kg");
+    expect(heavier).toContain("First record");
+    expect(screen.queryByRole("button", { name: /^Show / })).toBeNull();
+  });
+
+  it("8 weights show 5 and Show all 8 weights; a tap shows all 8 and Show fewer", async () => {
+    const user = userEvent.setup();
+    render(<RecordsSection query={success([10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5].map((w, i) => reps(w, i + 1)))} unitPreference="kg" />);
+    expect(rowTexts()).toHaveLength(5);
+    const toggle = screen.getByRole("button", { name: "Show all 8 weights" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(rowTexts()).toHaveLength(8);
+    expect(screen.getByRole("button", { name: "Show fewer" })).toHaveAttribute("aria-expanded", "true");
   });
 });

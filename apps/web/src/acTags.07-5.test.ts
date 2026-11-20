@@ -10,7 +10,7 @@ const tests = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.
  * This scan reads only `apps/web/src`, so the core and API tags of Phase B are checked by review. AC5 is Phase B's
  * gate (the owner's reload and Spec 21.1's S8), not a test. Only numbers written as "07.5 ACn" (or "07.5 ACn, ACm") count.
  */
-const WANTED = [1, 2, 3, 4, 31, 35, 36, 37, 38];
+const WANTED = [1, 2, 3, 4, 31, 35, 36, 37, 38, 39];
 
 describe("07.5 AC34 — every web behavioral criterion has a committed, tagged test", () => {
   it("each wanted AC appears in a describe title as '07.5 ACn'", () => {

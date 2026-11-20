@@ -1,12 +1,15 @@
 import { useEffect, useId } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { PersonalRecord, UnitPreference } from "@sin/core";
+import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { classifyWorkoutError } from "../workouts/errors";
 import { reportUnexpected } from "../workouts/reportUnexpected";
 import { sortRecords } from "./labels";
 import styles from "./PersonalRecordsBlock.module.css";
 import { RecordRows } from "./RecordRows";
+import { recordsToShow, REPS_AT_WEIGHT_SHOWN } from "./repsAtWeightRows";
+import { useCollapseToggle } from "./useCollapseToggle";
 
 /**
  * The "Personal records" section for any records query (Spec 08.0 §6.5; extracted for 08.1 D13).
@@ -21,6 +24,8 @@ export function RecordsSection({
   unitPreference: UnitPreference;
 }) {
   const headingId = useId();
+  // 07.5 AC39: local and never stored, like the ledger's (17.6 AC11).
+  const { expanded, toggle, buttonRef } = useCollapseToggle();
 
   useEffect(() => {
     if (query.error) reportUnexpected("load-records", query.error);
@@ -30,6 +35,7 @@ export function RecordsSection({
   // A failed refresh keeps the records already shown; the notice sits beside them.
   const records = query.data ?? [];
   if (!query.isError && records.length === 0) return null;
+  const { shown, weights } = recordsToShow(sortRecords(records), expanded);
 
   return (
     <section className={styles.block} aria-labelledby={headingId}>
@@ -46,7 +52,12 @@ export function RecordsSection({
           Couldn't load records
         </InlineNotice>
       ) : null}
-      {records.length > 0 ? <RecordRows records={sortRecords(records)} unitPreference={unitPreference} /> : null}
+      {shown.length > 0 ? <RecordRows records={shown} unitPreference={unitPreference} /> : null}
+      {weights > REPS_AT_WEIGHT_SHOWN ? (
+        <Button ref={buttonRef} variant="secondary" aria-expanded={expanded} onClick={toggle}>
+          {expanded ? "Show fewer" : `Show all ${weights} weights`}
+        </Button>
+      ) : null}
     </section>
   );
 }
