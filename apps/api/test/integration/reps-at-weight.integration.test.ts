@@ -160,6 +160,19 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.5 Phase B — most reps at a w
     });
   });
 
+  describe("07.5 AC7 — a live workout's sets produce nothing", () => {
+    it("12.5 × 9 in a live workout writes no row, even on a recompute, until the workout is finished (minor 683)", async () => {
+      const user = await insertUser(db);
+      const raise = await insertExercise(db);
+      const startedAt = day(1);
+      const { workoutId } = await logWorkout(db, user, { startedAt, finish: "none", exercises: [lift(raise, [{ reps: 9, weight: 12.5 }])] });
+      await rebuild(user, [raise]);
+      expect(atWeight(await recordsOf(db, user))).toEqual([]);
+      await repo().updateWorkout(user, workoutId, { endedAt: new Date(startedAt.getTime() + 3_600_000).toISOString() });
+      expect(atWeight(await recordsOf(db, user)).map((r) => [r.at_weight_kg, r.value, r.previous_value, r.workout_id])).toEqual([["12.500", "9.000", null, workoutId]]);
+    });
+  });
+
   describe("07.5 AC22 — forks share rows", () => {
     it("the origin's 7 and the fork's 9 at 12.5 kg are one row on the root, labeled by the fork", async () => {
       const user = await insertUser(db);
