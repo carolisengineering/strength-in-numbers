@@ -6,7 +6,7 @@ const BENCH = "10000000-0000-4000-8000-0000000000b1";
 const PULL = "10000000-0000-4000-8000-0000000000b2";
 const ODD = "10000000-0000-4000-8000-0000000000b3";
 
-describe("07.5 AC39, 08.1 AC6 — each headline is dated by its own record (owner, 2026-11-20)", () => {
+describe("07.5 AC39, 08.1 AC6, AC11 — each headline is dated by its own record (owner, 2026-11-20)", () => {
   it("a lift whose newest record is a reps row keeps the heaviest headline, dated when that weight was set", () => {
     const root = "10000000-0000-4000-8000-0000000000e3";
     const heaviest = makePersonalRecord({ exerciseId: root, exerciseName: "Lateral Raise", recordType: "heaviest_weight", unit: "kg", value: 15, achievedAt: "2026-10-01T10:00:00.000Z", localDate: "2026-10-01" });
