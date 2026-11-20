@@ -204,23 +204,34 @@ export async function recomputeRecordsForRoots(
   for (const [rootId, group] of byRoot) {
     const bySetId = new Map(group.map((r) => [r.set_id, r]));
     const sets: RecordSet[] = group.map(toRecordSet);
-    // Spec 07.5 D8: every row of a root in one multi-row INSERT (a root can hold dozens of reps-at-weight rows);
-    // none when the root has no record, since an empty VALUES list is a syntax error.
+    // Spec 07.5 D8: every row of a root in one INSERT (a root can hold dozens of reps-at-weight rows), its columns
+    // bound as twelve arrays and spread by `unnest`, so the statement has twelve parameters however many rows it
+    // writes (AC29); none when the root has no record.
     const computed = computeRecords(sets).map((c) => {
       const src = bySetId.get(c.setId)!;
       return { c, src, localDate: src.local_date.toISOString().slice(0, 10) };
     });
-    const recordRows = computed.map(({ c, src, localDate }) =>
-      Prisma.sql`(${uuidv7()}::uuid, ${userId}::uuid, ${rootId}::uuid, ${c.recordType},
-                ${milliToDecimalString(c.valueMilli)}::numeric, ${c.unit}, ${decimalOrNull(c.previousValueMilli)}::numeric,
-                ${c.setId}::uuid, ${c.workoutId}::uuid, ${src.started_at}, ${localDate}::date, ${decimalOrNull(c.atWeightKgMilli)}::numeric)`,
-    );
-    if (recordRows.length > 0) {
+    if (computed.length > 0) {
+      // Every column travels as text[] and is cast per column: Prisma's binding of a numeric[] parameter is refused.
       await client.$executeRaw`
         INSERT INTO "personal_record"
           ("id", "user_id", "exercise_id", "record_type", "value", "unit", "previous_value",
            "source_set_entry_id", "workout_id", "achieved_at", "local_date", "at_weight_kg")
-        VALUES ${Prisma.join(recordRows)}
+        SELECT r.id::uuid, ${userId}::uuid, ${rootId}::uuid, r.record_type, r.value::numeric, r.unit,
+               r.previous_value::numeric, r.set_id::uuid, r.workout_id::uuid, r.achieved_at::timestamptz,
+               r.local_date::date, r.at_weight_kg::numeric
+        FROM unnest(
+          ${computed.map(() => uuidv7())}::text[],
+          ${computed.map(({ c }) => c.recordType)}::text[],
+          ${computed.map(({ c }) => milliToDecimalString(c.valueMilli))}::text[],
+          ${computed.map(({ c }) => c.unit)}::text[],
+          ${computed.map(({ c }) => decimalOrNull(c.previousValueMilli))}::text[],
+          ${computed.map(({ c }) => c.setId)}::text[],
+          ${computed.map(({ c }) => c.workoutId)}::text[],
+          ${computed.map(({ src }) => src.started_at.toISOString())}::text[],
+          ${computed.map(({ localDate }) => localDate)}::text[],
+          ${computed.map(({ c }) => decimalOrNull(c.atWeightKgMilli))}::text[]
+        ) AS r(id, record_type, value, unit, previous_value, set_id, workout_id, achieved_at, local_date, at_weight_kg)
       `;
     }
     for (const { c, src, localDate } of computed) {

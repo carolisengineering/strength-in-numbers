@@ -16,7 +16,7 @@ Categories:
 
 ## Summary
 
-242 statements: 112 user-filtered, 54 anchored, 30 shared on purpose, 14 cross-user maintenance, 32 fragment. **1 need review.**
+241 statements: 112 user-filtered, 54 anchored, 30 shared on purpose, 14 cross-user maintenance, 31 fragment.
 
 ### Statements that rely on an earlier check (anchored)
 
@@ -249,8 +249,7 @@ Categories:
 | `src/repositories/personal-record.prisma.ts#resolveVisibleRoot#1` | query | user-filtered | ok | — | `47716a2b7a8c` | Reads exercise |
 | `src/repositories/personal-record.prisma.ts#loadLineageSets#1` | query | user-filtered | ok | — | `214af96bd41f` | Reads set_entry, workout_exercise, workout, exercise, LATERAL |
 | `src/repositories/personal-record.prisma.ts#recomputeRecordsForRoots#1` | query | user-filtered | ok | — | `01a436fa4821` | Deletes from personal_record |
-| `src/repositories/personal-record.prisma.ts#recomputeRecordsForRoots#2` | fragment | fragment | ok | callers: src/repositories/personal-record.prisma.ts#recomputeRecordsForRoots#3 | `4a76dd81b24f` | One personal_record row for the multi-row INSERT; binds the recompute's own userId |
-| `src/repositories/personal-record.prisma.ts#recomputeRecordsForRoots#3` | query | user-filtered | ok | — | `00d431ece21d` | Inserts a root's personal_record rows in one statement (Spec 07.5 D8); each row binds the acting userId |
+| `src/repositories/personal-record.prisma.ts#recomputeRecordsForRoots#2` | query | user-filtered | ok | — | `ecf30142d07c` | Inserts a root's personal_record rows in one statement from unnest arrays (Spec 07.5 D8, AC29); binds the acting userId |
 | `src/repositories/personal-record.prisma.ts#list#1` | query | user-filtered | ok | — | `f601bb37b8ba` | Reads personal_record, set_entry, workout_exercise |
 
 ## src/repositories/planned-sets.ts
