@@ -10,10 +10,10 @@ import {
   TolerantUpdatedWorkoutSchema,
 } from "./tolerantRecords";
 
-/** A record of a type this build doesn't know yet (Spec 07.5 Phase B's), otherwise well formed. */
+/** A record of a type this build doesn't know (a made-up future one; Phase B's `max_reps_at_weight` is known now), otherwise well formed. */
 function unknownTypeRecord(workoutId?: string): Record<string, unknown> {
   const known = makePersonalRecord(workoutId === undefined ? {} : { workoutId });
-  return { ...known, recordType: "max_reps_at_weight", atWeightKg: 12.5, unit: "reps", value: 14, previousValue: 12 };
+  return { ...known, recordType: "fastest_lap_at_distance", atDistanceM: 400, unit: "s", value: 64, previousValue: 66 };
 }
 
 function updatedWorkoutBody(newRecords: unknown[]) {

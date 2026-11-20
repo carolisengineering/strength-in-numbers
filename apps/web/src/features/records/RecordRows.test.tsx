@@ -22,6 +22,8 @@ const TABLE: [RecordType, string, number, number, UnitPreference, string, string
   ["max_distance", "m", 1200, 40, "lb", "1,200 m", "40 m"],
   ["max_duration", "s", 90, 45, "kg", "1 min 30 s", "45 s"],
   ["max_duration", "s", 90, 45, "lb", "1 min 30 s", "45 s"],
+  ["max_reps_at_weight", "reps", 14, 12, "kg", "14 reps", "12 reps"],
+  ["max_reps_at_weight", "reps", 14, 12, "lb", "14 reps", "12 reps"],
 ];
 
 describe("17.11 AC7 — recordParts gives a record's label, value and previous value", () => {

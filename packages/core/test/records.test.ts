@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   computeRecords,
   estimate1rm,
+  progressPoints,
+  REPS_AT_WEIGHT_MIN_REPS,
   milliToDecimalString,
   parseDecimalMilli,
   parseWeightKgMilli,
@@ -254,7 +256,7 @@ describe("05.3 AC23 — calories records", () => {
     const c = cal("w3", 25);
     const records = computeRecords([a, b, c]);
     expect(records).toEqual([
-      { recordType: "max_calories", valueMilli: 25_000, unit: "cal", setId: b.setId, workoutId: "w2", previousValueMilli: 20_000 },
+      { recordType: "max_calories", valueMilli: 25_000, unit: "cal", setId: b.setId, workoutId: "w2", previousValueMilli: 20_000, atWeightKgMilli: null },
     ]);
   });
 });
@@ -297,5 +299,115 @@ describe("05.3 AC35 — parseDecimalMilli is parseWeightKgMilli under a neutral 
     expect(parseDecimalMilli).toBe(parseWeightKgMilli);
     expect(parseDecimalMilli("30.480")).toBe(30_480);
     expect(parseDecimalMilli("999999.999")).toBe(999_999_999);
+  });
+});
+
+// ---- Spec 07.5 Phase B: most reps at a weight ----
+const atWeight = (sets: RecordSet[]) => computeRecords(sets).filter((r) => r.recordType === "max_reps_at_weight");
+
+describe("07.5 AC6 — one record per weight at the floor", () => {
+  it("12.5×7 and 15×6 in one workout give two rows, value in milli-reps, unit reps", () => {
+    const a = set({ workoutId: "W1", weightKgMilli: 12_500, reps: 7 });
+    const b = set({ workoutId: "W1", weightKgMilli: 15_000, reps: 6 });
+    expect(REPS_AT_WEIGHT_MIN_REPS).toBe(6);
+    expect(atWeight([a, b])).toEqual([
+      { recordType: "max_reps_at_weight", valueMilli: 6_000, unit: "reps", setId: b.setId, workoutId: "W1", previousValueMilli: null, atWeightKgMilli: 15_000 },
+      { recordType: "max_reps_at_weight", valueMilli: 7_000, unit: "reps", setId: a.setId, workoutId: "W1", previousValueMilli: null, atWeightKgMilli: 12_500 },
+    ]);
+  });
+  it("5 reps is below the floor", () => {
+    expect(atWeight([set({ workoutId: "W1", weightKgMilli: 12_500, reps: 5 })])).toEqual([]);
+  });
+});
+
+describe("07.5 AC7 — eligibility", () => {
+  it("only working weight_reps / weighted_bodyweight sets with a weight above 0 and whole reps count", () => {
+    const sets = [
+      set({ workoutId: "W1", modality: "bodyweight_reps", weightKgMilli: null, reps: 10 }),
+      set({ workoutId: "W1", modality: "weight_distance", weightKgMilli: 24_000, reps: null, distanceMMilli: 40_000 }),
+      set({ workoutId: "W1", modality: "weight_duration", weightKgMilli: 24_000, reps: null, durationS: 60 }),
+      set({ workoutId: "W1", weightKgMilli: null, reps: 10 }),
+      set({ workoutId: "W1", weightKgMilli: 0, reps: 10 }),
+      set({ workoutId: "W1", weightKgMilli: 12_500, reps: 7.5 }),
+    ];
+    expect(atWeight(sets)).toEqual([]);
+    expect(atWeight([set({ workoutId: "W1", modality: "weighted_bodyweight", weightKgMilli: 10_000, reps: 8 })])).toHaveLength(1);
+  });
+});
+
+describe("07.5 AC8 — the baseline is every earlier set at that weight", () => {
+  it("5 then 7 at 12.5 kg: 7 reps, previous 5", () => {
+    const rows = atWeight([set({ workoutId: "W1", weightKgMilli: 12_500, reps: 5 }), set({ workoutId: "W2", weightKgMilli: 12_500, reps: 7 })]);
+    expect(rows.map((r) => [r.valueMilli, r.previousValueMilli, r.workoutId])).toEqual([[7_000, 5_000, "W2"]]);
+  });
+});
+
+describe("07.5 AC9 — strictly more, earliest wins", () => {
+  it("a tie keeps the earlier workout, and the first of two equal sets in it", () => {
+    const first = set({ workoutId: "W1", weightKgMilli: 12_500, reps: 8 });
+    const rows = atWeight([first, set({ workoutId: "W1", weightKgMilli: 12_500, reps: 8 }), set({ workoutId: "W2", weightKgMilli: 12_500, reps: 8 })]);
+    expect(rows.map((r) => [r.setId, r.previousValueMilli])).toEqual([[first.setId, null]]);
+  });
+  it("the previous value is the earlier workouts' best, never the same workout's smaller set", () => {
+    const best = set({ workoutId: "W2", weightKgMilli: 12_500, reps: 9 });
+    const rows = atWeight([set({ workoutId: "W1", weightKgMilli: 12_500, reps: 8 }), set({ workoutId: "W2", weightKgMilli: 12_500, reps: 6 }), best]);
+    expect(rows.map((r) => [r.setId, r.valueMilli, r.previousValueMilli])).toEqual([[best.setId, 9_000, 8_000]]);
+  });
+});
+
+describe("07.5 AC10 — a higher earlier best is kept", () => {
+  it("15, then 12, then 13 at one weight: W1 holds it, with no previous", () => {
+    const rows = atWeight([
+      set({ workoutId: "W1", weightKgMilli: 12_500, reps: 15 }),
+      set({ workoutId: "W2", weightKgMilli: 12_500, reps: 12 }),
+      set({ workoutId: "W3", weightKgMilli: 12_500, reps: 13 }),
+    ]);
+    expect(rows.map((r) => [r.workoutId, r.valueMilli, r.previousValueMilli])).toEqual([["W1", 15_000, null]]);
+  });
+});
+
+describe("07.5 AC11 — exact canonical weight", () => {
+  it("equal milli-kg is one key; 25 lb (11.340) and 11.5 kg are two", () => {
+    expect(atWeight([set({ workoutId: "W1", weightKgMilli: 12_500, reps: 6 }), set({ workoutId: "W2", weightKgMilli: 12_500, reps: 7 })])).toHaveLength(1);
+    expect(atWeight([set({ workoutId: "W1", weightKgMilli: 11_340, reps: 6 }), set({ workoutId: "W1", weightKgMilli: 11_500, reps: 6 })]).map((r) => r.atWeightKgMilli)).toEqual([11_500, 11_340]);
+  });
+  it("the same lb value always lands on the same key (70 lb is 31.751 kg twice)", () => {
+    const rows = atWeight([set({ workoutId: "W1", weightKgMilli: parseWeightKgMilli("31.751"), reps: 8 }), set({ workoutId: "W2", weightKgMilli: parseWeightKgMilli("31.751"), reps: 9 })]);
+    expect(rows.map((r) => [r.atWeightKgMilli, r.valueMilli, r.previousValueMilli])).toEqual([[31_751, 9_000, 8_000]]);
+  });
+});
+
+describe("07.5 AC12 — order", () => {
+  it("the type is last in RECORD_TYPE_VALUES; the seven old types come first, then the weights heaviest first", () => {
+    expect(RECORD_TYPE_VALUES.at(-1)).toBe("max_reps_at_weight");
+    const out = computeRecords([
+      set({ workoutId: "W1", weightKgMilli: 10_000, reps: 8 }),
+      set({ workoutId: "W1", weightKgMilli: 15_000, reps: 6 }),
+      set({ workoutId: "W1", weightKgMilli: 12_500, reps: 7 }),
+    ]);
+    expect(out.map((r) => [r.recordType, r.atWeightKgMilli])).toEqual([
+      ["heaviest_weight", null],
+      ["best_est_1rm", null],
+      ["best_set_volume", null],
+      ["max_reps_at_weight", 15_000],
+      ["max_reps_at_weight", 12_500],
+      ["max_reps_at_weight", 10_000],
+    ]);
+  });
+});
+
+describe("07.5 AC30 — setRecordValueMilli and progressPoints ignore the new type", () => {
+  it("setRecordValueMilli never gives the new type a value (it would fall through to e1RM)", () => {
+    expect(setRecordValueMilli("max_reps_at_weight", set({ workoutId: "W1", weightKgMilli: 12_500, reps: 7 }))).toBeNull();
+  });
+  it("progressPoints of a fixed history is unchanged", () => {
+    const pts = progressPoints([
+      set({ setId: "p1", workoutId: "W1", weightKgMilli: 12_500, reps: 14 }),
+      set({ setId: "p2", workoutId: "W2", weightKgMilli: 12_500, reps: 7 }),
+    ]);
+    expect(pts).toEqual([
+      { workoutId: "W1", topSetWeightMilli: 12_500, bestE1rmMilli: null, totalVolumeMilli: 175_000, maxRepsMilli: null, maxCaloriesMilli: null, maxDistanceMilli: null, maxDurationMilli: null },
+      { workoutId: "W2", topSetWeightMilli: 12_500, bestE1rmMilli: 15_417, totalVolumeMilli: 87_500, maxRepsMilli: null, maxCaloriesMilli: null, maxDistanceMilli: null, maxDurationMilli: null },
+    ]);
   });
 });

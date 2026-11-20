@@ -53,7 +53,7 @@ export const SET_TYPE_VALUES = Object.freeze([
 export type SetType = (typeof SET_TYPE_VALUES)[number];
 
 /** `personal_record.record_type` — the four v1 PR kinds (DESIGN §4.5, Spec 07.0 D2),
- * then the Spec 05.3 D7 kinds for the new types. */
+ * then the Spec 05.3 D7 kinds for the new types, then Spec 07.5's most reps at a weight (one row per weight, last). */
 export const RECORD_TYPE_VALUES = Object.freeze([
   "heaviest_weight",
   "best_est_1rm",
@@ -62,6 +62,7 @@ export const RECORD_TYPE_VALUES = Object.freeze([
   "max_calories",
   "max_distance",
   "max_duration",
+  "max_reps_at_weight",
 ] as const);
 export type RecordType = (typeof RECORD_TYPE_VALUES)[number];
 
@@ -80,4 +81,5 @@ export const RECORD_UNIT_BY_TYPE: Readonly<Record<RecordType, RecordUnit>> = Obj
   max_calories: "cal",
   max_distance: "m",
   max_duration: "s",
+  max_reps_at_weight: "reps",
 });

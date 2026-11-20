@@ -17,6 +17,9 @@ export function recordLabel(type: RecordType): string {
       return "Longest distance";
     case "max_duration":
       return "Longest hold";
+    case "max_reps_at_weight":
+      // Spec 07.5 R3: the type alone, for places with no record in hand; a row names its weight (`recordRowLabel`).
+      return "Most reps at a weight";
     default: {
       const unreachable: never = type;
       throw new Error(`Unhandled record type: ${String(unreachable)}`);
