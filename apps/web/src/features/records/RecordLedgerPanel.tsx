@@ -13,6 +13,8 @@ import styles from "./RecordLedgerPanel.module.css";
  */
 export function RecordLedgerPanel({ heading, lifts }: { heading: string; lifts: readonly LedgerLift[] }) {
   const headingId = useId();
+  // Minor 689: Show all names the list it opens.
+  const listId = useId();
   // AC11: local and never stored; a data refresh never resets it.
   const { expanded, toggle, buttonRef } = useCollapseToggle();
   const shown = lifts.slice(0, collapsedCount(lifts.length, expanded));
@@ -21,7 +23,7 @@ export function RecordLedgerPanel({ heading, lifts }: { heading: string; lifts: 
       <h2 id={headingId} className={styles.heading}>
         {heading}
       </h2>
-      <ul className={styles.lifts}>
+      <ul id={listId} className={styles.lifts}>
         {shown.map((lift) => (
           <li key={lift.key} className={styles.lift}>
             <h3 className={styles.name}>{lift.name}</h3>
@@ -51,7 +53,7 @@ export function RecordLedgerPanel({ heading, lifts }: { heading: string; lifts: 
         ))}
       </ul>
       {lifts.length > LEDGER_COLLAPSE_OVER ? (
-        <Button ref={buttonRef} variant="secondary" aria-expanded={expanded} onClick={toggle}>
+        <Button ref={buttonRef} variant="secondary" aria-expanded={expanded} aria-controls={listId} onClick={toggle}>
           {expanded ? "Show fewer" : `Show all ${lifts.length} lifts`}
         </Button>
       ) : null}

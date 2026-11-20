@@ -15,7 +15,8 @@ export function recordsToShow(records: readonly PersonalRecord[], expanded: bool
   if (expanded || perWeight.length <= REPS_AT_WEIGHT_SHOWN) return { shown: [...records], weights: perWeight.length };
   const newest = new Set(
     [...perWeight]
-      .sort((a, b) => b.achievedAt.localeCompare(a.achievedAt) || (b.atWeightKg ?? 0) - (a.atWeightKg ?? 0))
+      // By time, not text: an offset timestamp sorts wrong as a string (minor 686).
+      .sort((a, b) => Date.parse(b.achievedAt) - Date.parse(a.achievedAt) || (b.atWeightKg ?? 0) - (a.atWeightKg ?? 0))
       .slice(0, REPS_AT_WEIGHT_SHOWN),
   );
   return { shown: records.filter((r) => r.recordType !== "max_reps_at_weight" || newest.has(r)), weights: perWeight.length };

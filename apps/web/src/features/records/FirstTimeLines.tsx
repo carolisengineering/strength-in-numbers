@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import { Button } from "../../ui/Button";
 import { collapsedCount, EST_1RM_EXPLAINED, LEDGER_COLLAPSE_OVER, type FirstTimeLine } from "./recordLedger";
 import { useCollapseToggle } from "./useCollapseToggle";
@@ -11,16 +13,18 @@ import styles from "./FirstTimeLines.module.css";
  */
 export function FirstTimeLines({ lines, explain }: { lines: readonly FirstTimeLine[]; explain: boolean }) {
   const { expanded, toggle, buttonRef } = useCollapseToggle();
+  // Minor 689: Show all names the list it opens.
+  const listId = useId();
   const shown = lines.slice(0, collapsedCount(lines.length, expanded));
   return (
     <div className={styles.firsts}>
-      <ul className={styles.lines} data-first-times="">
+      <ul id={listId} className={styles.lines} data-first-times="">
         {shown.map((line) => (
           <li key={line.key}>{line.text}</li>
         ))}
       </ul>
       {lines.length > LEDGER_COLLAPSE_OVER ? (
-        <Button ref={buttonRef} variant="secondary" aria-expanded={expanded} onClick={toggle}>
+        <Button ref={buttonRef} variant="secondary" aria-expanded={expanded} aria-controls={listId} onClick={toggle}>
           {expanded ? "Show fewer" : `Show all ${lines.length} first times`}
         </Button>
       ) : null}

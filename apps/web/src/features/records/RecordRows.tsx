@@ -14,13 +14,16 @@ export function RecordRows({
   records,
   unitPreference,
   labels,
+  id,
 }: {
   records: readonly PersonalRecord[];
   unitPreference: UnitPreference;
   labels?: ReadonlyMap<PersonalRecord, string>;
+  /** The list's id, for a Show all button's `aria-controls` (minor 689). */
+  id?: string;
 }) {
   return (
-    <ul className={styles.list}>
+    <ul id={id} className={styles.list}>
       {records.map((record) => {
         const parts = recordParts(record, unitPreference, labels?.get(record));
         return (

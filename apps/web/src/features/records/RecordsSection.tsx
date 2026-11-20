@@ -25,6 +25,8 @@ export function RecordsSection({
   unitPreference: UnitPreference;
 }) {
   const headingId = useId();
+  // Minor 689: Show all names the list it opens.
+  const listId = useId();
   // 07.5 AC39: local and never stored, like the ledger's (17.6 AC11).
   const { expanded, toggle, buttonRef } = useCollapseToggle();
 
@@ -56,9 +58,9 @@ export function RecordsSection({
           Couldn't load records
         </InlineNotice>
       ) : null}
-      {shown.length > 0 ? <RecordRows records={shown} unitPreference={unitPreference} labels={labels} /> : null}
+      {shown.length > 0 ? <RecordRows id={listId} records={shown} unitPreference={unitPreference} labels={labels} /> : null}
       {weights > REPS_AT_WEIGHT_SHOWN ? (
-        <Button ref={buttonRef} variant="secondary" aria-expanded={expanded} onClick={toggle}>
+        <Button ref={buttonRef} variant="secondary" aria-expanded={expanded} aria-controls={listId} onClick={toggle}>
           {expanded ? "Show fewer" : `Show all ${weights} weights`}
         </Button>
       ) : null}
