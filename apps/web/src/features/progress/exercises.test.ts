@@ -6,8 +6,8 @@ const BENCH = "10000000-0000-4000-8000-0000000000b1";
 const PULL = "10000000-0000-4000-8000-0000000000b2";
 const ODD = "10000000-0000-4000-8000-0000000000b3";
 
-describe("07.5 AC39 — the Records view is unchanged", () => {
-  it("a lift whose newest record is a reps row keeps the heaviest headline, dated by the newest record", () => {
+describe("07.5 AC39, 08.1 AC6 — each headline is dated by its own record (owner, 2026-11-20)", () => {
+  it("a lift whose newest record is a reps row keeps the heaviest headline, dated when that weight was set", () => {
     const root = "10000000-0000-4000-8000-0000000000e3";
     const heaviest = makePersonalRecord({ exerciseId: root, exerciseName: "Lateral Raise", recordType: "heaviest_weight", unit: "kg", value: 15, achievedAt: "2026-10-01T10:00:00.000Z", localDate: "2026-10-01" });
     const repsRow = makePersonalRecord({
@@ -21,7 +21,20 @@ describe("07.5 AC39 — the Records view is unchanged", () => {
       achievedAt: "2026-10-06T10:00:00.000Z",
       localDate: "2026-10-06",
     });
-    expect(headlineText(groupByExercise([heaviest, repsRow])[0]!, "kg")).toBe("Heaviest weight 15 kg · Tue, Oct 6");
+    expect(headlineText(groupByExercise([heaviest, repsRow])[0]!, "kg")).toBe("Heaviest weight 15 kg · Thu, Oct 1");
+  });
+
+  it("the list still orders by each lift's newest record, of any type (08.1 D6)", () => {
+    const a = "10000000-0000-4000-8000-0000000000e4";
+    const b = "10000000-0000-4000-8000-0000000000e5";
+    const old = (exerciseId: string, name: string, day: string) =>
+      makePersonalRecord({ exerciseId, exerciseName: name, recordType: "heaviest_weight", unit: "kg", value: 50, achievedAt: `${day}T10:00:00.000Z`, localDate: day });
+    const recentReps = makePersonalRecord({ exerciseId: a, exerciseName: "Curl", recordType: "max_reps_at_weight", unit: "reps", value: 9, previousValue: 8, atWeightKg: 20, achievedAt: "2026-10-09T10:00:00.000Z", localDate: "2026-10-09" });
+    const entries = groupByExercise([old(a, "Curl", "2026-09-01"), recentReps, old(b, "Row", "2026-10-05")]);
+    expect(entries.map((e) => [e.name, headlineText(e, "kg")])).toEqual([
+      ["Curl", "Heaviest weight 50 kg · Tue, Sep 1"],
+      ["Row", "Heaviest weight 50 kg · Mon, Oct 5"],
+    ]);
   });
 });
 
@@ -58,7 +71,7 @@ describe("08.1 AC6 — grouping records by exercise", () => {
     expect(entries.map((e) => e.name)).toEqual(["Arnold press", "Zercher"]);
   });
 
-  it("headline text in the lifter's unit, with the newest record's date", () => {
+  it("headline text in the lifter's unit, with its own date; no headline ⇒ the newest record's date", () => {
     const [bench, pull, odd] = groupByExercise(records);
     expect(headlineText(bench!, "kg")).toBe("Est. 1-rep max 122.5 kg · Tue, Oct 6");
     expect(headlineText(bench!, "lb")).toBe("Est. 1-rep max 270 lb · Tue, Oct 6");
