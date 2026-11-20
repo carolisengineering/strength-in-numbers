@@ -85,7 +85,6 @@ export function visibleRecords(records: readonly PersonalRecord[]): PersonalReco
   return records.filter((r) => r.recordType !== "best_set_volume" && !(r.recordType === "max_reps_at_weight" && r.previousValue === null));
 }
 
-
 /** AC6 (owner decision 2026-11-14, minor 476): a lift counts only when one of its rows rose. */
 const rose = (lift: LedgerLift): boolean => lift.rows.some((r) => r.gainText !== null);
 
