@@ -16,6 +16,8 @@ export interface PersonalRecordRecord {
   achievedAt: Date;
   /** YYYY-MM-DD. */
   localDate: string;
+  /** Spec 07.5: the canonical-kg weight of a `max_reps_at_weight` record; null for every other type. */
+  atWeightKg: number | null;
 }
 
 export interface PersonalRecordFilter {

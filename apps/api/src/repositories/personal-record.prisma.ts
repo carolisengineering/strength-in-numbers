@@ -98,6 +98,7 @@ export interface LineageSetRow {
  * `numeric::float8` gives on the read path — the finish response and the GET
  * agree (§6.7). */
 const milliToNumber = (milli: number): number => Number(milliToDecimalString(milli));
+const decimalOrNull = (milli: number | null): string | null => (milli === null ? null : milliToDecimalString(milli));
 
 export interface LineageRange {
   from?: string | undefined;
@@ -203,18 +204,26 @@ export async function recomputeRecordsForRoots(
   for (const [rootId, group] of byRoot) {
     const bySetId = new Map(group.map((r) => [r.set_id, r]));
     const sets: RecordSet[] = group.map(toRecordSet);
-    for (const c of computeRecords(sets)) {
+    // Spec 07.5 D8: every row of a root in one multi-row INSERT (a root can hold dozens of reps-at-weight rows);
+    // none when the root has no record, since an empty VALUES list is a syntax error.
+    const computed = computeRecords(sets).map((c) => {
       const src = bySetId.get(c.setId)!;
-      const localDate = src.local_date.toISOString().slice(0, 10);
-      const previous = c.previousValueMilli === null ? null : milliToDecimalString(c.previousValueMilli);
+      return { c, src, localDate: src.local_date.toISOString().slice(0, 10) };
+    });
+    const recordRows = computed.map(({ c, src, localDate }) =>
+      Prisma.sql`(${uuidv7()}::uuid, ${userId}::uuid, ${rootId}::uuid, ${c.recordType},
+                ${milliToDecimalString(c.valueMilli)}::numeric, ${c.unit}, ${decimalOrNull(c.previousValueMilli)}::numeric,
+                ${c.setId}::uuid, ${c.workoutId}::uuid, ${src.started_at}, ${localDate}::date, ${decimalOrNull(c.atWeightKgMilli)}::numeric)`,
+    );
+    if (recordRows.length > 0) {
       await client.$executeRaw`
         INSERT INTO "personal_record"
           ("id", "user_id", "exercise_id", "record_type", "value", "unit", "previous_value",
-           "source_set_entry_id", "workout_id", "achieved_at", "local_date")
-        VALUES (${uuidv7()}::uuid, ${userId}::uuid, ${rootId}::uuid, ${c.recordType},
-                ${milliToDecimalString(c.valueMilli)}::numeric, ${c.unit}, ${previous}::numeric,
-                ${c.setId}::uuid, ${c.workoutId}::uuid, ${src.started_at}, ${localDate}::date)
+           "source_set_entry_id", "workout_id", "achieved_at", "local_date", "at_weight_kg")
+        VALUES ${Prisma.join(recordRows)}
       `;
+    }
+    for (const { c, src, localDate } of computed) {
       written.push({
         exerciseId: rootId,
         sourceExerciseId: src.source_exercise_id,
@@ -227,6 +236,7 @@ export async function recomputeRecordsForRoots(
         workoutId: c.workoutId,
         achievedAt: src.started_at,
         localDate,
+        atWeightKg: c.atWeightKgMilli === null ? null : milliToNumber(c.atWeightKgMilli),
       });
     }
   }
@@ -245,6 +255,7 @@ interface ReadRow {
   workout_id: string;
   achieved_at: Date;
   local_date: Date;
+  at_weight_kg: number | null;
 }
 
 /** Spec 07.0 §6.7 — the read half. Always `WHERE user_id = actingUserId`. */
@@ -267,7 +278,7 @@ export function createPersonalRecordRepository(db: UserScopedDb | PrismaClient):
                we.exercise_name_snapshot AS exercise_name, pr.record_type,
                pr.value::float8 AS value, pr.unit, pr.previous_value::float8 AS previous_value,
                pr.source_set_entry_id::text AS source_set_id, pr.workout_id::text AS workout_id,
-               pr.achieved_at, pr.local_date
+               pr.achieved_at, pr.local_date, pr.at_weight_kg::float8 AS at_weight_kg
         FROM "personal_record" pr
         JOIN "set_entry" se        ON se.id = pr.source_set_entry_id
         JOIN "workout_exercise" we ON we.id = se.workout_exercise_id
@@ -288,6 +299,7 @@ export function createPersonalRecordRepository(db: UserScopedDb | PrismaClient):
         workoutId: r.workout_id,
         achievedAt: r.achieved_at,
         localDate: r.local_date.toISOString().slice(0, 10),
+        atWeightKg: r.at_weight_kg,
       }));
     },
     async getProgressSeries(actingUserId: string, exerciseId: string, range: ProgressRange): Promise<ProgressSeriesRecord> {

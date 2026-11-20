@@ -19,6 +19,7 @@ function record(userId: string) {
     workoutId: uuidv7(),
     achievedAt: new Date("2026-10-01T10:00:00.000Z"),
     localDate: "2026-10-01",
+    atWeightKg: null,
   };
 }
 

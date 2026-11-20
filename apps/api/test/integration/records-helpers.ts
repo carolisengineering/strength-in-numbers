@@ -99,13 +99,15 @@ export interface RecordRow {
   previous_value: string | null;
   source_set_entry_id: string;
   workout_id: string;
+  /** Spec 07.5: the weight of a `max_reps_at_weight` row, `numeric::text`; null for the other types. */
+  at_weight_kg: string | null;
 }
 
 export async function recordsOf(db: IntegrationDb, userId: string): Promise<RecordRow[]> {
   return db.prisma.$queryRawUnsafe<RecordRow[]>(
     `SELECT exercise_id::text, record_type, value::text, unit, previous_value::text,
-            source_set_entry_id::text, workout_id::text
-     FROM "personal_record" WHERE user_id = $1::uuid ORDER BY exercise_id, record_type`,
+            source_set_entry_id::text, workout_id::text, at_weight_kg::text
+     FROM "personal_record" WHERE user_id = $1::uuid ORDER BY exercise_id, record_type, at_weight_kg DESC NULLS LAST`,
     userId,
   );
 }
