@@ -298,6 +298,8 @@ let cgN = 0;
 
 function makeSet(weId, setNumber, ex, s, completedMs) {
   const w = s.weight ?? null;
+  // Spec 07.5 AC40: a set may be logged in lb (`unit: "lb"`); its canonical kg is rounded to the gram, as the API stores it.
+  const lb = s.unit === "lb";
   return {
     id: uuid("d0000000", ++setN),
     workoutExerciseId: weId,
@@ -306,8 +308,8 @@ function makeSet(weId, setNumber, ex, s, completedMs) {
     setType: s.type ?? "working",
     reps: s.reps ?? null,
     weight: w,
-    weightUnit: w === null ? null : "kg",
-    weightKg: w,
+    weightUnit: w === null ? null : lb ? "lb" : "kg",
+    weightKg: w === null ? null : lb ? Math.round(w * 453.59237) / 1000 : w,
     distance: s.distance ?? null,
     distanceUnit: s.distance != null ? "m" : null,
     distanceM: s.distance ?? null,
@@ -608,18 +610,65 @@ const e1rmOf = (w, i) => {
   const set = w.exercises[i].sets[0];
   return Math.round(set.weightKg * (1 + set.reps / 30) * 100) / 100;
 };
+// Spec 07.5 AC40: summaries for most reps at a weight, served like the two above.
+/** A beaten rep record: 12 → 14 at 32.5 kg (27e). */
+export const finishedRepsAtWeight = makeWorkout(42, at(3, 12), 35, [{ key: "incline_db_press", sets: [W(14, 32.5)] }], { title: "Dumbbell day" });
+/** One lift with reps records at two weights, from two sets (27f). */
+export const finishedRepsTwoWeights = makeWorkout(43, at(3, 13), 40, [{ key: "bench_press", sets: [W(9, 85), W(11, 80)] }], { title: "Bench back-off" });
+/** A beaten heaviest beside a first time at a weight, which adds nothing (27g). */
+export const finishedRepsFirstTime = makeWorkout(44, at(3, 14), 45, [{ key: "back_squat", sets: [W(3, 135), W(8, 102.5)] }], { title: "Squat top single" });
+/** 70 lb × 14 logged in lb, for the lb account (27h). */
+export const finishedRepsLb = makeWorkout(45, at(3, 15), 30, [{ key: "barbell_curl", sets: [W(14, 70, { unit: "lb" })] }], { title: "Curl day" });
+export const repsLedgerWorkouts = [finishedRepsAtWeight, finishedRepsTwoWeights, finishedRepsFirstTime, finishedRepsLb];
+const repsLedgerRecord = (w, i, value, previousValue, j = 0) => {
+  const s = w.exercises[i].sets[j];
+  return { ...ledgerRecord(w, i, "max_reps_at_weight", value, previousValue), unit: "reps", sourceSetId: s.id, achievedAt: s.completedAt, atWeightKg: s.weightKg };
+};
 export const ledgerRecords = [
   ...finishedManyLifts.exercises.flatMap((we, i) => [
     ledgerRecord(finishedManyLifts, i, "heaviest_weight", we.sets[0].weightKg, we.sets[0].weightKg - 2.5),
     // The first two lifts also beat their est. 1-rep max (from the same set, so one "from your …" line).
     ...(i < 2 ? [ledgerRecord(finishedManyLifts, i, "best_est_1rm", e1rmOf(finishedManyLifts, i), e1rmOf(finishedManyLifts, i) - 3)] : []),
   ]),
+  // Spec 07.5 AC40: two of the seven also beat their reps at that weight (27a, 27b with the new rows).
+  repsLedgerRecord(finishedManyLifts, 1, 6, 5),
+  repsLedgerRecord(finishedManyLifts, 3, 12, 10),
   ledgerRecord(finishedMixed, 0, "heaviest_weight", 125, 120),
   ledgerRecord(finishedMixed, 0, "best_est_1rm", e1rmOf(finishedMixed, 0), e1rmOf(finishedMixed, 0) - 4),
   ledgerRecord(finishedMixed, 1, "heaviest_weight", 105, 100),
   ledgerRecord(finishedMixed, 2, "heaviest_weight", 180, null),
   ledgerRecord(finishedMixed, 3, "heaviest_weight", 32.5, null),
+  repsLedgerRecord(finishedRepsAtWeight, 0, 14, 12),
+  repsLedgerRecord(finishedRepsTwoWeights, 0, 9, 7, 0),
+  repsLedgerRecord(finishedRepsTwoWeights, 0, 11, 10, 1),
+  ledgerRecord(finishedRepsFirstTime, 0, "heaviest_weight", 135, 132.5),
+  repsLedgerRecord(finishedRepsFirstTime, 0, 8, null, 1),
+  repsLedgerRecord(finishedRepsLb, 0, 14, 12),
 ];
+
+/**
+ * Spec 07.5 AC39, AC40: Dumbbell Lateral Raise's page reads eight per-weight rows (the five newest show, then Show all
+ * 8 weights). Served only to that exercise's own records read (`?exerciseId=`), in place of its computed rows, so the
+ * Records view, History and every summary keep the computed records.
+ */
+const LATERAL_WEIGHTS = [3, 4, 5, 6, 7, 8, 9, 10]; // at or under its heaviest weight (10 kg)
+export const lateralRaiseRepsRecords = LATERAL_WEIGHTS.map((weightKg, i) => {
+  const daysAgo = [40, 12, 33, 5, 26, 8, 19, 2][i];
+  return {
+    exerciseId: exByKey.lateral_raise.id,
+    sourceExerciseId: exByKey.lateral_raise.id,
+    exerciseName: exByKey.lateral_raise.name,
+    recordType: "max_reps_at_weight",
+    value: 20 - i,
+    unit: "reps",
+    previousValue: i % 3 === 0 ? null : 18 - i,
+    sourceSetId: uuid("d9000000", i + 1),
+    workoutId: uuid("f9000000", i + 1),
+    achievedAt: iso(at(daysAgo)),
+    localDate: localDate(at(daysAgo)),
+    atWeightKg: weightKg,
+  };
+});
 
 const AT_MAIN = uuid("f2000000", 7);
 const AT_FIN = uuid("f2000000", 8);
@@ -687,10 +736,53 @@ function computeRecords() {
     workoutId: b.w.id,
     achievedAt: b.s.completedAt,
     localDate: b.w.localDate,
-    atWeightKg: null, // Spec 07.5: the harness computes only the seven older types
+    atWeightKg: null,
   }));
 }
-export const records = computeRecords();
+/**
+ * Spec 07.5 §6.1, as `@sin/core`'s `repsAtWeightRecords` decides it: per lift and exact weight, over workouts in time
+ * order, a workout's best working set at a weight (its earliest) holds the record if it beats every earlier workout's
+ * reps there; a holder under 6 reps is dropped, but still counts as the number to beat (5 → 7).
+ */
+function repsAtWeightRecords() {
+  const running = new Map(); // `${exerciseId}|${weightKg}` -> best reps so far
+  const holder = new Map();
+  for (const w of [...finished].sort((a, b) => a.startedAt.localeCompare(b.startedAt))) {
+    const best = new Map();
+    for (const we of w.exercises) {
+      if (we.modalitySnapshot !== "weight_reps" && we.modalitySnapshot !== "weighted_bodyweight") continue;
+      for (const s of we.sets) {
+        if (s.setType !== "working" || !(s.weightKg > 0) || !(s.reps > 0)) continue;
+        const k = `${we.exerciseId}|${s.weightKg}`;
+        if (s.reps > (best.get(k)?.reps ?? 0)) best.set(k, { reps: s.reps, s, w, we });
+      }
+    }
+    for (const [k, b] of best) {
+      const prev = running.get(k) ?? null;
+      if (prev === null || b.reps > prev) {
+        holder.set(k, { ...b, prev });
+        running.set(k, b.reps);
+      }
+    }
+  }
+  return [...holder.values()]
+    .filter((h) => h.reps >= 6)
+    .map((h) => ({
+      exerciseId: h.we.exerciseId,
+      sourceExerciseId: h.we.exerciseId,
+      exerciseName: h.we.exerciseNameSnapshot,
+      recordType: "max_reps_at_weight",
+      value: h.reps,
+      unit: "reps",
+      previousValue: h.prev,
+      sourceSetId: h.s.id,
+      workoutId: h.w.id,
+      achievedAt: h.s.completedAt,
+      localDate: h.w.localDate,
+      atWeightKg: h.s.weightKg,
+    }));
+}
+export const records = [...computeRecords(), ...repsAtWeightRecords()];
 
 export function progressFor(exerciseId) {
   const points = [];
@@ -764,6 +856,7 @@ export const ids = {
   bench: exByKey.bench_press.id,
   squat: exByKey.back_squat.id,
   pullUp: exByKey.pull_up.id,
+  lateralRaise: exByKey.lateral_raise.id,
   latestFinished: finished[finished.length - 1].id,
   // The newest Push Day (it holds records with gains: a lead card plus chips).
   latestPush: [...finished].reverse().find((w) => w.routineName === push.name).id,
@@ -836,6 +929,9 @@ export function payloadChecks() {
     ["finished, seven record lifts", "WorkoutDetailSchema", finishedManyLifts],
     ["finished, mixed records", "WorkoutDetailSchema", finishedMixed],
     ["ledger records", "PersonalRecordsResponseSchema", { records: ledgerRecords }],
+    ...repsLedgerWorkouts.map((w) => [`finished, reps at a weight (${w.title})`, "WorkoutDetailSchema", w]),
+    ["lateral raise, eight weights", "PersonalRecordsResponseSchema", { records: lateralRaiseRepsRecords }],
+    ["me in lb", "MeSchema", { ...me, unitPreference: "lb" }],
     ["active, timed sections", "WorkoutDetailSchema", activeTimed],
     ["records", "PersonalRecordsResponseSchema", { records }],
     ["exercise usage", "ExerciseUsageResponseSchema", usage()],

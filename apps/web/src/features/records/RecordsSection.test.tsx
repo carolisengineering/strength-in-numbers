@@ -85,10 +85,10 @@ describe("07.5 AC39 — the exercise page lists one line per weight", () => {
   it("a row reads Most reps at 12.5 kg, 15 reps, was 13 reps; a first time reads First record", () => {
     render(<RecordsSection query={success([reps(12.5, 2), reps(15, 3, 8, null)])} unitPreference="kg" />);
     const [heavier, lighter] = rowTexts();
-    expect(lighter).toContain("Most reps at 12.5 kg");
+    expect(lighter).toContain("Most reps at 12.5\u00a0kg");
     expect(lighter).toContain("15 reps");
     expect(lighter).toContain("was 13 reps");
-    expect(heavier).toContain("Most reps at 15 kg");
+    expect(heavier).toContain("Most reps at 15\u00a0kg");
     expect(heavier).toContain("First record");
     expect(screen.queryByRole("button", { name: /^Show / })).toBeNull();
   });

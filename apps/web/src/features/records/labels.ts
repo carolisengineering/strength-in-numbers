@@ -48,7 +48,8 @@ export function sortRecords(records: readonly PersonalRecord[]): PersonalRecord[
 export function recordRowLabel(record: PersonalRecord, pref: UnitPreference): string {
   if (record.recordType === "max_reps_at_weight" && record.atWeightKg !== null) {
     // The weight reads exactly as a heaviest-weight record of that weight would (17.2 AC29: one type-aware formatter).
-    return `Most reps at ${formatRecordByType("heaviest_weight", record.atWeightKg, "kg", pref)}`;
+    // A no-break space keeps "32.5 kg" whole, so the ledger's fixed label column breaks before the weight (07.5 AC38).
+    return `Most reps at ${formatRecordByType("heaviest_weight", record.atWeightKg, "kg", pref).replace(" ", " ")}`;
   }
   return recordLabel(record.recordType);
 }

@@ -22,13 +22,13 @@ afterEach(() => {
 describe("07.5 AC31 — the web labels and orders it", () => {
   it("recordLabel names the type alone; recordRowLabel names the weight in the profile unit", () => {
     expect(recordLabel("max_reps_at_weight")).toBe("Most reps at a weight");
-    expect(recordRowLabel(reps(32.5, 14), "kg")).toBe("Most reps at 32.5 kg");
-    expect(recordRowLabel(reps(31.751, 14), "lb")).toBe("Most reps at 70 lb");
+    expect(recordRowLabel(reps(32.5, 14), "kg")).toBe("Most reps at 32.5\u00a0kg");
+    expect(recordRowLabel(reps(31.751, 14), "lb")).toBe("Most reps at 70\u00a0lb");
     expect(recordRowLabel(makePersonalRecord({ recordType: "heaviest_weight" }), "kg")).toBe("Heaviest weight");
   });
 
   it("recordParts reads 14 reps, was 12 reps, under the weight's label", () => {
-    expect(recordParts(reps(12.5, 14, 12), "kg")).toEqual({ label: "Most reps at 12.5 kg", value: "14 reps", was: "12 reps", first: false });
+    expect(recordParts(reps(12.5, 14, 12), "kg")).toEqual({ label: "Most reps at 12.5\u00a0kg", value: "14 reps", was: "12 reps", first: false });
   });
 
   it("sortRecords keeps the type order, then the heavier weight first", () => {
@@ -82,11 +82,11 @@ describe("07.5 AC35 — the row", () => {
   it("a beaten reps record reads Most reps at 32.5 kg, 12 → 14 reps, +2 reps", () => {
     const l = ledgerFor([liftOf("Lateral Raise")], (w) => [recOf(w, 0, repsAt(32.5, 14, 12))]);
     expect(l.heading).toBe("New record");
-    expect(l.lifts[0]!.rows).toEqual([expect.objectContaining({ label: "Most reps at 32.5 kg", oldText: "12", newText: "14 reps", gainText: "+2 reps" })]);
+    expect(l.lifts[0]!.rows).toEqual([expect.objectContaining({ label: "Most reps at 32.5\u00a0kg", oldText: "12", newText: "14 reps", gainText: "+2 reps" })]);
   });
   it("a lb account that logged 70 lb reads Most reps at 70 lb", () => {
     const l = ledgerFor([liftOf("Lateral Raise")], (w) => [recOf(w, 0, repsAt(31.751, 14, 12))], "lb");
-    expect(l.lifts[0]!.rows[0]).toMatchObject({ label: "Most reps at 70 lb", newText: "14 reps", gainText: "+2 reps" });
+    expect(l.lifts[0]!.rows[0]).toMatchObject({ label: "Most reps at 70\u00a0lb", newText: "14 reps", gainText: "+2 reps" });
   });
 });
 
@@ -100,7 +100,7 @@ describe("07.5 AC36 — order", () => {
   it("a lift's rows run in type order, then the heavier weight first; est. and reps rows from one set both show", () => {
     const rows = ledgerFor([liftOf("Bench Press")], records).lifts[0]!.rows;
     expect(rows.map((r) => r.type)).toEqual(["heaviest_weight", "best_est_1rm", "max_reps_at_weight", "max_reps_at_weight"]);
-    expect(rows.slice(2).map((r) => r.label)).toEqual(["Most reps at 32.5 kg", "Most reps at 30 kg"]);
+    expect(rows.slice(2).map((r) => r.label)).toEqual(["Most reps at 32.5\u00a0kg", "Most reps at 30\u00a0kg"]);
   });
   it("the panel draws both weights' rows with no duplicate key", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -147,10 +147,17 @@ describe("07.5 AC37 — a first time at a weight shows nothing on the summary", 
   });
 });
 
+describe("07.5 AC38 — the label wraps above the figure, never inside the weight", () => {
+  it("a no-break space joins the weight and its unit, so a narrow label column breaks before the weight", () => {
+    expect(recordRowLabel(reps(32.5, 14), "kg")).toBe("Most reps at 32.5 kg");
+    expect(recordRowLabel(reps(31.751, 14), "lb")).toBe("Most reps at 70 lb");
+  });
+});
+
 describe("07.5 AC38 — accessible", () => {
   it("the row is one sentence, and the panel is axe-clean", async () => {
     const l = ledgerFor([liftOf("Lateral Raise")], (w) => [recOf(w, 0, repsAt(32.5, 14, 12))]);
-    expect(l.lifts[0]!.rows[0]!.spoken).toBe("Most reps at 32.5 kg: was 12 reps, now 14 reps, up 2 reps");
+    expect(l.lifts[0]!.rows[0]!.spoken).toBe("Most reps at 32.5\u00a0kg: was 12 reps, now 14 reps, up 2 reps");
     const { container } = render(<RecordLedgerPanel heading={l.heading!} lifts={l.lifts} />);
     expect(screen.getByText("Most reps at 32.5 kg: was 12 reps, now 14 reps, up 2 reps").nextElementSibling).toHaveAttribute("aria-hidden", "true");
     await expectNoAxeViolations(container);
