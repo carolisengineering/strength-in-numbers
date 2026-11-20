@@ -47,8 +47,7 @@ describe("07.5 AC1 — unknown record types are dropped from record lists", () =
     const { workout, body } = updatedWorkoutBody([unknownTypeRecord()]);
     const parsed = TolerantUpdatedWorkoutSchema.parse(body);
     expect(parsed.newRecords).toEqual([]);
-    const { newRecords: _dropped, ...rest } = parsed;
-    expect(rest).toEqual(workout);
+    expect(WorkoutSchema.parse(parsed)).toEqual(workout);
   });
 
   it("dropUnknownRecordTypes passes a non-array through untouched", () => {
@@ -108,8 +107,7 @@ describe("07.5 AC2 — everything else stays strict", () => {
 
   it("a workout body missing id still fails, unknown records or not", () => {
     const { body } = updatedWorkoutBody([unknownTypeRecord()]);
-    const { id: _id, ...noId } = body;
-    expect(() => TolerantUpdatedWorkoutSchema.parse(noId)).toThrow();
+    expect(() => TolerantUpdatedWorkoutSchema.parse({ ...body, id: undefined })).toThrow();
   });
 
   it("a records list that is not an array, or a body that is not an object, still fails", () => {
