@@ -11,6 +11,8 @@ import { kgToLb, type RecordType, type RecordUnit, type UnitPreference } from "@
 // The conversion itself is `@sin/core`'s `kgToLb` — one copy of the pound's definition (DESIGN §4.8, R4).
 const KG = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
 const LB = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
+/** Spec 07.5 D12: two weights that read alike at 0.1 lb are told apart at 0.01 lb. */
+const LB_PRECISE = new Intl.NumberFormat("en", { maximumFractionDigits: 2 });
 const COUNT = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
 /** Up to 3 decimals: the stored millimeter, never float noise from a subtraction ("+0.002 m"). */
 const DISTANCE = new Intl.NumberFormat("en", { maximumFractionDigits: 3 });
@@ -34,6 +36,14 @@ function inUnit(kg: number, pref: UnitPreference): string {
 
 export function formatWeightKg(kg: number, pref: UnitPreference): string {
   return inUnit(kg, pref);
+}
+
+/**
+ * Spec 07.5 D12 (owner, 2026-11-20): a weight label that must not read like another one. lb gets up to 2 decimals (20.4 kg
+ * is 44.97 lb, beside 45 lb); kg is already the stored 3 decimals, so it reads as `formatWeightKg`.
+ */
+export function formatWeightKgPrecise(kg: number, pref: UnitPreference): string {
+  return pref === "lb" ? `${LB_PRECISE.format(kgToLb(kg))} lb` : inUnit(kg, pref);
 }
 
 /** Volume is kg × reps; reps are dimensionless, so converting the kg factor converts the sum. */

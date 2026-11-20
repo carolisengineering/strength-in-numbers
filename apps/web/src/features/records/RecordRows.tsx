@@ -9,11 +9,20 @@ import styles from "./RecordRows.module.css";
  * "was 80 kg" or "First record". The exercise's name is the page's title, so no row repeats it. The ": " and ", "
  * are for screen readers only, so a row reads "Heaviest weight: 82.5 kg, was 80 kg". Draws in the order given.
  */
-export function RecordRows({ records, unitPreference }: { records: readonly PersonalRecord[]; unitPreference: UnitPreference }) {
+/** `labels`: the rows' labels when drawn from a longer list (`recordRowLabels` over every record, Spec 07.5 D12). */
+export function RecordRows({
+  records,
+  unitPreference,
+  labels,
+}: {
+  records: readonly PersonalRecord[];
+  unitPreference: UnitPreference;
+  labels?: ReadonlyMap<PersonalRecord, string>;
+}) {
   return (
     <ul className={styles.list}>
       {records.map((record) => {
-        const parts = recordParts(record, unitPreference);
+        const parts = recordParts(record, unitPreference, labels?.get(record));
         return (
           <li key={`${record.exerciseId}:${record.recordType}:${record.atWeightKg ?? ""}`} className={styles.row}>
             <span className={styles.label}>{parts.label}</span>

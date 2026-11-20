@@ -5,7 +5,7 @@ import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/InlineNotice";
 import { classifyWorkoutError } from "../workouts/errors";
 import { reportUnexpected } from "../workouts/reportUnexpected";
-import { sortRecords } from "./labels";
+import { recordRowLabels, sortRecords } from "./labels";
 import styles from "./PersonalRecordsBlock.module.css";
 import { RecordRows } from "./RecordRows";
 import { recordsToShow, REPS_AT_WEIGHT_SHOWN } from "./repsAtWeightRows";
@@ -36,7 +36,10 @@ export function RecordsSection({
   // A failed refresh keeps the records already shown; the notice sits beside them.
   const records = query.data ?? [];
   if (!query.isError && records.length === 0) return null;
-  const { shown, weights } = recordsToShow(sortRecords(records), expanded);
+  const sorted = sortRecords(records);
+  const { shown, weights } = recordsToShow(sorted, expanded);
+  // 07.5 D12: over every weight, not only those shown, so a label never changes on Show all.
+  const labels = recordRowLabels(sorted, unitPreference);
 
   return (
     <section className={styles.block} aria-labelledby={headingId}>
@@ -53,7 +56,7 @@ export function RecordsSection({
           Couldn't load records
         </InlineNotice>
       ) : null}
-      {shown.length > 0 ? <RecordRows records={shown} unitPreference={unitPreference} /> : null}
+      {shown.length > 0 ? <RecordRows records={shown} unitPreference={unitPreference} labels={labels} /> : null}
       {weights > REPS_AT_WEIGHT_SHOWN ? (
         <Button ref={buttonRef} variant="secondary" aria-expanded={expanded} onClick={toggle}>
           {expanded ? "Show fewer" : `Show all ${weights} weights`}
