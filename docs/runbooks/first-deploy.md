@@ -780,9 +780,11 @@ PR states all three. Phase A's web drops a record type it doesn't know, so an ol
 4. Production (Spec 15): `deploy-prod` never migrates. Apply `0022` by hand the same way before approving the release,
    then run `records:rebuild` against production after the release.
 5. **Rollback:** revert the code, **then run `records:rebuild` at once** (the old code deletes by root and writes only
-   the seven older types, so it removes every `max_reps_at_weight` row, 07.5 AC32). Until it runs, Phase A's web drops
-   the rows it doesn't know, so the summary and lists keep working. The column, CHECKs and index stay (harmless to old
-   code). Never `migrate dev` or `migrate resolve` on Neon to undo `0022`.
+   the seven older types, so it removes every `max_reps_at_weight` row, 07.5 AC32). Until it runs, the reverted API
+   can't validate those rows against its own response schema (the older `z.enum`), so any `GET /v1/personal-records`
+   that would include one answers `500` (the Records list, an exercise page with such rows, `?workoutId=` for an older
+   workout); a finish is unaffected, since the old recompute replaces the root's rows. The column, CHECKs and index
+   stay (harmless to old code). Never `migrate dev` or `migrate resolve` on Neon to undo `0022`.
 
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 

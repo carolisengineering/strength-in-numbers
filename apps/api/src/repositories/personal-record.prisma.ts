@@ -204,9 +204,9 @@ export async function recomputeRecordsForRoots(
   for (const [rootId, group] of byRoot) {
     const bySetId = new Map(group.map((r) => [r.set_id, r]));
     const sets: RecordSet[] = group.map(toRecordSet);
-    // Spec 07.5 D8: every row of a root in one INSERT (a root can hold dozens of reps-at-weight rows), its columns
-    // bound as twelve arrays and spread by `unnest`, so the statement has twelve parameters however many rows it
-    // writes (AC29); none when the root has no record.
+    // Spec 07.5 D8: every row of a root in one INSERT (a root can hold dozens of reps-at-weight rows), its ten
+    // per-row columns bound as arrays and spread by `unnest`, plus the user and root, so the statement has twelve
+    // parameters however many rows it writes (AC29); none when the root has no record.
     const computed = computeRecords(sets).map((c) => {
       const src = bySetId.get(c.setId)!;
       return { c, src, localDate: src.local_date.toISOString().slice(0, 10) };
