@@ -35,8 +35,22 @@ export function sortRecords(records: readonly PersonalRecord[]): PersonalRecord[
   return [...records].sort(
     (a, b) =>
       a.exerciseName.localeCompare(b.exerciseName, "en") ||
-      RECORD_TYPE_VALUES.indexOf(a.recordType) - RECORD_TYPE_VALUES.indexOf(b.recordType),
+      RECORD_TYPE_VALUES.indexOf(a.recordType) - RECORD_TYPE_VALUES.indexOf(b.recordType) ||
+      // Spec 07.5: a lift's most-reps rows, the heavier weight first (the API's AC26 order).
+      (b.atWeightKg ?? 0) - (a.atWeightKg ?? 0),
   );
+}
+
+/**
+ * A record row's label (Spec 07.5): "Most reps at 32.5 kg" for a most-reps-at-a-weight record, in the profile unit
+ * with the records' own rounding; every other type's label is `recordLabel`.
+ */
+export function recordRowLabel(record: PersonalRecord, pref: UnitPreference): string {
+  if (record.recordType === "max_reps_at_weight" && record.atWeightKg !== null) {
+    // The weight reads exactly as a heaviest-weight record of that weight would (17.2 AC29: one type-aware formatter).
+    return `Most reps at ${formatRecordByType("heaviest_weight", record.atWeightKg, "kg", pref)}`;
+  }
+  return recordLabel(record.recordType);
 }
 
 /** What a row says when the record has no previous value (Spec 17.11 AC7). */
@@ -59,5 +73,5 @@ export function recordParts(record: PersonalRecord, pref: UnitPreference): Recor
   const value = formatRecordByType(record.recordType, record.value, record.unit, pref);
   const was = record.previousValue === null ? null : formatRecordByType(record.recordType, record.previousValue, record.unit, pref);
   // Minor 511: two values that round to one figure read as the value alone, as `formatRecordPair` shows them.
-  return { label: recordLabel(record.recordType), value, was: was === value ? null : was, first: record.previousValue === null };
+  return { label: recordRowLabel(record, pref), value, was: was === value ? null : was, first: record.previousValue === null };
 }

@@ -77,7 +77,9 @@ export function collapsedCount(total: number, expanded: boolean): number {
 
 /** 17.2 AC16: set-volume records are not shown on the summary (they stay in the cache and in Progress). */
 export function visibleRecords(records: readonly PersonalRecord[]): PersonalRecord[] {
-  return records.filter((r) => r.recordType !== "best_set_volume");
+  // Spec 07.5 R2: most reps at a weight stays off the summary until Phase C gives it a ledger row (a weight in its
+  // label, and no first-time line, D9). History still counts a beaten one (07.6).
+  return records.filter((r) => r.recordType !== "best_set_volume" && r.recordType !== "max_reps_at_weight");
 }
 
 const typeOrder = (r: PersonalRecord) => RECORD_TYPE_VALUES.indexOf(r.recordType);
