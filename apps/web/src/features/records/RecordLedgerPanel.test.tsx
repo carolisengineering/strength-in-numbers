@@ -7,8 +7,8 @@ import { FirstTimeLines } from "./FirstTimeLines";
 import { EST_1RM_EXPLAINED, type FirstTimeLine, type LedgerLift, type LedgerRow } from "./recordLedger";
 import { RecordLedgerPanel } from "./RecordLedgerPanel";
 
-const heavy: LedgerRow = { type: "heaviest_weight", label: "Heaviest weight", oldText: "80", newText: "82.5 kg", gainText: "+2.5 kg", spoken: "Heaviest weight: was 80 kg, now 82.5 kg, up 2.5 kg", sourceText: null };
-const est: LedgerRow = { type: "best_est_1rm", label: "Est. 1-rep max", oldText: "94", newText: "96.5 kg", gainText: "+2.5 kg", spoken: "Est. 1-rep max: was 94 kg, now 96.5 kg, up 2.5 kg", sourceText: null };
+const heavy: LedgerRow = { key: "heaviest_weight:", type: "heaviest_weight", label: "Heaviest weight", oldText: "80", newText: "82.5 kg", gainText: "+2.5 kg", spoken: "Heaviest weight: was 80 kg, now 82.5 kg, up 2.5 kg", sourceText: null };
+const est: LedgerRow = { key: "best_est_1rm:", type: "best_est_1rm", label: "Est. 1-rep max", oldText: "94", newText: "96.5 kg", gainText: "+2.5 kg", spoken: "Est. 1-rep max: was 94 kg, now 96.5 kg, up 2.5 kg", sourceText: null };
 const valueOnly: LedgerRow = { ...est, oldText: null, gainText: null, newText: "94 kg", spoken: "Est. 1-rep max: 94 kg" };
 const liftOf = (name: string, rows: LedgerRow[] = [heavy], o: Partial<LedgerLift> = {}): LedgerLift => ({ key: name, name, rows, sourceText: null, hasEstimate: rows.some((r) => r.type === "best_est_1rm"), ...o });
 const lifts = (n: number, last: LedgerRow[] = [heavy]) => Array.from({ length: n }, (_, i) => liftOf(`Lift ${i + 1}`, i === n - 1 ? last : [heavy]));
