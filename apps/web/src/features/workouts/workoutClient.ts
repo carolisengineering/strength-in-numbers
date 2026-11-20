@@ -1,6 +1,5 @@
 import {
   SetEntrySchema,
-  UpdatedWorkoutSchema,
   WorkoutDetailSchema,
   WorkoutExerciseSchema,
   WorkoutSchema,
@@ -21,6 +20,7 @@ import {
 import { ApiError, type ApiClient, type ApiRequestOptions } from "../../api";
 import type { ResponseSchema } from "../../api/client";
 import type { FinishMeta } from "./outbox/ops";
+import { TolerantUpdatedWorkoutSchema } from "../records/tolerantRecords";
 
 /** The keys `updateWorkoutExercise` may send (Spec 10.1 AC11). Deliberately no `notes` (Spec 09 D22). */
 export interface WorkoutExercisePatch {
@@ -65,7 +65,7 @@ export interface WorkoutClient {
   getActive(): Promise<WorkoutDetail | null>;
   getById(id: string, options?: SendOptions): Promise<WorkoutDetail>;
   start(body: CreateWorkout): Promise<Workout>;
-  /** The workout plus `newRecords` (Spec 07.0 D12): parsed with `UpdatedWorkoutSchema` so Zod keeps it (Spec 08.0 AC5). */
+  /** The workout plus `newRecords` (Spec 07.0 D12): parsed with `TolerantUpdatedWorkoutSchema` so Zod keeps it (Spec 08.0 AC5) and drops unknown record types (Spec 07.5). */
   finish(id: string, body: { endedAt: string; keepRoutine?: true }, options?: SendOptions): Promise<UpdatedWorkout>;
   /**
    * Spec 06.7 AC13: finish, or queue the finish. Resolves; rejects only for a programming error (a network, timeout or
@@ -136,7 +136,7 @@ export function createWorkoutClient(
     },
     getById: (id, options) => call("GET", `/v1/workouts/${seg(id)}`, undefined, WorkoutDetailSchema, options),
     start: (body) => api.post("/v1/workouts", body, WorkoutSchema),
-    finish: (id, body, options) => call("PATCH", `/v1/workouts/${seg(id)}`, body, UpdatedWorkoutSchema, options),
+    finish: (id, body, options) => call("PATCH", `/v1/workouts/${seg(id)}`, body, TolerantUpdatedWorkoutSchema, options),
     finishOrQueue: async (id, body) => {
       await client.finish(id, body);
       return { status: "landed" };
@@ -169,7 +169,7 @@ export function createWorkoutClient(
       if (body.startedAt !== undefined) wire.startedAt = body.startedAt;
       if (body.tzOffsetMinutes !== undefined) wire.tzOffsetMinutes = body.tzOffsetMinutes;
       if (body.durationSeconds !== undefined) wire.durationSeconds = body.durationSeconds;
-      return api.patch(`/v1/workouts/${seg(id)}`, wire, UpdatedWorkoutSchema);
+      return api.patch(`/v1/workouts/${seg(id)}`, wire, TolerantUpdatedWorkoutSchema);
     },
     addSection: (workoutId, body) => {
       const wire: CreateWorkoutSection = { name: body.name };

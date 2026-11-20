@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PersonalRecordsResponseSchema } from "@sin/core";
+import { TolerantPersonalRecordsResponseSchema } from "./tolerantRecords";
 import { makePersonalRecord } from "../../test/workoutFixtures";
 import { createRecordsClient } from "./recordsClient";
 
@@ -29,7 +29,7 @@ describe("08.0 AC4 — the records client builds the right request", () => {
       "/v1/personal-records?exerciseId=e-1",
       "/v1/personal-records",
     ]);
-    expect(calls[0]!.schema).toBe(PersonalRecordsResponseSchema);
+    expect(calls[0]!.schema).toBe(TolerantPersonalRecordsResponseSchema);
   });
 
   it("encodes ids so they cannot change the path or add a parameter", async () => {

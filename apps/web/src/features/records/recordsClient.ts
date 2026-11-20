@@ -1,5 +1,6 @@
-import { PersonalRecordsResponseSchema, type PersonalRecord } from "@sin/core";
+import type { PersonalRecord } from "@sin/core";
 import type { ApiClient } from "../../api";
+import { TolerantPersonalRecordsResponseSchema } from "./tolerantRecords";
 
 /** `GET /v1/personal-records` (Spec 07.0 §5), React-free. `exerciseId` is for Spec 08.1. */
 export interface RecordsClient {
@@ -13,7 +14,7 @@ export function createRecordsClient(api: Pick<ApiClient, "get">): RecordsClient 
       if (workoutId !== undefined) query.set("workoutId", workoutId);
       if (exerciseId !== undefined) query.set("exerciseId", exerciseId);
       const qs = query.toString();
-      const body = await api.get(`/v1/personal-records${qs === "" ? "" : `?${qs}`}`, PersonalRecordsResponseSchema);
+      const body = await api.get(`/v1/personal-records${qs === "" ? "" : `?${qs}`}`, TolerantPersonalRecordsResponseSchema);
       return body.records;
     },
   };
