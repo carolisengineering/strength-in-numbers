@@ -12,7 +12,8 @@ import { recordsToShow, REPS_AT_WEIGHT_SHOWN } from "./repsAtWeightRows";
 import { useCollapseToggle } from "./useCollapseToggle";
 
 /**
- * The "Personal records" section for any records query (Spec 08.0 §6.5; extracted for 08.1 D13).
+ * The "Personal records" section for one exercise's records query (Spec 08.0 §6.5; extracted for 08.1 D13). The
+ * records are one lineage: rows carry no exercise name, and `sortRecords` orders by type and weight only (07.5 AC39).
  * Renders nothing while pending or when there are none, and its own notice on failure: it is a
  * sibling of whatever it sits beside, so that never waits on it (08.0 AC19).
  */

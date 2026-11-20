@@ -28,7 +28,7 @@ export function recordLabel(type: RecordType): string {
 }
 
 /**
- * One lineage's records in the record-type order, then the heavier weight first (Spec 07.5 AC36, AC39; the API's AC26
+ * One lineage's records (one exercise's, never several exercises' at once) in the record-type order, then the heavier weight first (Spec 07.5 AC36, AC39; the API's AC26
  * order), whatever order the server sent. No name key: a lineage's records carry each source workout's name snapshot,
  * which differs after a rename or under a copy, and must not split one exercise's list (final review, Spec 07.5 C).
  */
@@ -46,7 +46,7 @@ export function recordRowLabel(record: PersonalRecord, pref: UnitPreference): st
   if (record.recordType === "max_reps_at_weight" && record.atWeightKg !== null) {
     // The weight reads exactly as a heaviest-weight record of that weight would (17.2 AC29: one type-aware formatter).
     // A no-break space keeps "32.5 kg" whole, so the ledger's fixed label column breaks before the weight (07.5 AC38).
-    return `Most reps at ${formatRecordByType("heaviest_weight", record.atWeightKg, "kg", pref).replace(" ", " ")}`;
+    return `Most reps at ${formatRecordByType("heaviest_weight", record.atWeightKg, "kg", pref).replace(" ", "\u00a0")}`;
   }
   return recordLabel(record.recordType);
 }
