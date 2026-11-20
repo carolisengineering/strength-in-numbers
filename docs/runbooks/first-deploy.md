@@ -772,7 +772,10 @@ PR states all three. Phase A's web drops a record type it doesn't know, so an ol
    `personal_record_user_exercise_type_key`. No data statement. Check `db:migrate:status` again (do not assume) and
    `\d personal_record`. Expand-only: the running API's statements (delete by root, then the seven-type insert) never
    name the index, so they keep working (07.5 AC15).
-2. Merge Phase B (Render deploys). Run the staging API smoke.
+2. Merge Phase B (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new
+   bundle's schemas require `atWeightKg`, which the old API does not send: records reads and a finish's `newRecords`
+   fail to parse until the API is live — accepted on staging, as in 0011–0013; on production `deploy-prod` releases
+   the API first). Run the staging API smoke.
 3. **Then run `records:rebuild` (B5a)** with the same owner URL, so earlier sets get their `max_reps_at_weight` rows:
    `OWNER_DATABASE_URL='<neon direct owner url>' pnpm --filter @sin/api run records:rebuild`. Spot check
    `GET /v1/personal-records?exerciseId=<a lift with sets of 6+ reps>` for Carol: one `max_reps_at_weight` row per
