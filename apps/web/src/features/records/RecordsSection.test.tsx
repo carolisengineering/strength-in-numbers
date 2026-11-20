@@ -93,6 +93,14 @@ describe("07.5 AC39 — the exercise page lists one line per weight", () => {
     expect(screen.queryByRole("button", { name: /^Show / })).toBeNull();
   });
 
+  it("one lineage under two names (a rename or a copy) still lists by type, then the heavier weight", () => {
+    const heaviest = makePersonalRecord({ exerciseId: ROOT, sourceExerciseId: ROOT, exerciseName: "Lateral Raise", recordType: "heaviest_weight", value: 15 });
+    const renamed = (atWeightKg: number) => ({ ...reps(atWeightKg, 4), exerciseName: "Cable Lateral Raise" });
+    render(<RecordsSection query={success([reps(10, 2), renamed(15), heaviest, renamed(12.5)])} unitPreference="kg" />);
+    expect(rowTexts().map((t) => t!.split(/[\d:]/)[0]!.trim())).toEqual(["Heaviest weight", "Most reps at", "Most reps at", "Most reps at"]);
+    expect(rowTexts().slice(1).map((t) => /at ([\d.]+)/.exec(t!)![1])).toEqual(["15", "12.5", "10"]);
+  });
+
   it("8 weights show 5 and Show all 8 weights; a tap shows all 8 and Show fewer", async () => {
     const user = userEvent.setup();
     render(<RecordsSection query={success([10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5].map((w, i) => reps(w, i + 1)))} unitPreference="kg" />);

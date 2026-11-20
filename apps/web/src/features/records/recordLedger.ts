@@ -1,8 +1,8 @@
-import { RECORD_TYPE_VALUES, type PersonalRecord, type RecordType, type UnitPreference, type WorkoutDetail } from "@sin/core";
+import { type PersonalRecord, type RecordType, type UnitPreference, type WorkoutDetail } from "@sin/core";
 
 import { formatRecordByType, formatRecordPair } from "../units/format";
 import { formatSet } from "../workouts/format";
-import { recordRowLabel } from "./labels";
+import { recordRowLabel, sortRecords } from "./labels";
 
 /**
  * Spec 17.6 §6.1: the pure model behind the summary's record ledger. Every decision (what is shown, what leads, what
@@ -85,9 +85,6 @@ export function visibleRecords(records: readonly PersonalRecord[]): PersonalReco
   return records.filter((r) => r.recordType !== "best_set_volume" && !(r.recordType === "max_reps_at_weight" && r.previousValue === null));
 }
 
-/** Type order, then the heavier weight first (07.5 AC36); only most reps at a weight carries a weight. */
-const byTypeThenWeight = (a: PersonalRecord, b: PersonalRecord) =>
-  RECORD_TYPE_VALUES.indexOf(a.recordType) - RECORD_TYPE_VALUES.indexOf(b.recordType) || (b.atWeightKg ?? 0) - (a.atWeightKg ?? 0);
 
 /** AC6 (owner decision 2026-11-14, minor 476): a lift counts only when one of its rows rose. */
 const rose = (lift: LedgerLift): boolean => lift.rows.some((r) => r.gainText !== null);
@@ -126,7 +123,8 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
 
   type Built = { order: number; name: string } & ({ kind: "lift"; lift: LedgerLift; first: FirstTimeLine | null } | { kind: "first"; first: FirstTimeLine });
   const built: Built[] = [...groups.entries()].map(([key, group]) => {
-    const ordered = [...group].sort(byTypeThenWeight);
+    // Type order, then the heavier weight first (07.5 AC36): one lineage, the exercise page's order.
+    const ordered = sortRecords(group);
     const slots = group.map((r) => position.get(r.sourceExerciseId)).filter((n): n is number => n !== undefined);
     const order = slots.length > 0 ? Math.min(...slots) : Number.POSITIVE_INFINITY;
     const beaten = ordered.filter((r) => r.previousValue !== null).map((r) => ({ record: r, pair: formatRecordPair(r, pref) }));

@@ -28,16 +28,13 @@ export function recordLabel(type: RecordType): string {
 }
 
 /**
- * Name, then the record-type order — so the finish response and the GET (whose server orderings are
- * specified independently) render the same list (Spec 08.0 §6.5).
+ * One lineage's records in the record-type order, then the heavier weight first (Spec 07.5 AC36, AC39; the API's AC26
+ * order), whatever order the server sent. No name key: a lineage's records carry each source workout's name snapshot,
+ * which differs after a rename or under a copy, and must not split one exercise's list (final review, Spec 07.5 C).
  */
 export function sortRecords(records: readonly PersonalRecord[]): PersonalRecord[] {
   return [...records].sort(
-    (a, b) =>
-      a.exerciseName.localeCompare(b.exerciseName, "en") ||
-      RECORD_TYPE_VALUES.indexOf(a.recordType) - RECORD_TYPE_VALUES.indexOf(b.recordType) ||
-      // Spec 07.5: a lift's most-reps rows, the heavier weight first (the API's AC26 order).
-      (b.atWeightKg ?? 0) - (a.atWeightKg ?? 0),
+    (a, b) => RECORD_TYPE_VALUES.indexOf(a.recordType) - RECORD_TYPE_VALUES.indexOf(b.recordType) || (b.atWeightKg ?? 0) - (a.atWeightKg ?? 0),
   );
 }
 
