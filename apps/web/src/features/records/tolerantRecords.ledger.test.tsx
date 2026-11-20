@@ -1,4 +1,4 @@
-import { RECORD_TYPE_VALUES, WorkoutSchema, type PersonalRecord } from "@sin/core";
+import { RECORD_TYPE_VALUES, UpdatedWorkoutSchema, WorkoutSchema, type PersonalRecord } from "@sin/core";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -16,13 +16,14 @@ const everyType: PersonalRecord[] = RECORD_TYPE_VALUES.map((recordType) =>
 );
 
 describe("07.5 AC4 — no visible change with the seven current types", () => {
-  it("a finish carrying all seven types parses whole, and its ledger is the one the strict parse gave", () => {
+  it("a finish carrying all seven types parses whole, and equals the strict parse, and draws the six ledger rows", () => {
     const parsed = TolerantUpdatedWorkoutSchema.parse({ ...WorkoutSchema.parse(workout), newRecords: everyType });
     expect(parsed.newRecords).toEqual(everyType);
     expect(TolerantPersonalRecordsResponseSchema.parse({ records: everyType }).records).toEqual(everyType);
 
+    const strict = UpdatedWorkoutSchema.parse({ ...WorkoutSchema.parse(workout), newRecords: everyType });
+    expect(parsed).toEqual(strict);
     const ledger = buildRecordLedger({ records: parsed.newRecords, workout, pref: "kg", section: "workouts" });
-    expect(ledger).toEqual(buildRecordLedger({ records: everyType, workout, pref: "kg", section: "workouts" }));
     render(<RecordLedgerPanel heading={ledger.heading!} lifts={ledger.lifts} />);
     expect(screen.getByText(ledger.heading!)).toBeInTheDocument();
     expect(ledger.lifts[0]!.rows.map((r) => r.label)).toEqual(["Heaviest weight", "Est. 1-rep max", "Most reps", "Most calories", "Longest distance", "Longest hold"]);

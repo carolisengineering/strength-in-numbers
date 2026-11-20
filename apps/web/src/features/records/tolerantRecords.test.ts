@@ -57,7 +57,7 @@ describe("07.5 AC1 — unknown record types are dropped from record lists", () =
 
   it("the records client returns the known records", async () => {
     const known = makePersonalRecord();
-    const known2 = makePersonalRecord({ recordType: "max_reps" , unit: "reps", value: 20, previousValue: 18 });
+    const known2 = makePersonalRecord({ recordType: "max_reps", unit: "reps", value: 20, previousValue: 18 });
     const records = await createRecordsClient(parsingApi({ records: [known, unknownTypeRecord(), known2] })).listRecords({});
     expect(records).toEqual([known, known2]);
   });

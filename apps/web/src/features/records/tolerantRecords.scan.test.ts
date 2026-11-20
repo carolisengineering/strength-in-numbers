@@ -6,7 +6,11 @@ const sources = import.meta.glob(
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;
 
-/** The core schemas that parse a record list strictly; `TolerantUpdatedWorkoutSchema` doesn't match (no word boundary). */
+/**
+ * The core schemas that parse a record list strictly; `TolerantUpdatedWorkoutSchema` doesn't match (no word boundary).
+ * The scan covers these names only (spec AC3): a schema built in the web with its own `z.enum(RECORD_TYPE_VALUES)` or
+ * `newRecords` array would pass it, so a new record parse must go through `tolerantRecords.ts` by review.
+ */
 const STRICT_RECORD_SCHEMAS = /\b(?:PersonalRecordSchema|PersonalRecordsResponseSchema|UpdatedWorkoutSchema)\b/;
 
 describe("07.5 AC3 — every web parse of a record list is tolerant", () => {

@@ -16,7 +16,7 @@ import { createWorkoutClient, type WorkoutExercisePatch } from "./workoutClient"
 import { TolerantUpdatedWorkoutSchema } from "../records/tolerantRecords";
 
 describe("08.0 AC5 — finish keeps newRecords", () => {
-  it("parses the PATCH response with UpdatedWorkoutSchema, so newRecords survives", async () => {
+  it("parses the PATCH response with TolerantUpdatedWorkoutSchema, so newRecords survives", async () => {
     const detail = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z" });
     const records = [
       makePersonalRecord({ workoutId: detail.id }),
