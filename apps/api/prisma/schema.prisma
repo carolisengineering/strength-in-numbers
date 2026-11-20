@@ -323,6 +323,7 @@ model PersonalRecord {
   value            Decimal   @db.Decimal(14, 3)
   unit             String
   previousValue    Decimal?  @map("previous_value") @db.Decimal(14, 3)
+  atWeightKg       Decimal?  @map("at_weight_kg") @db.Decimal(7, 3)
   sourceSetEntryId String    @map("source_set_entry_id") @db.Uuid
   sourceSetEntry   SetEntry  @relation(fields: [sourceSetEntryId], references: [id], onDelete: Cascade)
   workoutId        String    @map("workout_id") @db.Uuid
@@ -331,7 +332,8 @@ model PersonalRecord {
   localDate        DateTime  @map("local_date") @db.Date
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  @@unique([userId, exerciseId, recordType], map: "personal_record_user_exercise_type_key")
+  // Unique key personal_record_user_exercise_type_weight_key (user_id, exercise_id, record_type, at_weight_kg)
+  // NULLS NOT DISTINCT is hand-authored in 0022; Prisma can't express it (Spec 07.5 §4.2).
   @@index([workoutId], map: "personal_record_workout_idx")
   @@index([sourceSetEntryId], map: "personal_record_source_set_idx")
   @@map("personal_record")
