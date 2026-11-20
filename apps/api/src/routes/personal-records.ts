@@ -24,6 +24,7 @@ export function toPersonalRecordDto(r: PersonalRecordRecord): PersonalRecord {
     value: r.value,
     unit: r.unit,
     previousValue: r.previousValue,
+    atWeightKg: r.atWeightKg,
     sourceSetId: r.sourceSetId as PersonalRecord["sourceSetId"],
     workoutId: r.workoutId as PersonalRecord["workoutId"],
     achievedAt: r.achievedAt.toISOString(),

@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { AccountExportSchema, ExerciseSchema, MeSchema, RoutineItemSchema, RoutineSchema, RoutineSectionSchema, SetEntrySchema, WorkoutExerciseSchema, WorkoutSchema, WorkoutSectionSchema } from "@sin/core";
 import { createRoutineRepository } from "../../src/repositories/routine.prisma.js";
 import { createHevyRepository } from "../../src/repositories/hevy.prisma.js";
+import { lockUserRecords, recomputeRecordsForRoots } from "../../src/repositories/personal-record.prisma.js";
 import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, logWorkout } from "./records-helpers.js";
 import { routineFixture } from "./routine-helpers.js";
@@ -68,6 +69,24 @@ describe.skipIf(!shouldRunIntegration())("Spec 11 — GET /v1/account/export (re
     await setResult(db, cap, { rounds: 4, reps: 7, finishSeconds: null, capped: true });
     return { id, global, custom, routine, w1, activeId: started.json().id as string };
   }
+
+  it("07.5 AC27 — most reps at a weight is not in the export", async () => {
+    app = await makeAccountApp(db);
+    const { id } = await me("exp-reps");
+    const raise = await insertExercise(db);
+    const w = await logWorkout(db, id, { startedAt: daysAgo(2), exercises: [{ exerciseId: raise, sets: [{ reps: 9, weight: 12.5 }] }] });
+    await db.prisma.$transaction(async (tx) => {
+      await lockUserRecords(tx, id);
+      await recomputeRecordsForRoots(tx, id, [raise]);
+    });
+    const held = await db.prisma.$queryRawUnsafe<{ n: number }[]>(
+      `SELECT count(*)::int AS n FROM "personal_record" WHERE user_id = $1::uuid AND record_type = 'max_reps_at_weight'`, id);
+    expect(held[0]!.n).toBe(1);
+    const res = await exportOf("exp-reps");
+    expect(Object.keys(res.json()).sort()).toEqual(["exercises", "exportedAt", "formatVersion", "hevy", "profile", "routines", "workouts"]);
+    expect(res.body).not.toMatch(/max_reps_at_weight|atWeightKg|personal_record/);
+    expect((res.json().workouts as { id: string }[]).map((x) => x.id)).toContain(w.workoutId);
+  });
 
   it("AC2 — envelope, exportedAt near now, profile equals GET /v1/me minus isNewUser", async () => {
     app = await makeAccountApp(db);

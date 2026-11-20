@@ -19,6 +19,9 @@ export const PersonalRecordSchema = z.object({
   value: z.number().positive(),
   unit: z.enum(RECORD_UNIT_VALUES),
   previousValue: z.number().positive().nullable(),
+  /** Spec 07.5: the canonical-kg weight a `max_reps_at_weight` record is about; null for every other type.
+   * Required-nullable, never defaulted (DESIGN §6). */
+  atWeightKg: z.number().positive().nullable(),
   sourceSetId: SetEntryIdSchema,
   workoutId: WorkoutIdSchema,
   achievedAt: z.iso.datetime({ offset: true }),

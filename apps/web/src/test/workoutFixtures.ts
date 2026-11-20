@@ -226,6 +226,7 @@ export function makePersonalRecord(overrides: Record<string, unknown> = {}): Per
     workoutId: nextId(),
     achievedAt: T0,
     localDate: "2026-10-02",
+    atWeightKg: null,
     ...overrides,
   });
 }

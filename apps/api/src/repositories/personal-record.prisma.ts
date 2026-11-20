@@ -285,7 +285,7 @@ export function createPersonalRecordRepository(db: UserScopedDb | PrismaClient):
         WHERE pr.user_id = ${actingUserId}::uuid
           AND (${root}::uuid IS NULL OR pr.exercise_id = ${root}::uuid)
           AND (${workoutId}::uuid IS NULL OR pr.workout_id = ${workoutId}::uuid)
-        ORDER BY pr.achieved_at DESC, pr.workout_id, pr.exercise_id, pr.record_type
+        ORDER BY pr.achieved_at DESC, pr.workout_id, pr.exercise_id, pr.record_type, pr.at_weight_kg DESC NULLS LAST
       `;
       return rows.map((r) => ({
         exerciseId: r.exercise_id,

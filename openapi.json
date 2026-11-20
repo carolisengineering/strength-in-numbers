@@ -8034,6 +8034,17 @@
                               }
                             ]
                           },
+                          "atWeightKg": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "sourceSetId": {
                             "type": "string",
                             "format": "uuid",
@@ -8063,6 +8074,7 @@
                           "value",
                           "unit",
                           "previousValue",
+                          "atWeightKg",
                           "sourceSetId",
                           "workoutId",
                           "achievedAt",
@@ -17754,6 +17766,17 @@
                               }
                             ]
                           },
+                          "atWeightKg": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "sourceSetId": {
                             "type": "string",
                             "format": "uuid",
@@ -17783,6 +17806,7 @@
                           "value",
                           "unit",
                           "previousValue",
+                          "atWeightKg",
                           "sourceSetId",
                           "workoutId",
                           "achievedAt",
