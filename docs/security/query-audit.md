@@ -249,8 +249,8 @@ Categories:
 | `src/repositories/personal-record.prisma.ts#resolveVisibleRoot#1` | query | user-filtered | ok | — | `47716a2b7a8c` | Reads exercise |
 | `src/repositories/personal-record.prisma.ts#loadLineageSets#1` | query | user-filtered | ok | — | `214af96bd41f` | Reads set_entry, workout_exercise, workout, exercise, LATERAL |
 | `src/repositories/personal-record.prisma.ts#recomputeRecordsForRoots#1` | query | user-filtered | ok | — | `01a436fa4821` | Deletes from personal_record |
-| `src/repositories/personal-record.prisma.ts#recomputeRecordsForRoots#2` | query | user-filtered | ok | — | `94ae40360524` | Inserts into personal_record |
-| `src/repositories/personal-record.prisma.ts#list#1` | query | user-filtered | ok | — | `876ffcc56867` | Reads personal_record, set_entry, workout_exercise |
+| `src/repositories/personal-record.prisma.ts#recomputeRecordsForRoots#2` | query | user-filtered | ok | — | `ecf30142d07c` | Inserts a root's personal_record rows in one statement from unnest arrays (Spec 07.5 D8, AC29); binds the acting userId |
+| `src/repositories/personal-record.prisma.ts#list#1` | query | user-filtered | ok | — | `f601bb37b8ba` | Reads personal_record, set_entry, workout_exercise |
 
 ## src/repositories/planned-sets.ts
 

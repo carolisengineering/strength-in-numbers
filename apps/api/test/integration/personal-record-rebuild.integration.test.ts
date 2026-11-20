@@ -63,7 +63,8 @@ describe.skipIf(!shouldRunIntegration())("AC22 — records:rebuild reproduces li
     const user = await insertUser(db);
     await liveHistory(user);
     const before = shape(await recordsOf(db, user));
-    expect(before).toHaveLength(4);
+    // bench's heaviest, e1RM and set volume, the pull-ups' max reps, and since Spec 07.5 most reps at 95 kg (day 3's 8).
+    expect(before).toHaveLength(5);
     await rebuildRecords(db.prisma, silent, {});
     expect(shape(await recordsOf(db, user))).toEqual(before);
   });

@@ -6,18 +6,28 @@ import {
   KM_TO_M,
   MI_TO_M,
   MODALITY_VALUES,
-  RECORD_TYPE_VALUES,
-  RECORD_UNIT_BY_TYPE,
   RECORD_UNIT_VALUES,
 } from "@sin/core";
 
 /** Spec 05.3 AC17 / AC40: 0015 widens every CHECK that lists a vocabulary, so the
- * live @sin/core lists are guarded here (the 0002 / 0005 / 0006 / 0008 guards are frozen). */
+ * live @sin/core lists are guarded here (the 0002 / 0005 / 0006 / 0008 guards are frozen). The record-type list
+ * and the type↔unit map are frozen to 0015's; the live ones are guarded against 0022 (Spec 07.5 AC17). */
 const sql = readFileSync(
   new URL("../../prisma/migrations/0015_new_exercise_modalities/migration.sql", import.meta.url),
   "utf8",
 );
 const render = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ");
+/** Frozen to 0015's list (Spec 07.5 AC17 guards the live list against 0022). */
+const RECORD_TYPES_0015 = ["heaviest_weight", "best_est_1rm", "best_set_volume", "max_reps", "max_calories", "max_distance", "max_duration"] as const;
+const RECORD_UNIT_BY_TYPE_0015: Readonly<Record<(typeof RECORD_TYPES_0015)[number], string>> = {
+  heaviest_weight: "kg",
+  best_est_1rm: "kg",
+  best_set_volume: "kg_reps",
+  max_reps: "reps",
+  max_calories: "cal",
+  max_distance: "m",
+  max_duration: "s",
+};
 const CONVERSION: Record<(typeof DISTANCE_UNIT_VALUES)[number], string> = {
   m: `THEN "distance"\n`,
   km: `THEN "distance" * ${KM_TO_M}`,
@@ -30,12 +40,12 @@ describe("05.3 AC17 — 0015's CHECKs render the live @sin/core lists", () => {
     expect(sql).toContain(`"modality" IN (${render(MODALITY_VALUES)})`);
     expect(sql).toContain(`"modality_snapshot" IN (${render(MODALITY_VALUES)})`);
   });
-  it("renders RECORD_TYPE_VALUES and RECORD_UNIT_VALUES", () => {
-    expect(sql).toContain(`"record_type" IN (${render(RECORD_TYPE_VALUES)})`);
+  it("renders 0015's seven record types and RECORD_UNIT_VALUES", () => {
+    expect(sql).toContain(`"record_type" IN (${render(RECORD_TYPES_0015)})`);
     expect(sql).toContain(`"unit" IN (${render(RECORD_UNIT_VALUES)})`);
   });
-  it("renders one type↔unit clause per RECORD_UNIT_BY_TYPE entry", () => {
-    for (const [type, unit] of Object.entries(RECORD_UNIT_BY_TYPE)) {
+  it("renders one type↔unit clause per 0015 type", () => {
+    for (const [type, unit] of Object.entries(RECORD_UNIT_BY_TYPE_0015)) {
       expect(sql).toContain(`("record_type" = '${type}' AND "unit" = '${unit}')`);
     }
   });

@@ -437,7 +437,9 @@ before that deploy have no rows until this step runs** (staging already has some
 Like B5 it is a manual release step: run it after `migrate deploy` and after the
 code is live, with the same direct-host `OWNER_DATABASE_URL` still exported from B4.
 Idempotent — re-run any time, and **always after a rollback window** (finishes and
-deletes during a rollback don't update the table).
+deletes during a rollback don't update the table). Spec 07.5 Phase B needs it once more after `0022` and its deploy
+(earlier sets get their `max_reps_at_weight` rows), and again right after any rollback of that phase
+([0022](#0022--most-reps-at-a-weight-spec-075-phase-b)).
 
 ```bash
 pnpm --filter @sin/api run records:rebuild            # every user
@@ -755,6 +757,37 @@ Never run `migrate dev` or `migrate resolve` on Neon to "undo" `0021`; undoing R
 | S3–S6 | 2026-11-08 | `e0b4c4e0` | green | Staging on `sin_app`, confirmed in `pg_stat_activity`; phone check green |
 | S7 | | | | |
 | S8 | | | | |
+
+### 0022 — most reps at a weight (Spec 07.5 Phase B)
+
+**Gate (07.5 AC5, D10):** Phase A (#354) is live on staging, Carol's phone has reloaded onto it (the page's
+`<meta name="sin-commit">` is #354's merge commit or later), and Spec 21.1's staging load run S8 has run. The Phase B
+PR states all three. Phase A's web drops a record type it doesn't know, so an old tab survives the new value.
+
+1. **Before merging** Phase B (merging auto-deploys staging, and the new recompute writes `at_weight_kg`, which needs
+   the column and the widened CHECKs): `OWNER_DATABASE_URL='<neon direct owner url>' pnpm run db:migrate:status`, then
+   `db:migrate:deploy`. It adds `personal_record.at_weight_kg numeric(7,3)` (nullable), rewrites the record-type and
+   type↔unit CHECKs with `max_reps_at_weight`, adds `personal_record_at_weight_check`, creates
+   `personal_record_user_exercise_type_weight_key` (`NULLS NOT DISTINCT`) and then drops the old
+   `personal_record_user_exercise_type_key`. No data statement. Check `db:migrate:status` again (do not assume) and
+   `\d personal_record`. Expand-only: the running API's statements (delete by root, then the seven-type insert) never
+   name the index, so they keep working (07.5 AC15).
+2. Merge Phase B (Render deploys the API; the static site redeploys in the same commit, so for a few minutes the new
+   bundle's schemas require `atWeightKg`, which the old API does not send: records reads and a finish's `newRecords`
+   fail to parse until the API is live — accepted on staging, as in 0011–0013; on production `deploy-prod` releases
+   the API first). Run the staging API smoke.
+3. **Then run `records:rebuild` (B5a)** with the same owner URL, so earlier sets get their `max_reps_at_weight` rows:
+   `OWNER_DATABASE_URL='<neon direct owner url>' pnpm --filter @sin/api run records:rebuild`. Spot check
+   `GET /v1/personal-records?exerciseId=<a lift with sets of 6+ reps>` for Carol: one `max_reps_at_weight` row per
+   weight she reached 6+ reps at, each with `atWeightKg`; the seven older types unchanged. Idempotent.
+4. Production (Spec 15): `deploy-prod` never migrates. Apply `0022` by hand the same way before approving the release,
+   then run `records:rebuild` against production after the release.
+5. **Rollback:** revert the code, **then run `records:rebuild` at once** (the old code deletes by root and writes only
+   the seven older types, so it removes every `max_reps_at_weight` row, 07.5 AC32). Until it runs, the reverted API
+   can't validate those rows against its own response schema (the older `z.enum`), so any `GET /v1/personal-records`
+   that would include one answers `500` (the Records list, an exercise page with such rows, `?workoutId=` for an older
+   workout); a finish is unaffected, since the old recompute replaces the root's rows. The column, CHECKs and index
+   stay (harmless to old code). Never `migrate dev` or `migrate resolve` on Neon to undo `0022`.
 
 ### B6. Verify DB TLS validation (by hand, after B4) — issue #8
 
@@ -1132,7 +1165,7 @@ Production is empty, so it takes the end state in one pass (Spec 21.1 §6.9): ro
    Cloud Run's `us-central1` (spec O1):** a bare statement now costs four round trips, so distance matters more here
    than on staging. Take the **direct** (not `-pooler`) connection string and append
    `sslmode=require&sslaccept=strict` (B1). This is the production **owner** URL.
-2. **Apply the migrations** (`0001`–`0021`) with the owner URL:
+2. **Apply the migrations** (`0001`–`0022`) with the owner URL:
 
 ```bash
 export OWNER_DATABASE_URL='<prod owner url>'

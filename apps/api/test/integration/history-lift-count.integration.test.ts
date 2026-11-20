@@ -64,6 +64,40 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.6 — History counts lifts (HT
 
   const set = (weight: number, reps: number, weightUnit?: "kg" | "lb") => ({ weight, reps, ...(weightUnit ? { weightUnit } : {}) });
 
+  describe("07.5 AC28 — History counts a beaten reps-at-weight record by lift (07.6)", () => {
+    const CASES: [name: string, expected: number, build: (l: Lifter) => Promise<string>][] = [
+      // 13 and 14 reps carry no estimate; the weight ties; only set volume (never counted) and reps at 12.5 rose.
+      ["beaten reps row alone", 1, async (l) => {
+        const raise = await insertExercise(db);
+        await l.finishAt(1, [{ exerciseId: raise, sets: [set(12.5, 13)] }]);
+        return l.finishAt(2, [{ exerciseId: raise, sets: [set(12.5, 14)] }]);
+      }],
+      // A first time at 15 kg beat nothing: lighter than 20, no estimate, less volume.
+      ["first-time row at a new weight alone", 0, async (l) => {
+        const raise = await insertExercise(db);
+        await l.finishAt(1, [{ exerciseId: raise, sets: [set(20, 13)] }]);
+        return l.finishAt(2, [{ exerciseId: raise, sets: [set(15, 14)] }]);
+      }],
+      ["reps and heaviest on one lift", 1, async (l) => {
+        const raise = await insertExercise(db);
+        await l.finishAt(1, [{ exerciseId: raise, sets: [set(12.5, 13)] }]);
+        return l.finishAt(2, [{ exerciseId: raise, sets: [set(15, 6), set(12.5, 14)] }]);
+      }],
+    ];
+    it.each(CASES)("%s → %i, equal to liftsWithBeatenRecords of its records", async (name, expected, build) => {
+      const l = await lifter(`reps-${name.replace(/\W+/g, "-")}`);
+      try {
+        const workoutId = await build(l);
+        const records = await l.records(workoutId);
+        expect(records.some((r) => r.recordType === "max_reps_at_weight")).toBe(true);
+        expect(await l.recordCount(workoutId)).toBe(expected);
+        expect(liftsWithBeatenRecords(records)).toBe(expected);
+      } finally {
+        await l.app.close();
+      }
+    });
+  });
+
   /** Each fixture logs history and returns the workout to count, with the count the rule gives. */
   const FIXTURES: [name: string, expected: number, build: (l: Lifter) => Promise<string>][] = [
     ["weight-and-estimate-one-lift", 1, async (l) => {

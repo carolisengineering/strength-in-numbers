@@ -18,6 +18,7 @@ const validRecord = {
   workoutId: "018fcb3e-3b8a-7d6e-9c1a-000000000004",
   achievedAt: "2026-10-01T10:00:00.000Z",
   localDate: "2026-10-01",
+  atWeightKg: null,
 };
 
 describe("AC25 — PersonalRecordSchema", () => {
@@ -66,5 +67,18 @@ describe("AC25 — UpdatedWorkoutSchema = Workout + newRecords", () => {
     };
     expect(UpdatedWorkoutSchema.safeParse(workout).success).toBe(false);
     expect(UpdatedWorkoutSchema.parse({ ...workout, newRecords: [validRecord] }).newRecords).toHaveLength(1);
+  });
+});
+
+describe("07.5 AC25 — the DTO carries atWeightKg", () => {
+  const repsAtWeight = { ...validRecord, recordType: "max_reps_at_weight", unit: "reps", value: 14, previousValue: 12, atWeightKg: 12.5 };
+  it("a max_reps_at_weight record with its weight parses", () => {
+    expect(PersonalRecordSchema.parse(repsAtWeight)).toEqual(repsAtWeight);
+  });
+  it("atWeightKg is required-nullable and positive", () => {
+    const missing: Record<string, unknown> = { ...validRecord };
+    delete missing.atWeightKg;
+    expect(PersonalRecordSchema.safeParse(missing).success).toBe(false);
+    expect(PersonalRecordSchema.safeParse({ ...repsAtWeight, atWeightKg: 0 }).success).toBe(false);
   });
 });

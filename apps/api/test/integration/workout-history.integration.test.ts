@@ -251,7 +251,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.1 — listFinishedWorkouts (re
       await finishAt(u, 0, [{ exerciseId: bench, sets: [{ reps: 5, weight: 100 }] }]);
       const { workoutId } = await finishAt(u, 1, [{ exerciseId: bench, sets: [{ reps: 10, weight: 80 }] }]); // 800 > 500 volume; lighter, lower estimate
       const types = await createPersonalRecordRepository(db.prisma).list(u, { workoutId });
-      expect(types.map((r) => [r.recordType, r.previousValue !== null])).toEqual([["best_set_volume", true]]);
+      // Spec 07.5: 80 × 10 is also the first set at 80 kg — a first-time reps-at-weight row, which beat nothing.
+      expect(types.map((r) => [r.recordType, r.previousValue !== null])).toEqual([["best_set_volume", true], ["max_reps_at_weight", false]]);
       expect(await countOf(u, workoutId)).toBe(0);
     });
 

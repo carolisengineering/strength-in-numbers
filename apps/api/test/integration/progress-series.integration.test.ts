@@ -73,6 +73,33 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.2 — getProgressSeries (real 
     });
   });
 
+  describe("07.5 AC30 — the progress series is unchanged by most reps at a weight", () => {
+    it("12.5 × 12 then 12.5 × 14, records rebuilt: the points are the literal from before Spec 07.5", async () => {
+      const u = await insertUser(db);
+      const raise = await insertExercise(db);
+      await logWorkout(db, u, { startedAt: at(1), exercises: [{ exerciseId: raise, sets: [{ reps: 12, weight: 12.5 }] }] });
+      await logWorkout(db, u, { startedAt: at(2), exercises: [{ exerciseId: raise, sets: [{ reps: 14, weight: 12.5 }] }] });
+      await db.prisma.$transaction(async (tx) => {
+        await lockUserRecords(tx, u);
+        await recomputeRecordsForRoots(tx, u, [raise]);
+      });
+      const points = (await series(u, raise)).points.map((p) => ({
+        localDate: p.localDate,
+        topSetWeightMilli: p.topSetWeightMilli,
+        bestE1rmMilli: p.bestE1rmMilli,
+        totalVolumeMilli: p.totalVolumeMilli,
+        maxRepsMilli: p.maxRepsMilli,
+        maxCaloriesMilli: p.maxCaloriesMilli,
+        maxDistanceMilli: p.maxDistanceMilli,
+        maxDurationMilli: p.maxDurationMilli,
+      }));
+      expect(points).toEqual([
+        { localDate: "2026-09-01", topSetWeightMilli: 12_500, bestE1rmMilli: 17_500, totalVolumeMilli: 150_000, maxRepsMilli: null, maxCaloriesMilli: null, maxDistanceMilli: null, maxDurationMilli: null },
+        { localDate: "2026-09-02", topSetWeightMilli: 12_500, bestE1rmMilli: null, totalVolumeMilli: 175_000, maxRepsMilli: null, maxCaloriesMilli: null, maxDistanceMilli: null, maxDurationMilli: null },
+      ]);
+    });
+  });
+
   describe("AC5/AC6 — scope and one point per workout", () => {
     it("warm-up/drop/failure, in-progress and other users' sets never count; unticked working sets do; fork + origin in one workout is one point; warm-up-only workout has no point", async () => {
       const u = await insertUser(db);

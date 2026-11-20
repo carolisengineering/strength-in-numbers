@@ -25,7 +25,7 @@ const HISTORY = (JSON.parse(readFileSync(new URL("../fixtures/hevy/import-histor
 
 /** A record without the ids that differ between two users' rows. */
 const comparable = (rows: RecordRow[]) =>
-  rows.map(({ exercise_id, record_type, value, unit, previous_value }) => ({ exercise_id, record_type, value, unit, previous_value }));
+  rows.map(({ exercise_id, record_type, value, unit, previous_value, at_weight_kg }) => ({ exercise_id, record_type, value, unit, previous_value, at_weight_kg }));
 
 /** Spec 19.1 AC30, AC31, AC34 — the import end to end, through the routes. */
 describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import end to end (real Postgres)", () => {
@@ -119,6 +119,19 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.1 — Hevy import end to end (
       expect(a.map((r) => r.exercise_id).sort()).toEqual(expect.arrayContaining([ids.bench, ids.row, ids.carry]));
       expect(a).toEqual(comparable(await recordsOf(db, B_ID)));
       for (const id of Object.values(ids)) expect(await series(AS_A, id)).toEqual(await series(AS_B, id));
+    });
+  });
+
+  describe("07.5 AC24 — imported records include max_reps_at_weight", () => {
+    it("the finish writes the 50 kg back-off record, and it equals the live path's", async () => {
+      await importAll();
+      await logAsB();
+      const a = comparable(await recordsOf(db, A_ID));
+      // The fixture's 50 kg back-off sets go 8, 9, 10, … reps: the latest beat is 10 reps, was 9.
+      expect(a.filter((r) => r.record_type === "max_reps_at_weight")).toEqual([
+        { exercise_id: ids.bench, record_type: "max_reps_at_weight", value: "10.000", unit: "reps", previous_value: "9.000", at_weight_kg: "50.000" },
+      ]);
+      expect(a).toEqual(comparable(await recordsOf(db, B_ID)));
     });
   });
 

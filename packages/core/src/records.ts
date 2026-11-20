@@ -36,7 +36,12 @@ export interface ComputedRecord {
   workoutId: string;
   /** Best value of this type over strictly-earlier workouts (D16). */
   previousValueMilli: number | null;
+  /** Spec 07.5: the exact canonical weight a `max_reps_at_weight` row is about, milli-kg; null for every other type. */
+  atWeightKgMilli: number | null;
 }
+
+/** Spec 07.5 D1: a most-reps-at-a-weight record needs at least this many reps (the holder, never the baseline, D6). */
+export const REPS_AT_WEIGHT_MIN_REPS = 6;
 
 const DECIMAL_3 = /^(\d+)(?:\.(\d{1,3}))?$/;
 
@@ -117,6 +122,9 @@ export function sumVolumeMilli(
  * ineligible (07.0 §6.1 table, D5). Exported for Spec 07.2's progress series —
  * one per-set rule for PRs and charts. */
 export function setRecordValueMilli(recordType: RecordType, s: RecordSet): number | null {
+  // Spec 07.5: one row per weight, computed by its own pass in computeRecords; never a per-set value here
+  // (it would fall through to the e1RM branch below).
+  if (recordType === "max_reps_at_weight") return null;
   // Spec 05.3 §6.2: each new type reads one measure of one modality.
   if (recordType === "max_calories") {
     const c = s.calories ?? null;
@@ -180,6 +188,7 @@ export function computeRecords(sets: readonly RecordSet[]): ComputedRecord[] {
 
   const out: ComputedRecord[] = [];
   for (const recordType of RECORD_TYPE_VALUES) {
+    if (recordType === "max_reps_at_weight") continue; // its own pass below
     let runningBest: number | null = null;
     let holder: ComputedRecord | null = null;
     for (const group of workouts) {
@@ -197,13 +206,56 @@ export function computeRecords(sets: readonly RecordSet[]): ComputedRecord[] {
           setId: best.set.setId,
           workoutId: best.set.workoutId,
           previousValueMilli: runningBest,
+          atWeightKgMilli: null,
         };
         runningBest = best.value;
       }
     }
     if (holder) out.push(holder);
   }
-  return out;
+  return [...out, ...repsAtWeightRecords(workouts)];
+}
+
+/** Spec 07.5 §6.1 eligibility: a rep-load set with whole reps ≥ 1 and a weight above 0 (`is_complete` ignored, 07.0 D5). */
+const eligibleAtWeight = (s: RecordSet): boolean =>
+  LOAD_MODALITIES.has(s.modality) && repsAtLeastOne(s) && s.weightKgMilli !== null && s.weightKgMilli > 0;
+
+/**
+ * Spec 07.5 §6.1 — most reps at each exact canonical weight, one O(sets) pass. `running` is the best reps per
+ * weight over strictly-earlier workouts; a workout's best at a weight (its earliest such set) becomes the holder only
+ * if it beats that. Holders below the floor are dropped, so a baseline under the floor still counts (5 → 7). Rows come
+ * heaviest weight first.
+ */
+function repsAtWeightRecords(workouts: readonly RecordSet[][]): ComputedRecord[] {
+  const running = new Map<number, number>();
+  const holder = new Map<number, { reps: number; set: RecordSet; previous: number | null }>();
+  for (const group of workouts) {
+    const best = new Map<number, { reps: number; set: RecordSet }>();
+    for (const s of group) {
+      if (!eligibleAtWeight(s)) continue;
+      const w = s.weightKgMilli!;
+      if (s.reps! > (best.get(w)?.reps ?? 0)) best.set(w, { reps: s.reps!, set: s });
+    }
+    for (const [w, b] of best) {
+      const previous = running.get(w) ?? null;
+      if (previous === null || b.reps > previous) {
+        holder.set(w, { ...b, previous });
+        running.set(w, b.reps);
+      }
+    }
+  }
+  return [...holder.entries()]
+    .filter(([, h]) => h.reps >= REPS_AT_WEIGHT_MIN_REPS)
+    .sort(([a], [b]) => b - a)
+    .map(([w, h]) => ({
+      recordType: "max_reps_at_weight" as const,
+      valueMilli: h.reps * 1000,
+      unit: RECORD_UNIT_BY_TYPE.max_reps_at_weight,
+      setId: h.set.setId,
+      workoutId: h.set.workoutId,
+      previousValueMilli: h.previous === null ? null : h.previous * 1000,
+      atWeightKgMilli: w,
+    }));
 }
 
 /** One chart point (Spec 07.2 §5): a workout's best per metric, integer milli. */

@@ -15,7 +15,7 @@ export function RecordRows({ records, unitPreference }: { records: readonly Pers
       {records.map((record) => {
         const parts = recordParts(record, unitPreference);
         return (
-          <li key={`${record.exerciseId}:${record.recordType}`} className={styles.row}>
+          <li key={`${record.exerciseId}:${record.recordType}:${record.atWeightKg ?? ""}`} className={styles.row}>
             <span className={styles.label}>{parts.label}</span>
             <VisuallyHidden>: </VisuallyHidden>
             <span className={styles.value}>{parts.value}</span>

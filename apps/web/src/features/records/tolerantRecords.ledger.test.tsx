@@ -11,7 +11,9 @@ const ROOT = "10000000-0000-4000-8000-0000000000c1";
 const set = makeSet({ reps: 5, weight: 100 });
 const workout = makeWorkoutDetail({ endedAt: "2026-10-02T11:00:00.000Z", exercises: [{ modality: "weight_reps", name: "Bench Press", sets: [set] }] });
 const UNIT: Record<string, string> = { max_reps: "reps", max_calories: "cal", max_distance: "m", max_duration: "s" };
-const everyType: PersonalRecord[] = RECORD_TYPE_VALUES.map((recordType) =>
+/** The seven types Phase A shipped with (AC4); Phase B's `max_reps_at_weight` has its own tests. */
+const SEVEN_TYPES = RECORD_TYPE_VALUES.filter((t) => t !== "max_reps_at_weight");
+const everyType: PersonalRecord[] = SEVEN_TYPES.map((recordType) =>
   makePersonalRecord({ exerciseId: ROOT, sourceExerciseId: ROOT, sourceSetId: set.id, workoutId: workout.id, recordType, unit: UNIT[recordType] ?? "kg", value: 20, previousValue: 10 }),
 );
 

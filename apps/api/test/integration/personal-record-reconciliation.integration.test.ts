@@ -12,7 +12,7 @@ import { shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./
 import { insertExercise, insertUser, logWorkout, recordsOf } from "./records-helpers.js";
 
 const order = (xs: Expected[]) =>
-  [...xs].sort((a, b) => (a.exercise + a.recordType).localeCompare(b.exercise + b.recordType));
+  [...xs].sort((a, b) => (a.exercise + a.recordType + (a.atWeightKg ?? "")).localeCompare(b.exercise + b.recordType + (b.atWeightKg ?? "")));
 
 describe.skipIf(!shouldRunIntegration())("AC26 — hand reconciliation over 10 sessions", () => {
   let db: IntegrationDb;
@@ -46,6 +46,7 @@ describe.skipIf(!shouldRunIntegration())("AC26 — hand reconciliation over 10 s
         value: r.value,
         previousValue: r.previous_value,
         session: sessionOf.get(r.workout_id)!,
+        atWeightKg: r.at_weight_kg,
       })),
     );
 

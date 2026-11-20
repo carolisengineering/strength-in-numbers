@@ -136,7 +136,8 @@ describe("17.6 AC7 — row types", () => {
       rec(w, 0, heaviest(190, 185)),
     ];
     const rows = ledger(records, w).lifts[0]!.rows;
-    expect(rows.map((r) => r.type)).toEqual(RECORD_TYPE_VALUES.filter((t) => t !== "best_set_volume"));
+    // Most reps at a weight gets its ledger row in Spec 07.5 Phase C; these records don't include it.
+    expect(rows.map((r) => r.type)).toEqual(RECORD_TYPE_VALUES.filter((t) => t !== "best_set_volume" && t !== "max_reps_at_weight"));
     expect(rows.map((r) => r.label)).toEqual(["Heaviest weight", "Est. 1-rep max", "Most reps", "Most calories", "Longest distance", "Longest hold"]);
     expect(rows[0]!.spoken).toBe("Heaviest weight: was 185 kg, now 190 kg, up 5 kg");
   });

@@ -150,6 +150,7 @@ const EXPECTED = [
   "computeRecords",
   "liftsWithBeatenRecords",
   "HISTORY_COUNT_EXCLUDES",
+  "REPS_AT_WEIGHT_MIN_REPS",
   "setVolumeMilli",
   "sumVolumeMilli",
   "setRecordValueMilli",

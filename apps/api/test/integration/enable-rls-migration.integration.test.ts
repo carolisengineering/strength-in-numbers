@@ -1,7 +1,6 @@
 // apps/api/test/integration/enable-rls-migration.integration.test.ts
 // Spec 21.1 Phase D, AC32 — migration 0021 (row-level security on all 19 tables), real Postgres.
-// Owns the whole-schema `prisma migrate diff` no-drift check (moved here from app-role-migration, apps/api CLAUDE.md).
-import { spawnSync } from "node:child_process";
+// The whole-schema `prisma migrate diff` no-drift check moved to reps-at-weight-migration with 0022 (apps/api CLAUDE.md).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -52,30 +51,5 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase D — migration 0021 (
     expect(order.indexOf("routine")).toBeLessThan(order.indexOf("routine_item"));
     // Exactly one switch per table and nothing else: no FORCE (D6), no DISABLE (D12).
     expect(statements.slice(2)).toEqual(RLS_TABLES.map((t) => `ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`));
-  });
-
-  // Moved from app-role-migration (Spec 21.1 Phase A AC5/AC6): the whole-schema no-drift check lives in the newest
-  // migration's test.
-  describe("AC5, AC6 — schema.prisma matches the migrated schema", () => {
-    it("prisma migrate diff reports only the generated set_entry columns: the composite owner keys are in schema.prisma too", () => {
-      const apiDir = fileURLToPath(new URL("../../", import.meta.url));
-      const r = spawnSync(
-        "pnpm",
-        ["exec", "prisma", "migrate", "diff", "--from-url", db.url, "--to-schema-datamodel", "prisma/schema.prisma", "--exit-code"],
-        { cwd: apiDir, encoding: "utf8" },
-      );
-      const report = `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`;
-      expect(r.status, report).toBe(2);
-      const changeLines = r.stdout.split("\n").map((l) => l.trim()).filter((l) => /^\[[*+-]\]/.test(l));
-      // schema.prisma declares each parent link as the composite owner relation 0019 created, so the only difference
-      // left is the long-standing one: the two generated set_entry columns (Specs 05.1, 05.3). 0020's role, grants,
-      // functions and policies, and 0021's switch, are outside Prisma's model.
-      const expected = [
-        "[*] Changed the `set_entry` table",
-        expect.stringMatching(/^\[\*\] Altered column `weight_kg` \(default changed from `Some\(DbGenerated/),
-        expect.stringMatching(/^\[\*\] Altered column `distance_m` \(default changed from `Some\(DbGenerated/),
-      ];
-      expect(changeLines, report).toEqual(expected);
-    });
   });
 });

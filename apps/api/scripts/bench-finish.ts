@@ -4,9 +4,14 @@
  * A dev tool, not a CI gate (D19). Needs Docker (Testcontainers), like the
  * integration tests:
  *   PATH="$HOME/.docker/bin:$PATH" pnpm --filter @sin/api run bench:finish
+ * Spec 07.5 AC29 (b): `-- --reps-at-weight` gives every exercise 30 distinct weights at 6–15 reps, so each holds
+ * ~30 `max_reps_at_weight` rows, and then times the unfiltered `GET /v1/personal-records` read (with its JSON size)
+ * over a second user's 100 lineages × 30 weights.
  */
 import { pino } from "pino";
 import { createExerciseRepository } from "../src/repositories/exercise.prisma.js";
+import { createPersonalRecordRepository } from "../src/repositories/personal-record.prisma.js";
+import { toPersonalRecordDto } from "../src/routes/personal-records.js";
 import { createWorkoutRepository } from "../src/repositories/workout.prisma.js";
 import { createScopedDb } from "../src/db/scoped.js";
 import { assertMeasuringAsApp, benchLoginLine } from "./lib/bench-login.js";
@@ -18,6 +23,9 @@ const HISTORY_SESSIONS = 100; // ~2 years at one session a week
 const EXERCISES = 6;
 const SETS = 4;
 const RUNS = 50;
+const REPS_AT_WEIGHT = process.argv.includes("--reps-at-weight");
+const WEIGHTS = 30;
+const LIST_LINEAGES = 100;
 
 const db = await startIntegrationDb();
 try {
@@ -31,7 +39,11 @@ try {
   const exercisesFor = (n: number) =>
     exerciseIds.map((exerciseId) => ({
       exerciseId,
-      sets: Array.from({ length: SETS }, (_, s) => ({ reps: 5 + (s % 3), weight: 60 + (n % 40) + s * 2.5 })),
+      sets: Array.from({ length: SETS }, (_, s) =>
+        REPS_AT_WEIGHT
+          ? { reps: 6 + ((n + s) % 10), weight: 20 + ((n * SETS + s) % WEIGHTS) * 2.5 } // 30 weights, 6–15 reps
+          : { reps: 5 + (s % 3), weight: 60 + (n % 40) + s * 2.5 },
+      ),
     }));
 
   for (let n = 0; n < HISTORY_SESSIONS; n++) {
@@ -71,6 +83,31 @@ try {
     edits.push(performance.now() - t0);
   }
   report("finished-workout set edit", edits);
+
+  if (REPS_AT_WEIGHT) {
+    // Spec 07.5 AC29: the unfiltered list over 100 lineages × 30 weights, read as the API reads it.
+    const lister = await insertUser(db);
+    for (let e = 0; e < LIST_LINEAGES; e++) {
+      const exerciseId = await insertExercise(db);
+      await logWorkout(db, lister, {
+        startedAt: sessionAt(e % HISTORY_SESSIONS),
+        exercises: [{ exerciseId, sets: Array.from({ length: WEIGHTS }, (_, w) => ({ reps: 8, weight: 20 + w * 2.5 })) }],
+      });
+    }
+    await rebuildRecords(db.prisma, pino({ level: "silent" }), { userId: lister });
+    const records = createPersonalRecordRepository(scoped);
+    const reads: number[] = [];
+    let bytes = 0;
+    let rows = 0;
+    for (let r = 0; r < RUNS; r++) {
+      const t0 = performance.now();
+      const listed = await records.list(lister, {});
+      bytes = Buffer.byteLength(JSON.stringify({ records: listed.map(toPersonalRecordDto) }));
+      reads.push(performance.now() - t0);
+      rows = listed.length;
+    }
+    report(`GET /v1/personal-records unfiltered (${rows} rows, ${(bytes / 1024).toFixed(0)} KiB)`, reads);
+  }
 } finally {
   await db.stop();
 }

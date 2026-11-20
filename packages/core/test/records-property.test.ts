@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RECORD_TYPE_VALUES, RECORD_UNIT_BY_TYPE } from "../src/enums.js";
-import { computeRecords, estimate1rm, type ComputedRecord, type RecordSet } from "../src/records.js";
+import { computeRecords, estimate1rm, REPS_AT_WEIGHT_MIN_REPS, type ComputedRecord, type RecordSet } from "../src/records.js";
 
 /** mulberry32 — a fixed seed list keeps failures reproducible (D21). */
 function prng(seed: number): () => number {
@@ -89,6 +89,7 @@ function reference(ws: Workout[]): ComputedRecord[] {
   };
   const out: ComputedRecord[] = [];
   for (const t of RECORD_TYPE_VALUES) {
+    if (t === "max_reps_at_weight") continue; // its own reference below (Spec 07.5 AC13)
     let best: { v: number; s: RecordSet; wi: number } | null = null;
     ordered.forEach((w, wi) =>
       w.sets.forEach((s) => {
@@ -105,7 +106,34 @@ function reference(ws: Workout[]): ComputedRecord[] {
         if (v !== null && v > 0 && (prev === null || v > prev)) prev = v;
       }),
     );
-    out.push({ recordType: t, valueMilli: b.v, unit: RECORD_UNIT_BY_TYPE[t], setId: b.s.setId, workoutId: b.s.workoutId, previousValueMilli: prev });
+    out.push({ recordType: t, valueMilli: b.v, unit: RECORD_UNIT_BY_TYPE[t], setId: b.s.setId, workoutId: b.s.workoutId, previousValueMilli: prev, atWeightKgMilli: null });
+  }
+  return [...out, ...repsAtWeightReference(ordered)];
+}
+
+/** Spec 07.5 AC13 brute force: per exact weight, the overall most reps (earliest workout, earliest set in it) holds the
+ * record if it is at least the floor; the previous value is the most reps at that weight in strictly-earlier workouts. */
+function repsAtWeightReference(ordered: Workout[]): ComputedRecord[] {
+  const eligible = (s: RecordSet) =>
+    ["weight_reps", "weighted_bodyweight"].includes(s.modality) && s.reps !== null && Number.isInteger(s.reps) && s.reps >= 1 && s.weightKgMilli !== null && s.weightKgMilli > 0;
+  const weights = new Set(ordered.flatMap((w) => w.sets.filter(eligible).map((s) => s.weightKgMilli!)));
+  const out: ComputedRecord[] = [];
+  for (const weight of [...weights].sort((a, b) => b - a)) {
+    let best: { reps: number; s: RecordSet; wi: number } | null = null;
+    ordered.forEach((w, wi) =>
+      w.sets.forEach((s) => {
+        if (eligible(s) && s.weightKgMilli === weight && (best === null || s.reps! > best.reps)) best = { reps: s.reps!, s, wi };
+      }),
+    );
+    const b = best as { reps: number; s: RecordSet; wi: number } | null;
+    if (b === null || b.reps < REPS_AT_WEIGHT_MIN_REPS) continue;
+    let prev: number | null = null;
+    ordered.slice(0, b.wi).forEach((w) =>
+      w.sets.forEach((s) => {
+        if (eligible(s) && s.weightKgMilli === weight && (prev === null || s.reps! > prev)) prev = s.reps!;
+      }),
+    );
+    out.push({ recordType: "max_reps_at_weight", valueMilli: b.reps * 1000, unit: "reps", setId: b.s.setId, workoutId: b.s.workoutId, previousValueMilli: prev === null ? null : prev * 1000, atWeightKgMilli: weight });
   }
   return out;
 }
@@ -141,5 +169,31 @@ describe("AC9 — rebuild ≡ live (seeded property test)", () => {
         expect(NEW_MODALITIES.has(modalityOf.get(r.setId)!)).toBe(false);
       }
     }
+  });
+});
+
+/** Spec 07.5 AC13's histories: a few weights and 1–15 reps, so ties, floors and higher earlier bests all occur. */
+function repsHistory(seed: number): Workout[] {
+  const rnd = prng(seed * 7919);
+  const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)]!;
+  const workouts: Workout[] = [];
+  const count = 1 + Math.floor(rnd() * 20);
+  for (let w = 0; w < count; w++) {
+    const id = `r${seed}-${String(w).padStart(2, "0")}`;
+    const sets: RecordSet[] = [];
+    const setCount = Math.floor(rnd() * 6);
+    for (let s = 0; s < setCount; s++) {
+      sets.push({ setId: `${id}-s${s}`, workoutId: id, modality: pick(["weight_reps", "weighted_bodyweight"]), weightKgMilli: pick([10_000, 12_500, 15_000]), reps: 1 + Math.floor(rnd() * 15) });
+    }
+    workouts.push({ id, startedAt: Math.floor(rnd() * 10), sets });
+  }
+  return workouts;
+}
+
+describe("07.5 AC13 — max_reps_at_weight matches a brute-force reference", () => {
+  it.each(SEEDS)("seed %i", (seed) => {
+    const ws = repsHistory(seed);
+    const atWeight = (rs: ComputedRecord[]) => rs.filter((r) => r.recordType === "max_reps_at_weight");
+    expect(atWeight(computeRecords(flatten(ws)))).toEqual(repsAtWeightReference(chronological(ws)));
   });
 });

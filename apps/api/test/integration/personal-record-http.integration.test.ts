@@ -126,6 +126,46 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.0 — personal records over HT
     });
   });
 
+  describe("07.5 AC26 — every record read returns most reps at a weight", () => {
+    type Rec = { recordType: string; value: number; previousValue: number | null; unit: string; atWeightKg: number | null; workoutId: string };
+    const byTypeAndWeight = (xs: Rec[]) =>
+      [...xs].sort((a, b) => a.recordType.localeCompare(b.recordType) || (b.atWeightKg ?? 0) - (a.atWeightKg ?? 0));
+    it("the finish, ?workoutId=, ?exerciseId= on origin and forks, and the unfiltered list all carry it", async () => {
+      app = await makeApp();
+      const userA = (await app.inject({ method: "GET", url: "/v1/me", headers: JSON_A })).json().id as string;
+      const G = await insertExercise(db, { name: "Lateral Raise" });
+      const F1 = await insertExercise(db, { ownerUserId: userA, forkedFrom: G, name: "My Raise" });
+      const F2 = await insertExercise(db, { ownerUserId: userA, forkedFrom: G, name: "Seated Raise" });
+      await session(JSON_A, F1, [{ reps: 12, weight: 12.5 }], 30);
+      const late = await session(JSON_A, F1, [{ reps: 14, weight: 12.5 }, { reps: 7, weight: 15 }], 20);
+      expect(late.finish.statusCode).toBe(200);
+      const newRecords = late.finish.json().newRecords as Rec[];
+      for (const r of newRecords) PersonalRecordSchema.parse(r);
+      expect(newRecords.filter((r) => r.recordType === "max_reps_at_weight").map(({ value, previousValue, unit, atWeightKg }) => ({ value, previousValue, unit, atWeightKg }))).toEqual([
+        { value: 7, previousValue: null, unit: "reps", atWeightKg: 15 },
+        { value: 14, previousValue: 12, unit: "reps", atWeightKg: 12.5 },
+      ]);
+      expect(newRecords.filter((r) => r.recordType !== "max_reps_at_weight").every((r) => r.atWeightKg === null)).toBe(true);
+
+      const byWorkout = (await get(JSON_A, `?workoutId=${late.workoutId}`)).json().records as Rec[];
+      expect(byTypeAndWeight(byWorkout)).toEqual(byTypeAndWeight(newRecords));
+
+      const byG = await get(JSON_A, `?exerciseId=${G}`);
+      expect((await get(JSON_A, `?exerciseId=${F1}`)).body).toBe(byG.body);
+      expect((await get(JSON_A, `?exerciseId=${F2}`)).body).toBe(byG.body);
+
+      // AC26 order: newest first, then workout, root, type, and the heavier weight first within the type.
+      const all = (await get(JSON_A)).json().records as Rec[];
+      expect(all.filter((r) => r.workoutId === late.workoutId).map((r) => [r.recordType, r.atWeightKg])).toEqual([
+        ["best_est_1rm", null],
+        ["best_set_volume", null],
+        ["heaviest_weight", null],
+        ["max_reps_at_weight", 15],
+        ["max_reps_at_weight", 12.5],
+      ]);
+    });
+  });
+
   describe("AC19 — filters and lineage resolution", () => {
     it("no params: all of A's rows, newest first", async () => {
       const { G, C, onC } = await arrange();

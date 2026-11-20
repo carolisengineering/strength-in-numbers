@@ -40,7 +40,7 @@ describe("AC4 — shared enums match DESIGN §4.0–4.5", () => {
     expect([...SET_TYPE_VALUES]).toEqual(["warmup", "working", "drop", "failure"]);
   });
 
-  it("05.3 AC2 — RECORD_TYPE_VALUES = the four v1 PR kinds, then max_calories, max_distance, max_duration", () => {
+  it("05.3 AC2, 07.5 AC12 — RECORD_TYPE_VALUES = the four v1 PR kinds, then max_calories, max_distance, max_duration, then max_reps_at_weight", () => {
     expect([...RECORD_TYPE_VALUES]).toEqual([
       "heaviest_weight",
       "best_est_1rm",
@@ -49,6 +49,7 @@ describe("AC4 — shared enums match DESIGN §4.0–4.5", () => {
       "max_calories",
       "max_distance",
       "max_duration",
+      "max_reps_at_weight",
     ]);
   });
 
@@ -62,6 +63,7 @@ describe("AC4 — shared enums match DESIGN §4.0–4.5", () => {
       max_calories: "cal",
       max_distance: "m",
       max_duration: "s",
+      max_reps_at_weight: "reps",
     });
     expect(Object.keys(RECORD_UNIT_BY_TYPE)).toEqual([...RECORD_TYPE_VALUES]);
     expect(Object.isFrozen(RECORD_UNIT_BY_TYPE)).toBe(true);

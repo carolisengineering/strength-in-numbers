@@ -601,7 +601,7 @@ export const finishedMixed = makeWorkout(41, at(3, 10), 55, [
 const ledgerRecord = (w, i, type, value, previousValue) => {
   const we = w.exercises[i];
   const s = we.sets[0];
-  return { exerciseId: we.exerciseId, sourceExerciseId: we.exerciseId, exerciseName: we.exerciseNameSnapshot, recordType: type, value, unit: "kg", previousValue, sourceSetId: s.id, workoutId: w.id, achievedAt: s.completedAt, localDate: w.localDate };
+  return { exerciseId: we.exerciseId, sourceExerciseId: we.exerciseId, exerciseName: we.exerciseNameSnapshot, recordType: type, value, unit: "kg", previousValue, sourceSetId: s.id, workoutId: w.id, achievedAt: s.completedAt, localDate: w.localDate, atWeightKg: null };
 };
 // Epley, as `computeRecords` uses it, rounded to 2 decimals (that helper is declared further down).
 const e1rmOf = (w, i) => {
@@ -687,6 +687,7 @@ function computeRecords() {
     workoutId: b.w.id,
     achievedAt: b.s.completedAt,
     localDate: b.w.localDate,
+    atWeightKg: null, // Spec 07.5: the harness computes only the seven older types
   }));
 }
 export const records = computeRecords();
