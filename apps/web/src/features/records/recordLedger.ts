@@ -1,8 +1,8 @@
-import { RECORD_TYPE_VALUES, type PersonalRecord, type RecordType, type UnitPreference, type WorkoutDetail } from "@sin/core";
+import { type PersonalRecord, type RecordType, type UnitPreference, type WorkoutDetail } from "@sin/core";
 
 import { formatRecordByType, formatRecordPair } from "../units/format";
 import { formatSet } from "../workouts/format";
-import { recordLabel } from "./labels";
+import { recordRowLabel, sortRecords } from "./labels";
 
 /**
  * Spec 17.6 §6.1: the pure model behind the summary's record ledger. Every decision (what is shown, what leads, what
@@ -17,6 +17,8 @@ export function liftCountText(n: number): string {
 export type LedgerSection = "workouts" | "history";
 
 export interface LedgerRow {
+  /** Unique within its lift: the type, and the weight for most reps at a weight (07.5 AC36: one row per weight). */
+  readonly key: string;
   readonly type: RecordType;
   readonly label: string;
   readonly oldText: string | null;
@@ -75,14 +77,13 @@ export function collapsedCount(total: number, expanded: boolean): number {
   return !expanded && total > LEDGER_COLLAPSE_OVER ? LEDGER_COLLAPSED_SHOWS : total;
 }
 
-/** 17.2 AC16: set-volume records are not shown on the summary (they stay in the cache and in Progress). */
+/**
+ * 17.2 AC16: set-volume records are not shown on the summary (they stay in the cache and in Progress). Spec 07.5 AC37
+ * (D9): a first time at a weight shows nothing here either (no row, no line, no count); the exercise page lists it.
+ */
 export function visibleRecords(records: readonly PersonalRecord[]): PersonalRecord[] {
-  // Spec 07.5 R2: most reps at a weight stays off the summary until Phase C gives it a ledger row (a weight in its
-  // label, and no first-time line, D9). History still counts a beaten one (07.6).
-  return records.filter((r) => r.recordType !== "best_set_volume" && r.recordType !== "max_reps_at_weight");
+  return records.filter((r) => r.recordType !== "best_set_volume" && !(r.recordType === "max_reps_at_weight" && r.previousValue === null));
 }
-
-const typeOrder = (r: PersonalRecord) => RECORD_TYPE_VALUES.indexOf(r.recordType);
 
 /** AC6 (owner decision 2026-11-14, minor 476): a lift counts only when one of its rows rose. */
 const rose = (lift: LedgerLift): boolean => lift.rows.some((r) => r.gainText !== null);
@@ -121,7 +122,8 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
 
   type Built = { order: number; name: string } & ({ kind: "lift"; lift: LedgerLift; first: FirstTimeLine | null } | { kind: "first"; first: FirstTimeLine });
   const built: Built[] = [...groups.entries()].map(([key, group]) => {
-    const ordered = [...group].sort((a, b) => typeOrder(a) - typeOrder(b));
+    // Type order, then the heavier weight first (07.5 AC36): one lineage, the exercise page's order.
+    const ordered = sortRecords(group);
     const slots = group.map((r) => position.get(r.sourceExerciseId)).filter((n): n is number => n !== undefined);
     const order = slots.length > 0 ? Math.min(...slots) : Number.POSITIVE_INFINITY;
     const beaten = ordered.filter((r) => r.previousValue !== null).map((r) => ({ record: r, pair: formatRecordPair(r, pref) }));
@@ -135,8 +137,8 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
     const firstRecord = ordered.find((r) => r.previousValue === null);
     const shared = shown.every((b) => b.record.sourceSetId === shown[0]!.record.sourceSetId);
     const rows: LedgerRow[] = shown.map(({ record, pair }) => {
-      const label = recordLabel(record.recordType);
-      return { type: record.recordType, label, oldText: pair.oldText, newText: pair.newText, gainText: pair.gainText, spoken: `${label}: ${pair.spoken}`, sourceText: shared ? null : sourceOf(record.sourceSetId) };
+      const label = recordRowLabel(record, pref);
+      return { key: `${record.recordType}:${record.atWeightKg ?? ""}`, type: record.recordType, label, oldText: pair.oldText, newText: pair.newText, gainText: pair.gainText, spoken: `${label}: ${pair.spoken}`, sourceText: shared ? null : sourceOf(record.sourceSetId) };
     });
     return {
       order,

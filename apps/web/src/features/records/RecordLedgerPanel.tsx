@@ -26,7 +26,7 @@ export function RecordLedgerPanel({ heading, lifts }: { heading: string; lifts: 
           <li key={lift.key} className={styles.lift}>
             <h3 className={styles.name}>{lift.name}</h3>
             {lift.rows.map((row) => (
-              <Fragment key={row.type}>
+              <Fragment key={row.key}>
                 <p className={styles.row}>
                   <VisuallyHidden>{row.spoken}</VisuallyHidden>
                   <span className={styles.line} aria-hidden="true">

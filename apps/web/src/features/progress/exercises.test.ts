@@ -6,6 +6,25 @@ const BENCH = "10000000-0000-4000-8000-0000000000b1";
 const PULL = "10000000-0000-4000-8000-0000000000b2";
 const ODD = "10000000-0000-4000-8000-0000000000b3";
 
+describe("07.5 AC39 — the Records view is unchanged", () => {
+  it("a lift whose newest record is a reps row keeps the heaviest headline, dated by the newest record", () => {
+    const root = "10000000-0000-4000-8000-0000000000e3";
+    const heaviest = makePersonalRecord({ exerciseId: root, exerciseName: "Lateral Raise", recordType: "heaviest_weight", unit: "kg", value: 15, achievedAt: "2026-10-01T10:00:00.000Z", localDate: "2026-10-01" });
+    const repsRow = makePersonalRecord({
+      exerciseId: root,
+      exerciseName: "Lateral Raise",
+      recordType: "max_reps_at_weight",
+      unit: "reps",
+      value: 14,
+      previousValue: 12,
+      atWeightKg: 12.5,
+      achievedAt: "2026-10-06T10:00:00.000Z",
+      localDate: "2026-10-06",
+    });
+    expect(headlineText(groupByExercise([heaviest, repsRow])[0]!, "kg")).toBe("Heaviest weight 15 kg · Tue, Oct 6");
+  });
+});
+
 describe("08.1 AC6 — grouping records by exercise", () => {
   const records = [
     makePersonalRecord({ exerciseId: BENCH, exerciseName: "Bench (old name)", recordType: "heaviest_weight", value: 100, achievedAt: "2026-09-01T10:00:00.000Z", localDate: "2026-09-01" }),

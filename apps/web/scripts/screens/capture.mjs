@@ -112,7 +112,8 @@ function makeHandler(state) {
       console.log(`  (holding ${m} ${p} unanswered so the outbox keeps it pending)`);
       return; // never fulfilled: the write stays in flight
     }
-    if (m === "GET" && p === "/v1/me") res = json(state.meName ? { ...D.me, displayName: state.meName } : D.me);
+    // Spec 07.5 AC40: `unitPreference` serves the lb account (27h).
+    if (m === "GET" && p === "/v1/me") res = json({ ...D.me, ...(state.meName ? { displayName: state.meName } : {}), ...(state.unitPreference ? { unitPreference: state.unitPreference } : {}) });
     else if (m === "GET" && p === "/v1/hevy/status") res = json(D.hevyStatus);
     else if (m === "GET" && p === "/v1/hevy/mapping") res = json(state.hevyMapping ?? D.hevyMapping);
     // Spec 20.2: a workout's Hevy link as `state.hevyLink` says (none when unset), and begin / complete / release.
@@ -204,14 +205,20 @@ function makeHandler(state) {
     } else if (m === "GET" && p === "/v1/workouts") res = json(state.historyTimed ? D.historyTimed : D.history);
     else if (m === "GET" && (seg = /^\/v1\/workouts\/([^/]+)$/.exec(p))) {
       const id = decodeURIComponent(seg[1]);
-      const w = state.finishedOneOff?.id === id ? state.finishedOneOff : [...D.allWorkouts, D.finishedTimed, D.finishedManyLifts, D.finishedMixed].find((x) => x.id === id);
+      const w = state.finishedOneOff?.id === id ? state.finishedOneOff : [...D.allWorkouts, D.finishedTimed, D.finishedManyLifts, D.finishedMixed, ...D.repsLedgerWorkouts].find((x) => x.id === id);
       res = w ? json(w) : problem(404, "not-found", "Not found");
     } else if (m === "GET" && p === "/v1/personal-records") {
       const ex = url.searchParams.get("exerciseId");
       const wo = url.searchParams.get("workoutId");
       // Records and series resolve a fork's id to its lineage root, as the API does (07.0, 07.2 AC4).
       // Spec 17.6 AC20: the ledger fixtures' records join only a workout's own read.
-      const all = wo ? [...D.records, ...D.ledgerRecords] : D.records;
+      // Spec 07.5 AC40: Lateral Raise's own page reads eight per-weight rows in place of its computed ones.
+      const lateral = ex !== null && rootIn(state, ex) === D.ids.lateralRaise;
+      const all = wo
+        ? [...D.records, ...D.ledgerRecords]
+        : lateral
+          ? [...D.records.filter((r) => !(r.exerciseId === D.ids.lateralRaise && r.recordType === "max_reps_at_weight")), ...D.lateralRaiseRepsRecords]
+          : D.records;
       res = json({ records: all.filter((r) => (!ex || r.exerciseId === rootIn(state, ex)) && (!wo || r.workoutId === wo)) });
     } else if (m === "GET" && (seg = /^\/v1\/progress\/exercises\/([^/]+)$/.exec(p))) {
       const series = D.progressFor(rootIn(state, decodeURIComponent(seg[1])));
@@ -951,7 +958,7 @@ const measureLedger = (page) =>
       heading: panel ? panel.querySelector("h2").textContent : null,
       lifts: lifts.length,
       liftsWithoutEstimate: lifts.filter((li) => ![...li.querySelectorAll("[aria-hidden='true']")].some((l) => l.textContent.startsWith("Est. 1-rep max"))).length,
-      labels: lines.map((l) => l.firstElementChild?.textContent ?? ""),
+      labels: lines.map((l) => (l.firstElementChild?.textContent ?? "").replace(/\u00a0/g, " ")), // 07.5 AC38: a no-break space keeps a weight whole
       toggle: panel?.querySelector(":scope > button")?.textContent ?? null,
       firsts: [...document.querySelectorAll('ul[data-first-times] > li')].map((li) => li.textContent),
       overflowingRows: lines.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
@@ -1119,6 +1126,8 @@ const DESKTOP_SCREENS = [
   { name: "d8-history-edit", path: `/app/history/${D.ids.conditioning}/edit`, panes: true, editBar: true },
   { name: "d9-exercises-records", path: "/app/exercises/records", panes: true, chart: true },
   { name: "d10-exercise-bench", path: `/app/exercises/${D.ids.bench}`, panes: true, chart: true },
+  // Spec 07.5 AC40: an exercise page with its per-weight rows (five, then Show all 8 weights) in the detail pane.
+  { name: "d13-exercise-reps-weights", path: `/app/exercises/${D.ids.lateralRaise}`, panes: true, chart: true },
   { name: "d11-routine-preview", path: `/app/workouts/routines/${D.ids.PUSH_ID}`, panes: true, routines: true },
   { name: "d12-workouts-live", path: "/app/workouts", live: true },
 ];
@@ -2518,15 +2527,31 @@ try {
         await go(`/app/workouts/${D.finishedManyLifts.id}`);
         m = await read("27a many lifts");
         expect(m.heading === "New records on 7 lifts" && m.lifts === 3 && m.toggle === "Show all 7 lifts", `27a: ${m.heading} / ${m.lifts} shown / "${m.toggle}"`);
+        // Spec 07.5 AC40: the seven-lift collapse with the new rows (Overhead Press shows; Lateral Raise is behind Show all).
+        expect(m.labels.includes("Most reps at 47.5 kg") && !m.labels.includes("Most reps at 12 kg"), `27a: rows ${JSON.stringify(m.labels)} (want Most reps at 47.5 kg, not 12 kg)`);
         await shoot(page, device, "27a-summary-many-lifts", "Spec 17.6 AC11: seven lifts collapse to three behind Show all 7 lifts; the heading counts all seven");
         await page.getByRole("button", { name: "Show all 7 lifts" }).click();
         m = await read("27b many lifts open");
         expect(m.lifts === 7 && m.toggle === "Show fewer", `27b: ${m.lifts} shown / "${m.toggle}"`);
+        expect(m.labels.includes("Most reps at 12 kg"), `27b: rows ${JSON.stringify(m.labels)} (want Most reps at 12 kg)`);
         await shoot(page, device, "27b-summary-many-lifts-open", "Spec 17.6 AC11: expanded, all seven lifts and Show fewer");
         await go(`/app/workouts/${D.finishedMixed.id}`);
         m = await read("27c mixed");
         expect(m.heading === "New records on 2 lifts" && m.firsts.length === 2, `27c: ${m.heading} / ${m.firsts.length} first line(s)`);
         await shoot(page, device, "27c-summary-mixed", "Spec 17.6 AC13: a panel for the two lifts that beat something, then two quiet First time logged lines");
+        // Spec 07.5 AC40: most reps at a weight on the summary.
+        await go(`/app/workouts/${D.finishedRepsAtWeight.id}`);
+        m = await read("27e reps at a weight");
+        expect(m.heading === "New record" && JSON.stringify(m.labels) === JSON.stringify(["Most reps at 32.5 kg"]), `27e: ${m.heading} / ${JSON.stringify(m.labels)}`);
+        await shoot(page, device, "27e-summary-reps-at-weight", "Spec 07.5 AC35, AC38: Most reps at 32.5 kg, 12 → 14 reps, +2 reps in brass");
+        await go(`/app/workouts/${D.finishedRepsTwoWeights.id}`);
+        m = await read("27f two weights");
+        expect(m.heading === "New records on 1 lift" && JSON.stringify(m.labels) === JSON.stringify(["Most reps at 85 kg", "Most reps at 80 kg"]), `27f: ${m.heading} / ${JSON.stringify(m.labels)}`);
+        await shoot(page, device, "27f-summary-reps-two-weights", "Spec 07.5 AC36: one lift, a row per weight, the heavier first, each with its own set");
+        await go(`/app/workouts/${D.finishedRepsFirstTime.id}`);
+        m = await read("27g first time at a weight");
+        expect(m.heading === "New record" && JSON.stringify(m.labels) === JSON.stringify(["Heaviest weight"]) && m.firsts.length === 0, `27g: ${m.heading} / ${JSON.stringify(m.labels)} / ${m.firsts.length} first line(s)`);
+        await shoot(page, device, "27g-summary-reps-first-time", "Spec 07.5 AC37: a first time at 102.5 kg adds nothing; only the beaten heaviest weight shows");
         if (device === "mobile") {
           // AC4: at 320 × 568 nothing clips and nothing scrolls sideways.
           await page.setViewportSize({ width: 320, height: 568 });
@@ -2535,6 +2560,13 @@ try {
           m = await read("27d many lifts at 320");
           expect(!m.hscroll && m.overflowingRows.length === 0, `27d: sideways scroll ${m.hscroll}, rows overflowing ${JSON.stringify(m.overflowingRows)}`);
           await shoot(page, device, "27d-summary-ledger-320", "Spec 17.6 AC4: the ledger at 320 × 568, rows wrapping under their labels");
+          // Spec 07.5 AC38: the reps rows' labels wrap above their figures; nothing clips at 320 px.
+          for (const [w, file] of [[D.finishedRepsAtWeight, "27e-summary-reps-at-weight-320"], [D.finishedRepsTwoWeights, "27f-summary-reps-two-weights-320"]]) {
+            await go(`/app/workouts/${w.id}`);
+            m = await read(file);
+            expect(m.labels.length > 0 && !m.hscroll && m.overflowingRows.length === 0, `${file}: rows ${m.labels.length}, sideways scroll ${m.hscroll}, rows overflowing ${JSON.stringify(m.overflowingRows)}`);
+            await shoot(page, device, file, "Spec 07.5 AC38: the reps-at-a-weight rows at 320 × 568");
+          }
           await go(`/app/history/${D.ids.conditioning}`);
           m = await read("27d conditioning at 320");
           expect(!m.hscroll && m.overflowingRows.length === 0, `27d conditioning: sideways scroll ${m.hscroll}, rows overflowing ${JSON.stringify(m.overflowingRows)}`);
@@ -2552,6 +2584,23 @@ try {
         violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
       } finally {
         await page.setViewportSize(opts.viewport);
+      }
+      // Spec 07.5 AC35, AC40: a lb account reads the weight in lb (70 lb logged in lb).
+      const lbCtx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      try {
+        await lbCtx.route(isSinApi, makeHandler({ active: false, unitPreference: "lb" }));
+        const lp = await lbCtx.newPage();
+        lp.setDefaultTimeout(8000);
+        await lp.goto(BASE + `/app/workouts/${D.finishedRepsLb.id}`);
+        await settle(lp);
+        const m = await measureLedger(lp);
+        steps.push({ where: "27h lb", ...m });
+        if (m.heading !== "New record" || JSON.stringify(m.labels) !== JSON.stringify(["Most reps at 70 lb"])) violations.push(`27h: ${m.heading} / ${JSON.stringify(m.labels)} (want Most reps at 70 lb)`);
+        await shoot(lp, device, "27h-summary-reps-lb", "Spec 07.5 AC35: a lb account that logged 70 lb reads Most reps at 70 lb");
+      } catch (e) {
+        violations.push(`27h stopped early: ${e.message.split("\n")[0]}`);
+      } finally {
+        await lbCtx.close();
       }
       recordLedger.push({ theme, device, steps, violations });
       for (const v of violations) console.error(`  RECORD LEDGER ${theme}/${device}: ${v}`);
@@ -2620,6 +2669,18 @@ try {
       await page.locator("summary", { hasText: /^Exercise details$/ }).click();
       await page.getByRole("button", { name: "Make your own copy" }).scrollIntoViewIfNeeded();
       await shoot(page, device, "15d-exercise-details-open", "Exercise page: Bench Press with Exercise details open: the table, the note and Make your own copy (Spec 17.11 AC3)");
+    });
+    // Spec 07.5 AC39, AC40: eight weights' rows, the five newest drawn heaviest first, then Show all 8 weights.
+    await tryStep("exercise page reps weights", async () => {
+      await go(`/app/exercises/${D.ids.lateralRaise}`);
+      const toggle = page.getByRole("button", { name: "Show all 8 weights" });
+      await toggle.waitFor();
+      const rows = await page.getByRole("region", { name: "Personal records" }).locator("li").allTextContents();
+      const perWeight = rows.filter((t) => t.startsWith("Most reps at"));
+      if (perWeight.length !== 5) throw new Error(`15r: ${perWeight.length} per-weight rows collapsed (want 5): ${JSON.stringify(perWeight)}`);
+      await toggle.scrollIntoViewIfNeeded();
+      await shoot(page, device, "15r-exercise-reps-weights", "Spec 07.5 AC39: Lateral Raise's records: the five newest weights, heaviest first, then Show all 8 weights");
+      if (mobile) await checkExercisePage(page, `${theme}/${device}/15r-exercise-reps-weights`);
     });
     await go(`/app/exercises/${D.ids.pullUp}`);
     await shoot(page, device, "16-progress-pullup", "Exercise page: Pull-up (bodyweight, reps metric), chart first (Spec 17.11 AC1)");
@@ -3550,7 +3611,7 @@ for (const r of clippedSession) console.error(`  CLIPPED INPUTS ${r.file}: ${r.c
 if (clippedSession.length) process.exitCode = 1;
 // Spec 17.11 AC10: the exercise page's captures have no small target and no overlap ("Open workout" beside the readout),
 // at 390 and 1280 px and at 320 × 568 (15n).
-const EXERCISE_SHOTS = /\/(15|15n|16|75|81)-/;
+const EXERCISE_SHOTS = /\/(15|15n|15r|16|75|81)-/;
 const exerciseTight = report.filter((r) => r.file && EXERCISE_SHOTS.test(r.file) && (r.smallTargets?.length || r.clippedInputs?.length || r.overlaps));
 for (const r of exerciseTight) console.error(`  EXERCISE TARGETS ${r.file}: ${r.overlaps} overlaps; ${[...r.smallTargets, ...r.clippedInputs].join("; ")}`);
 if (exerciseTight.length) process.exitCode = 1;
