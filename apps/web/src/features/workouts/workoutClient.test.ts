@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   SetEntrySchema,
-  UpdatedWorkoutSchema,
   WorkoutDetailSchema,
   WorkoutExerciseSchema,
   WorkoutSchema,
@@ -14,6 +13,7 @@ import { fakeClient } from "../../test/workoutHarness";
 import { createOutbox } from "./outbox/outbox";
 import { createQueuedWorkoutClient } from "./outbox/queuedWorkoutClient";
 import { createWorkoutClient, type WorkoutExercisePatch } from "./workoutClient";
+import { TolerantUpdatedWorkoutSchema } from "../records/tolerantRecords";
 
 describe("08.0 AC5 — finish keeps newRecords", () => {
   it("parses the PATCH response with UpdatedWorkoutSchema, so newRecords survives", async () => {
@@ -72,7 +72,7 @@ describe("AC1 — createWorkoutClient maps each operation to its exact request",
       method: "patch",
       path: "/v1/workouts/w1",
       body: { endedAt: "2026-10-02T11:00:00.000Z" },
-      schema: UpdatedWorkoutSchema,
+      schema: TolerantUpdatedWorkoutSchema,
     });
   });
 
@@ -189,7 +189,7 @@ describe("18.0 AC54 — updateWorkout sends exactly the keys given", () => {
       ["patch", "/v1/workouts/w%2F1", { title: null }],
       ["patch", "/v1/workouts/w%2F1", { notes: "a\nb" }],
     ]);
-    expect(calls.every((c) => c.schema === UpdatedWorkoutSchema)).toBe(true);
+    expect(calls.every((c) => c.schema === TolerantUpdatedWorkoutSchema)).toBe(true);
   });
 
   it("the queued client hands it to REST and never enqueues", async () => {
@@ -216,7 +216,7 @@ describe("18.0 AC29 — updateWorkout carries the Change Time keys", () => {
       { durationSeconds: null },
       { durationSeconds: 3600 },
     ]);
-    expect(calls.every((c) => c.schema === UpdatedWorkoutSchema)).toBe(true);
+    expect(calls.every((c) => c.schema === TolerantUpdatedWorkoutSchema)).toBe(true);
   });
 
   it("the queued client hands a time change to REST and never enqueues", async () => {
