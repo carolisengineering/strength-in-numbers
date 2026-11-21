@@ -228,6 +228,12 @@ describe("minor 533 — month labels never meet", () => {
     expect(labels.at(-1)!.text).toMatch(/^janv/);
   });
 
+  it("final review: an en-US span across New Year on a phone keeps the labels that have room (Oct 2 to Feb 28: four)", () => {
+    const labels = xLabels(layoutChart([pt("a", "2025-10-02", 1), pt("b", "2026-02-28", 1)]));
+    // Centered labels keep today's thinning: their 8-unit estimate meets, but the real glyphs (about 58 px) fit.
+    expect(labels.map((l) => l.text)).toEqual(["Nov 2025", "Dec 2025", "Jan 2026", "Feb 2026"]);
+  });
+
   it("Review Focus 5: en-US labels that don't touch are all kept", () => {
     expect(xLabels(layoutChart([pt("a", "2026-07-08", 1), pt("b", "2026-10-06", 1)])).map((l) => l.text)).toEqual(["Aug", "Sep", "Oct"]);
     const year = xLabels(layoutChart([pt("a", "2026-01-15", 1), pt("b", "2026-12-20", 1)]));

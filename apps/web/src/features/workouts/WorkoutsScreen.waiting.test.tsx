@@ -233,6 +233,21 @@ describe("06.7 AC27 / AC28 — the one-time saved line", () => {
     expect(localStorageAdapter().get(LANDED_KEY)).toBeNull();
   });
 
+  it("minors 636, 668 (final review): starting a workout leaves the line, so a discard doesn't bring it back", async () => {
+    await startScreen();
+    landed([{ workoutId: "w-1", lifts: 2, how: "landed" }]);
+    const { user } = renderApp("/app/workouts");
+    await screen.findByRole("link", { name: landedLine(2) });
+    await user.click(screen.getByRole("button", { name: "Start empty workout" }));
+    await screen.findByRole("heading", { name: "Workout" });
+    await user.click(screen.getByRole("button", { name: "Workout menu" }));
+    await user.click(screen.getByRole("button", { name: "Discard workout" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Discard this workout?" })).getByRole("button", { name: "Discard" }));
+    await screen.findByRole("button", { name: "Start empty workout" });
+    expect(screen.queryByRole("link", { name: landedLine(2) })).toBeNull();
+    expect(localStorageAdapter().get(LANDED_KEY)).toBeNull();
+  });
+
   it("leaving the screen it was shown on removes it", async () => {
     await startScreen();
     landed([{ workoutId: "w-1", lifts: 2, how: "landed" }]);

@@ -24,6 +24,16 @@ export function markLandedShown(store: LandedStore, workoutId: string): () => vo
 }
 
 /**
+ * Starting a workout leaves the Start screen without a route change (the session replaces it on `/app/workouts`), so
+ * the start removes every entry whose line was drawn; a discard then brings Start back without it (final review).
+ */
+export function leaveLanded(store: LandedStore): void {
+  const mounts = mountsOf(store);
+  for (const workoutId of mounts.keys()) store.remove(workoutId);
+  mounts.clear();
+}
+
+/**
  * Mounted once, above every screen (`WorkoutClientProvider`). Its effect runs after the new screen's effects, so on a
  * route change a line that is still drawn (the desktop list pane beside a routine) keeps its entry, and one that left
  * with its screen is removed.

@@ -14,6 +14,8 @@ import { RoutinesSection } from "../routines/RoutinesSection";
 import { StartWorkout } from "./StartWorkout";
 import { GoneWorkoutCard } from "./GoneWorkoutCard";
 import { LandedLine } from "./LandedLine";
+import { useLandedStore } from "./outbox/LandedStoreContext";
+import { leaveLanded } from "./useLandedLeave";
 import { WaitingFinishCard } from "./WaitingFinishCard";
 import { useWaitingFinish } from "./useWaitingFinish";
 import { useFinishTap } from "./finishTap";
@@ -60,6 +62,7 @@ function noticeFromLocation(state: unknown): string | null {
  */
 export function WorkoutsScreen() {
   const active = useActiveWorkout();
+  const landed = useLandedStore();
   // Spec 06.7 AC26, AC30: a finish op in the outbox decides first, from storage, before (and without) the active read.
   const finishing = useWaitingFinish();
   // A Finish tap in progress on this screen keeps ActiveSession: the tap opens the summary itself.
@@ -153,6 +156,8 @@ export function WorkoutsScreen() {
         notice={shownNotice}
         onDismissNotice={dismissNotice}
         onStarted={(resumed) => {
+          // Spec 06.7 AC27: the session replaces Start on the same path, which is leaving the saved line.
+          if (landed) leaveLanded(landed);
           // Spec 17.12 AC26: a started workout turns the panes off, and the session's screen is a new instance, so
           // the list pane hands the notice over through the location rather than its own state.
           if (inList) {
