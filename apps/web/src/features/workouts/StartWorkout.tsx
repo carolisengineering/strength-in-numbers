@@ -58,7 +58,12 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children, lea
   const armed = useRef(false);
   const startOnArrival = useEffectEvent(() => void onStart());
   useEffect(() => {
-    if (!inList || !isStartEmpty(location.state) || startedFor.current === location.key) return;
+    // Minor 673: an entry with no `startEmpty` means this tap's leave didn't happen (Keep editing), so it no longer arms.
+    if (!isStartEmpty(location.state)) {
+      armed.current = false;
+      return;
+    }
+    if (!inList || startedFor.current === location.key) return;
     startedFor.current = location.key;
     void navigate(location.pathname, { replace: true, state: null });
     if (!armed.current) return;

@@ -22,6 +22,18 @@
   align-items: stretch;
 }
 
+/* Minor 665: in the desktop list pane the row is too narrow to share, so the button goes under the field. */
+.searchRowStacked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.searchRowStacked .search {
+  align-self: stretch;
+}
+
 .search {
   flex: 1;
   min-width: 0;
