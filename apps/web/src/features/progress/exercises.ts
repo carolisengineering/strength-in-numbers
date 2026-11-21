@@ -32,9 +32,13 @@ export function groupByExercise(records: readonly PersonalRecord[]): ExerciseEnt
   );
 }
 
-/** `"Est. 1-rep max 122.5 kg · Tue, Oct 6"`, or the date alone when there is no headline type (AC11). */
+/**
+ * `"Est. 1-rep max 122.5 kg · Tue, Oct 6"`, or the date alone when there is no headline type (AC11). The date is the
+ * headline's own (owner, 2026-11-20: a reps record must not date "Heaviest weight 15 kg"); with no headline it is the
+ * newest record's. The list's order stays newest-record-first (`groupByExercise`, D6).
+ */
 export function headlineText(entry: ExerciseEntry, pref: UnitPreference): string {
-  const date = formatLocalDate(entry.newest.localDate);
   const h = entry.headline;
+  const date = formatLocalDate((h ?? entry.newest).localDate);
   return h ? `${recordLabel(h.recordType)} ${formatRecordByType(h.recordType, h.value, h.unit, pref)} · ${date}` : date;
 }

@@ -1,5 +1,5 @@
-import { RECORD_TYPE_VALUES, type PersonalRecord, type RecordType, type UnitPreference } from "@sin/core";
-import { formatRecordByType } from "../units/format";
+import { kgToLb, LB_TO_KG, RECORD_TYPE_VALUES, type PersonalRecord, type RecordType, type UnitPreference } from "@sin/core";
+import { formatRecordByType, formatWeightKgPrecise } from "../units/format";
 
 export function recordLabel(type: RecordType): string {
   switch (type) {
@@ -44,11 +44,26 @@ export function sortRecords(records: readonly PersonalRecord[]): PersonalRecord[
  */
 export function recordRowLabel(record: PersonalRecord, pref: UnitPreference): string {
   if (record.recordType === "max_reps_at_weight" && record.atWeightKg !== null) {
-    // The weight reads exactly as a heaviest-weight record of that weight would (17.2 AC29: one type-aware formatter).
-    // A no-break space keeps "32.5 kg" whole, so the ledger's fixed label column breaks before the weight (07.5 AC38).
-    return `Most reps at ${formatRecordByType("heaviest_weight", record.atWeightKg, "kg", pref).replace(" ", "\u00a0")}`;
+    // The weight reads as a heaviest-weight record of that weight would (17.2 AC29: one type-aware formatter), except a lb
+    // figure that doesn't read back exactly (07.5 D12).
+    const kg = record.atWeightKg;
+    return repsAtLabel(pref === "lb" && !readsBackExactly(kg) ? formatWeightKgPrecise(kg, pref) : formatRecordByType("heaviest_weight", kg, "kg", pref));
   }
   return recordLabel(record.recordType);
+}
+
+/** A no-break space keeps "32.5 kg" whole, so the ledger's fixed label column breaks before the weight (07.5 AC38). */
+const repsAtLabel = (weight: string) => `Most reps at ${weight.replace(" ", "\u00a0")}`;
+
+/**
+ * Spec 07.5 D12 (owner, 2026-11-20, minor 684): weights are stored to the gram, so in a lb account 20.4 kg and 45 lb
+ * (20.412 kg) would both read "45 lb". A weight reads back exactly when its 0.1 lb figure, stored again, is the same gram
+ * (it was logged as that figure); any other weight shows 0.01 lb ("44.97 lb"). Decided per weight, so every screen gives
+ * one weight one label whatever else it lists.
+ */
+function readsBackExactly(kg: number): boolean {
+  const shown = Math.round(kgToLb(kg) * 10) / 10;
+  return Math.round(shown * LB_TO_KG * 1000) === Math.round(kg * 1000);
 }
 
 /** What a row says when the record has no previous value (Spec 17.11 AC7). */
