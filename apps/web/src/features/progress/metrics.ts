@@ -21,8 +21,6 @@ export const METRICS: Record<Metric, { label: string; field: MetricField; unit: 
 /** Whole-number y-axis ticks (`LineChart integer`): counts and seconds; a distance can be fractional. */
 export const INTEGER_METRICS: ReadonlySet<Metric> = new Set<Metric>(["reps", "calories", "duration"]);
 
-/** Spec 18.1 AC32: only weights convert to lb — never reps, calories, meters or seconds. */
-
 /** `canonical` is the served number; `y` is what is scaled (lb when the lifter reads lb). */
 export interface ChartPoint {
   id: string;

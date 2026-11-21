@@ -30,7 +30,10 @@ export function formatSeconds(totalSeconds: number): string {
   return parts.length === 0 ? "0 s" : parts.join(" ");
 }
 
-/** The record and metric units a lb account reads in lb (minor 478: the gain rule and the chart share it). */
+/**
+ * The record and metric units a lb account reads in lb: only weights, never reps, calories, meters or seconds (Spec 18.1
+ * AC32). The gain rule and the chart share it (minor 478).
+ */
 export const convertsToLb = (unit: RecordUnit): boolean => unit === "kg" || unit === "kg_reps";
 
 function inUnit(kg: number, pref: UnitPreference): string {
