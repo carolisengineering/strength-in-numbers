@@ -322,8 +322,9 @@ function DeleteWorkoutControl({
       await del.mutateAsync({ id: workoutId, phase: "finished", setCount });
       setOpen(false);
       // Spec 17.12 AC18: at desktop widths `/app/history` shows its newest workout itself, so a delete from there is
-      // already where it lands: replace, or Back would land on the same page again.
-      void navigate(afterDelete, { replace: pathname === afterDelete });
+      // already where it lands: replace, or Back would land on the same page again. Minor 654: a delete from the deleted
+      // workout's own page under it (`/app/history/:id`) replaces too, or Back would land on Not found.
+      void navigate(afterDelete, { replace: pathname === afterDelete || pathname.startsWith(`${afterDelete}/`) });
     } catch (caught) {
       setOpen(false);
       reportUnexpected("discard", caught);

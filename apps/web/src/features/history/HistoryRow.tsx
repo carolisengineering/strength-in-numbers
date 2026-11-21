@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 import type { UnitPreference, WorkoutSummary } from "@sin/core";
 import { TrophyIcon } from "../../ui/icons";
@@ -7,6 +8,7 @@ import { formatVolumeKg } from "../units/format";
 import { historyTimedLines } from "../sectionTimer/timedSectionLine";
 import { timedMore } from "../sectionTimer/timerCopy";
 import { formatLocalDate } from "../workouts/format";
+import { hasOwnTitle } from "../workouts/WorkoutText";
 import { historyBadgeText } from "./historyCopy";
 import styles from "./HistoryScreen.module.css";
 
@@ -16,7 +18,8 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * first line ends with the workout's title (Spec 18.0 AC56), else the routine name (Spec 10.1 AC25). */
 export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummary; unitPreference: UnitPreference }) {
   const more = workout.exerciseCount - workout.exerciseNames.length;
-  const label = workout.title ?? workout.routineName;
+  // Minor 599: a whitespace-only title is no title, as on the summary and in Edit (minor 543).
+  const label = hasOwnTitle(workout) ? workout.title : workout.routineName;
   // Spec 07.6: the count is served as is (lifts with a beaten record); the web never re-derives it.
   const badge = historyBadgeText(workout.recordCount);
   const volume = workout.totalVolume === null ? "" : ` · ${formatVolumeKg(workout.totalVolume, unitPreference)}`;
@@ -24,9 +27,16 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
   const timed = historyTimedLines(workout.timedSections);
   // Spec 17.12 AC16: the workout open in the detail pane beside the list.
   const selected = usePane().selectedId === workout.id;
+  // Minor 653: a deep link at desktop widths can open a workout whose row sits below the list pane's fold. `nearest`
+  // never moves a row that is already in view, so a click on a row doesn't scroll.
+  const ref = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selected]);
 
   return (
     <Link
+      ref={ref}
       className={selected ? `${styles.row} ${selection.selected}` : styles.row}
       to={`/app/history/${encodeURIComponent(workout.id)}`}
       aria-current={selected ? "page" : undefined}

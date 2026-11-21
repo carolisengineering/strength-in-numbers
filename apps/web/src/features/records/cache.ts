@@ -65,9 +65,12 @@ export function applyDeletedCaches(queryClient: QueryClient, workoutId: string):
   const own = RECORDS_KEYS.forWorkout(workoutId);
   removeWhenUnobserved(queryClient, own);
   // Before the invalidation: a later `setQueryData` would clear its stale flag, and the list wouldn't be re-read.
-  queryClient.setQueryData<InfiniteData<WorkoutHistoryResponse>>(HISTORY_KEYS.list, (data) =>
+  const filtered = queryClient.setQueryData<InfiniteData<WorkoutHistoryResponse>>(HISTORY_KEYS.list, (data) =>
     data === undefined ? data : { ...data, pages: data.pages.map((page) => ({ ...page, items: page.items.filter((row) => row.id !== workoutId) })) },
   );
+  // Minor 655: a page the delete emptied while more workouts follow it would draw a blank list until the re-read
+  // lands (or for good if it fails): start the list over instead.
+  if (filtered?.pages.some((page) => page.items.length === 0 && page.next !== null)) void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
   invalidateOthers(queryClient, own);
 }
 
