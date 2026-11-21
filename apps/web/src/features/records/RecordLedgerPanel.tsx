@@ -10,13 +10,24 @@ import styles from "./RecordLedgerPanel.module.css";
  * Spec 17.6 AC2–AC4, AC8, AC9, AC11, AC17: the summary's one brass panel. A `section` named by its heading, a list of
  * lifts, each a name over its ledger lines (label, old → new, gain) and where the set came from. Dumb: every decision is
  * `buildRecordLedger`'s. Each line is one sentence for a screen reader; the visible figure is `aria-hidden`. Static.
+ * `collapse` is a `useCollapseToggle()` held by `PersonalRecordsBlock`, so the first-time lines know what the panel
+ * shows (minor 600); without it the panel keeps its own.
  */
-export function RecordLedgerPanel({ heading, lifts }: { heading: string; lifts: readonly LedgerLift[] }) {
+export function RecordLedgerPanel({
+  heading,
+  lifts,
+  collapse,
+}: {
+  heading: string;
+  lifts: readonly LedgerLift[];
+  collapse?: ReturnType<typeof useCollapseToggle>;
+}) {
   const headingId = useId();
   // Minor 689: Show all names the list it opens.
   const listId = useId();
   // AC11: local and never stored; a data refresh never resets it.
-  const { expanded, toggle, buttonRef } = useCollapseToggle();
+  const own = useCollapseToggle();
+  const { expanded, toggle, buttonRef } = collapse ?? own;
   const shown = lifts.slice(0, collapsedCount(lifts.length, expanded));
   return (
     <section className={styles.panel} aria-labelledby={headingId}>

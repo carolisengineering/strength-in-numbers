@@ -54,22 +54,30 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children, lea
   const location = useLocation();
   const startedFor = useRef<string | null>(null);
   // Only this instance's own tap starts (final review M4): an entry left with `startEmpty` (the panes were off when it
-  // landed, then came back on Back) is cleared, never acted on.
-  const armed = useRef(false);
+  // landed, then came back on Back) is cleared, never acted on. The tap's token rides in the entry it creates, so an
+  // older `startEmpty` entry can't start a tap whose leave was canceled (minor 673, code review).
+  const armed = useRef<string | null>(null);
   const startOnArrival = useEffectEvent(() => void onStart());
   useEffect(() => {
-    if (!inList || !isStartEmpty(location.state) || startedFor.current === location.key) return;
+    // Minor 673: an entry with no `startEmpty` means this tap's leave didn't happen (Keep editing), so it no longer arms.
+    if (!isStartEmpty(location.state)) {
+      armed.current = null;
+      return;
+    }
+    if (!inList || startedFor.current === location.key) return;
     startedFor.current = location.key;
+    const tap = startTapOf(location.state);
     void navigate(location.pathname, { replace: true, state: null });
-    if (!armed.current) return;
-    armed.current = false;
+    if (armed.current === null || tap !== armed.current) return;
+    armed.current = null;
     startOnArrival();
   }, [inList, location.key, location.state, location.pathname, navigate]);
 
   function onStartTap() {
     if (inList && routineOpen) {
-      armed.current = true;
-      void navigate("/app/workouts", { state: { startEmpty: true } });
+      const tap = `start-${++startTaps}`;
+      armed.current = tap;
+      void navigate("/app/workouts", { state: { startEmpty: true, startTap: tap } });
     } else void onStart();
   }
 
@@ -106,4 +114,11 @@ export function StartWorkout({ notice, onDismissNotice, onStarted, children, lea
 
 function isStartEmpty(state: unknown): boolean {
   return typeof state === "object" && state !== null && (state as Record<string, unknown>)["startEmpty"] === true;
+}
+
+/** The token of the tap that made a `startEmpty` entry (minor 673); counted per page load. */
+let startTaps = 0;
+function startTapOf(state: unknown): string | null {
+  const tap = typeof state === "object" && state !== null ? (state as Record<string, unknown>)["startTap"] : undefined;
+  return typeof tap === "string" ? tap : null;
 }

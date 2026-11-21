@@ -1,5 +1,5 @@
 import { QueryObserver } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { makeQueryClient } from "../../test/workoutHarness";
 import { makePersonalRecord } from "../../test/workoutFixtures";
 import { HISTORY_KEYS } from "../history/queries";
@@ -225,5 +225,39 @@ describe("removeWhenUnobserved — a deleted workout's queries go once nothing s
     const qc = makeQueryClient();
     expect(() => removeWhenUnobserved(qc, KEY)).not.toThrow();
     expect(find(qc)).toBeUndefined();
+  });
+});
+
+describe("minor 655 — a History page emptied by a delete resets the list", () => {
+  const row = (id: string) => ({ id }) as never;
+  it("page 1's only row deleted while page 2 isn't loaded: the list resets (no empty page kept)", () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(HISTORY_KEYS.list, { pages: [{ items: [row(W)], next: "c2" }], pageParams: [null] });
+    applyDeletedCaches(qc, W);
+    expect(qc.getQueryData(HISTORY_KEYS.list)).toBeUndefined();
+  });
+
+  it("a page that keeps rows is filtered as before, with no reset", () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(HISTORY_KEYS.list, { pages: [{ items: [row(W), row(OTHER)], next: "c2" }], pageParams: [null] });
+    applyDeletedCaches(qc, W);
+    const data = qc.getQueryData<{ pages: { items: { id: string }[] }[] }>(HISTORY_KEYS.list);
+    expect(data?.pages[0]!.items.map((r) => r.id)).toEqual([OTHER]);
+  });
+
+  it("Review Focus 3: with the list on screen and its reset read failing, the list is in error with no rows, never an empty page", async () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(HISTORY_KEYS.list, { pages: [{ items: [row(W)], next: "c2" }], pageParams: [null] });
+    const observer = new QueryObserver(qc, {
+      queryKey: HISTORY_KEYS.list,
+      queryFn: () => Promise.reject(new Error("offline")),
+      retry: false,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    applyDeletedCaches(qc, W);
+    await vi.waitFor(() => expect(qc.getQueryState(HISTORY_KEYS.list)?.status).toBe("error"));
+    expect(qc.getQueryData(HISTORY_KEYS.list)).toBeUndefined();
+    unsubscribe();
   });
 });

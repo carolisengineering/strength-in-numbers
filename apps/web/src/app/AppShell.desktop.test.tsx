@@ -42,10 +42,19 @@ function FormScreen() {
   );
 }
 
-function renderShell(path = "/app/workouts") {
+function HeadingScreen() {
+  return (
+    <section aria-labelledby="t">
+      <h1 id="t">History</h1>
+      <input aria-label="Search" />
+    </section>
+  );
+}
+
+function renderShell(path = "/app/workouts", element = <FormScreen />) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryData(ME_QUERY_KEY, ME);
-  const router = createMemoryRouter([{ path: "/app", element: <AppShell />, children: [{ path: "*", element: <FormScreen /> }] }], {
+  const router = createMemoryRouter([{ path: "/app", element: <AppShell />, children: [{ path: "*", element }] }], {
     initialEntries: [path],
   });
   const view = render(
@@ -132,14 +141,31 @@ describe("17.12 AC5 — DOM order matches the picture", () => {
 describe("17.12 AC6 — skip link and focus order", () => {
   beforeEach(() => setDesktop(true));
 
-  it("the first Tab reaches Skip to content, which moves focus to <main>", async () => {
+  it("Review Focus 1 (minor 645): with no h1 on the screen, Skip to content moves focus to <main>, which keeps no tabindex after", async () => {
     const user = userEvent.setup();
     renderShell();
+    expect(mainOf()).not.toHaveAttribute("tabindex");
     await user.tab();
     const skip = screen.getByRole("link", { name: SKIP_TO_CONTENT });
     expect(skip).toHaveFocus();
     await user.keyboard("{Enter}");
     expect(mainOf()).toHaveFocus();
+    await user.tab();
+    expect(mainOf()).not.toHaveFocus();
+    expect(mainOf()).not.toHaveAttribute("tabindex");
+  });
+
+  it("17.12 AC6 — minor 645: Skip to content focuses the page's heading, named by the page, with no tabindex left after", async () => {
+    const user = userEvent.setup();
+    renderShell("/app/history", <HeadingScreen />);
+    await user.tab();
+    await user.keyboard("{Enter}");
+    const heading = screen.getByRole("heading", { level: 1, name: "History" });
+    expect(heading).toHaveFocus();
+    expect(mainOf()).not.toHaveAttribute("tabindex");
+    await user.tab();
+    expect(screen.getByRole("textbox", { name: "Search" })).toHaveFocus();
+    expect(heading).not.toHaveAttribute("tabindex");
   });
 
   it("review focus 5: skip link, the four sections, the user link, then the page's content (the app name never)", async () => {

@@ -21,6 +21,7 @@ import { project } from "./outbox/project";
 import { createQueuedWorkoutClient } from "./outbox/queuedWorkoutClient";
 import { EditWorkoutClientContext, WORKOUT_KEYS, WorkoutClientContext } from "./queries";
 import { reportUnexpected } from "./reportUnexpected";
+import { useLandedLeave } from "./useLandedLeave";
 import { createWorkoutClient } from "./workoutClient";
 
 const REPORT_OP = { create: "create-set", update: "update-set", delete: "delete-set", note: "update-note", round: "log-result", result: "log-result" } as const;
@@ -176,6 +177,8 @@ export function WorkoutClientProvider({ userId, storage, children }: WorkoutClie
 
   useEffect(() => outbox.start(), [outbox]);
   useEffect(() => () => drafts.flushAll(), [drafts]);
+  // Spec 06.7 AC27 (minors 636, 668): the saved line goes on a route change that leaves it undrawn.
+  useLandedLeave(landed);
 
   return (
     <OutboxContext.Provider value={outbox}>

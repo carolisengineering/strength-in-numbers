@@ -21,7 +21,7 @@ import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { outboxKey } from "./outbox/outbox";
-import { failedOpCount, type OutboxOp } from "./outbox/ops";
+import { failedRowCount, type OutboxOp } from "./outbox/ops";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -95,13 +95,13 @@ async function menuItem(user: Awaited<ReturnType<typeof setup>>["user"]) {
   return doors()[0]!;
 }
 
-describe("06.7 AC21 — failedOpCount: every failed op of the workout except a finish", () => {
-  it("counts failed sets, notes, rounds and results of this workout only", () => {
+describe("06.7 AC21 — failedRowCount: every refused row of the workout except a finish (minor 642)", () => {
+  it("counts refused sets, notes, rounds and results of this workout only", () => {
     const w = workoutOf();
     const other = workoutOf();
     const ops = [create(w, 1, "failed"), create(w, 2, "queued"), note(w, "failed"), round(w, "failed"), result(w, "failed"), finish(w, "failed"), create(other, 3, "failed")];
-    expect(failedOpCount(ops, w.id)).toBe(4);
-    expect(failedOpCount([], w.id)).toBe(0);
+    expect(failedRowCount(ops, w.id, {})).toBe(4);
+    expect(failedRowCount([], w.id, {})).toBe(0);
   });
 });
 

@@ -1,5 +1,5 @@
 import { kgToLb, type ProgressPoint, type ProgressSeries, type RecordUnit, type UnitPreference } from "@sin/core";
-import { formatRecordValue, roundedE1rm } from "../units/format";
+import { convertsToLb, formatRecordValue, roundedE1rm } from "../units/format";
 import { rangeLabel, type Range } from "./range";
 
 /** The chartable metrics (Spec 08.1 AC2; Spec 18.1 AC31 adds the last three), in display order. */
@@ -20,9 +20,6 @@ export const METRICS: Record<Metric, { label: string; field: MetricField; unit: 
 
 /** Whole-number y-axis ticks (`LineChart integer`): counts and seconds; a distance can be fractional. */
 export const INTEGER_METRICS: ReadonlySet<Metric> = new Set<Metric>(["reps", "calories", "duration"]);
-
-/** Spec 18.1 AC32: only weights convert to lb — never reps, calories, meters or seconds. */
-const convertsToLb = (unit: RecordUnit): boolean => unit === "kg" || unit === "kg_reps";
 
 /** `canonical` is the served number; `y` is what is scaled (lb when the lifter reads lb). */
 export interface ChartPoint {

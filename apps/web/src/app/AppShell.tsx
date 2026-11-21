@@ -56,9 +56,19 @@ export function AppShell() {
   // While an on-screen keyboard is up the frame is the visible part of the screen (#206).
   useEffect(() => trackKeyboardFrame(), []);
 
+  // Minor 645 (owner, 2026-11-21): the skip link lands on the screen's heading, so the ring is the heading's and a screen
+  // reader says the page's name; `<main>` only when a screen draws no `h1` (D8). A `tabindex` is lent only until blur,
+  // so a click on blank space never focuses `<main>`.
   const skipToContent = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
-    mainRef.current?.focus();
+    const main = mainRef.current;
+    if (!main) return;
+    const target = main.querySelector<HTMLElement>("h1") ?? main;
+    if (!target.hasAttribute("tabindex")) {
+      target.setAttribute("tabindex", "-1");
+      target.addEventListener("blur", () => target.removeAttribute("tabindex"), { once: true });
+    }
+    target.focus();
   };
 
   return (
@@ -93,8 +103,8 @@ export function AppShell() {
         </header>
       )}
 
-      {/* `id` and `tabIndex` only at desktop widths, where the skip link lands here; the phone's <main> is unchanged. */}
-      <main className={styles.main} ref={mainRef} id={wide ? "main" : undefined} tabIndex={wide ? -1 : undefined}>
+      {/* `id` only at desktop widths, where the skip link lands here; the phone's <main> is unchanged. */}
+      <main className={styles.main} ref={mainRef} id={wide ? "main" : undefined}>
         <Outlet />
       </main>
 

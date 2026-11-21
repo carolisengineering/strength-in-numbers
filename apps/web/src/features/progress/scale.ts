@@ -164,6 +164,29 @@ function monthAnchor(x: number, text: string, view: View): LabelAnchor {
   return "middle";
 }
 
+/** A label's estimated left and right edges, placed by its anchor. */
+function labelBox({ x, text, anchor }: { x: number; text: string; anchor: LabelAnchor }): { left: number; right: number } {
+  const width = text.length * LABEL_CHAR_WIDTH;
+  const left = anchor === "start" ? x : anchor === "middle" ? x - width / 2 : x - width;
+  return { left, right: left + width };
+}
+
+/**
+ * Minor 533: an end-anchored label moves toward the one before it, and a long-month-name locale ("déc. 2025",
+ * "janv. 2026") can make them meet. Walking from the right, the newest label stays and an earlier one is dropped only
+ * when the label kept after it is end-anchored and their estimated boxes meet. Centered labels keep today's thinning:
+ * the estimate is generous (`LABEL_CHAR_WIDTH`), so checking them too would drop en-US labels that fit (final review).
+ */
+function dropMeeting<T extends { x: number; text: string; anchor: LabelAnchor }>(labels: T[]): T[] {
+  const kept: T[] = [];
+  for (let i = labels.length - 1; i >= 0; i -= 1) {
+    const label = labels[i]!;
+    const next = kept[0];
+    if (next === undefined || next.anchor !== "end" || labelBox(label).right <= labelBox(next).left) kept.unshift(label);
+  }
+  return kept;
+}
+
 /**
  * 3–4 month-start labels inside the span, else first/last day-month; a year only across a year boundary (D9), and
  * the full year (Spec 17.13): under en-US a two-digit one reads as a day ("Dec 25").
@@ -196,13 +219,15 @@ export function xLabels(layout: ChartLayout): { x: number; text: string; anchor:
   }
   if (starts.length >= 2) {
     const every = Math.ceil(starts.length / 4);
-    return starts
-      .filter((_, i) => i % every === 0)
-      .map((s) => {
-        const x = xOf(s.localDate);
-        const text = monthText(s.y, s.m, { withYear });
-        return { x, text, anchor: monthAnchor(x, text, view) };
-      });
+    return dropMeeting(
+      starts
+        .filter((_, i) => i % every === 0)
+        .map((s) => {
+          const x = xOf(s.localDate);
+          const text = monthText(s.y, s.m, { withYear });
+          return { x, text, anchor: monthAnchor(x, text, view) };
+        }),
+    );
   }
   const dayMonth = (p: PlottedPoint) => monthDayText(p.localDate, { withYear });
   // The two ends sit on the plot's edges, so their labels anchor inward: "Jan 10, 2026" centered on the right edge

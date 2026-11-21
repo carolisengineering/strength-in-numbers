@@ -88,7 +88,7 @@ export function AllExercises() {
 function ExerciseList({ onSearch }: { onSearch: () => void }) {
   const { visible, state, refresh } = useCatalog();
   const { rows, usage } = useExerciseList();
-  const { selectedId } = usePane();
+  const { selectedId, slot } = usePane();
   const today = useContext(ProgressClockContext)();
   const muscles = useMuscleGroups();
   const equipment = useEquipment();
@@ -127,7 +127,8 @@ function ExerciseList({ onSearch }: { onSearch: () => void }) {
           {EXERCISES_COPY.usageFailed}
         </InlineNotice>
       ) : null}
-      <div className={styles.searchRow}>
+      {/* Minor 665 (owner, 2026-11-21): in the 20rem list pane, + New exercise wraps under the field. */}
+      <div className={slot === "list" ? styles.searchRowStacked : styles.searchRow} data-stacked={slot === "list" ? "" : undefined}>
         <input
           type="search"
           className={styles.search}
