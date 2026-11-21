@@ -180,8 +180,11 @@ const LEADING_BULLETS = /^[-•*][-•*\s]*/;
 const BULLETED_BOLD = /^[-•*][-•*\s]*?(\*\*|__)(\S(?:(?:(?!\1).)*\S)?)\1\s*$/;
 /** A movement line's text: every leading bullet off (AC70), and a whole-text bold pair after them (AC71). */
 const movementTextOf = (line: string): string => BULLETED_BOLD.exec(line)?.[2] ?? line.replace(LEADING_BULLETS, "");
-/** #264, #265, #276: a note line as the timer rules read it: collapsed, with its leading bullets off. The note keeps its text (D10). */
-const timerLine = (line: string) => collapseLine(line).replace(LEADING_BULLETS, "");
+/**
+ * #264, #265, #276: a note line as the timer rules read it: collapsed, with its leading bullets off, and a whole-text
+ * bold pair after them as a movement line loses it (AC71; minor 597: `- **12 Minute Cap**`). The note keeps its text (D10).
+ */
+const timerLine = (line: string) => movementTextOf(collapseLine(line));
 
 /** #262: a Time Cap or AMRAP line (no score or range check), so the reader keeps it in the note inside a run. */
 function isCapOrAmrapLine(line: string): boolean {
