@@ -18,10 +18,20 @@ const base = () => ({
 const create = (key: string): CreateOp => ({ ...base(), kind: "create", target: { clientGeneratedId: key }, body: { clientGeneratedId: key, weight: 60, weightUnit: "kg", reps: 8, isComplete: true } });
 const update = (key: string): UpdateOp => ({ ...base(), kind: "update", target: { clientGeneratedId: key }, body: { reps: 9 } });
 const note = (): NoteOp => ({ ...base(), kind: "note", body: { notes: "x" } });
-const finish = (): FinishOp => {
-  const { workoutExerciseId: _we, ...common } = base();
-  return { ...common, kind: "finish", body: { endedAt: "2026-10-02T11:00:00.000Z" }, meta: { startedAt: "2026-10-02T10:00:00.000Z", exerciseCount: 1, setCount: 1, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false } } as FinishOp;
-};
+const finish = (): FinishOp =>
+  ({
+    id: `op-${++n}`,
+    workoutId: "w",
+    userId: "u",
+    status: "failed",
+    attempted: true,
+    attempts: 1,
+    nextAttemptAt: 0,
+    enqueuedAt: 0,
+    kind: "finish",
+    body: { endedAt: "2026-10-02T11:00:00.000Z" },
+    meta: { startedAt: "2026-10-02T10:00:00.000Z", exerciseCount: 1, setCount: 1, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false },
+  }) as FinishOp;
 
 describe("06.7 AC21 — minor 642: the status line counts refused rows", () => {
   it("a set whose create and edit were both refused is one row", () => {

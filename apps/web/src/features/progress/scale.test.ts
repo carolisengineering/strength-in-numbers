@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChartPoint } from "./metrics";
 import { DEFAULT_VIEW, MARGINS, hitAreas, layoutChart, niceTicks, viewFor, xLabels } from "./scale";
+import { withLocale } from "../../test/locale";
 
 const pt = (id: string, localDate: string, y: number): ChartPoint => ({ id, localDate, canonical: y, y });
 
@@ -209,5 +210,28 @@ describe("17.12 AC23 — the chart's view is sized by its width", () => {
   it("an empty layout still carries its view, and the default is DEFAULT_VIEW", () => {
     expect(layoutChart([], { view: viewFor(500) }).view.width).toBe(500);
     expect(layoutChart([]).view).toBe(DEFAULT_VIEW);
+  });
+});
+
+describe("minor 533 — month labels never meet", () => {
+  // The same estimate xLabels uses: 8 units a character, placed by the anchor.
+  const box = (l: { x: number; text: string; anchor: "start" | "middle" | "end" }) => {
+    const w = l.text.length * 8;
+    const left = l.anchor === "start" ? l.x : l.anchor === "middle" ? l.x - w / 2 : l.x - w;
+    return { left, right: left + w };
+  };
+  const meets = (labels: ReturnType<typeof xLabels>) => labels.some((l, i) => i > 0 && box(labels[i - 1]!).right > box(l).left);
+
+  it("fr-FR, 2025-10-01 to 2026-01-01: no two boxes meet, and the newest month (janv.) stays", () => {
+    const labels = withLocale("fr-FR", () => xLabels(layoutChart([pt("a", "2025-10-01", 1), pt("b", "2026-01-01", 1)])));
+    expect(meets(labels)).toBe(false);
+    expect(labels.at(-1)!.text).toMatch(/^janv/);
+  });
+
+  it("Review Focus 5: en-US labels that don't touch are all kept", () => {
+    expect(xLabels(layoutChart([pt("a", "2026-07-08", 1), pt("b", "2026-10-06", 1)])).map((l) => l.text)).toEqual(["Aug", "Sep", "Oct"]);
+    const year = xLabels(layoutChart([pt("a", "2026-01-15", 1), pt("b", "2026-12-20", 1)]));
+    expect(year.length).toBeGreaterThanOrEqual(3);
+    expect(meets(year)).toBe(false);
   });
 });

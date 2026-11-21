@@ -1187,6 +1187,16 @@ async function desktopPass(browser) {
           await page.goto(BASE + s.path);
           if (fontSize) await page.evaluate((f) => { document.documentElement.style.fontSize = f; }, fontSize);
           await settle(page);
+          const rowOutOfView =
+            config.wide === true && (s.name === "d7-history-workout" || s.name === "d8-history-edit")
+              ? await page.evaluate(() => {
+                  const pane = document.querySelector("[data-pane]");
+                  const row = pane?.querySelector('[aria-current="page"]');
+                  if (!pane || !row) return "no selected row in the list pane";
+                  const [p, r] = [pane.getBoundingClientRect(), row.getBoundingClientRect()];
+                  return r.top >= p.top - 1 && r.bottom <= p.bottom + 1 ? null : `the selected row (${Math.round(r.top)}–${Math.round(r.bottom)}) is outside the list pane (${Math.round(p.top)}–${Math.round(p.bottom)})`;
+                })
+              : null;
           await shoot(page, device, s.name, `Spec 17.12 AC11: ${s.name.slice(3)} at ${viewport.width} × ${viewport.height}${fontSize ? `, ${fontSize} text` : ""}`);
           const entry = await checkShell(page, `${theme}/${device}/${s.name}`, config);
           // Spec 17.12 AC13–AC18, AC31: the two-pane screens, at the desktop sizes (not the tablet, not 200% text).
@@ -1210,6 +1220,21 @@ async function desktopPass(browser) {
             const found = await checkRoutinePanes(page, s);
             for (const v of found) console.error(`  DESKTOP ${entry.shot}: ${v}`);
             entry.violations.push(...found);
+          }
+          // Minor 653 (read before the shot, whose scroll steps move the panes): a deep-linked History workout's row is
+          // scrolled into the list pane's view.
+          if (rowOutOfView) {
+            console.error(`  DESKTOP ${entry.shot}: ${rowOutOfView}`);
+            entry.violations.push(rowOutOfView);
+          }
+          // Minor 665: the Exercises list pane's search field has room for its placeholder.
+          if (config.wide === true && s.name === "d3-exercises") {
+            const width = await page.evaluate(() => document.querySelector("[data-pane] input[type=search]")?.getBoundingClientRect().width ?? 0);
+            if (width < 200) {
+              const v = `the list pane's search field is ${Math.round(width)} px wide (under 200)`;
+              console.error(`  DESKTOP ${entry.shot}: ${v}`);
+              entry.violations.push(v);
+            }
           }
           if (s.live) {
             // The session must be on screen first, or a spinner or an error (one column too) would pass (code review).
@@ -3529,14 +3554,17 @@ try {
     });
     // Two charts across a year: three month starts (month labels), and Dec 20 to Jan 10 (no two month starts, so the
     // ends get day labels with the year, the longest labels the chart draws; final review I1).
-    for (const [name, seriesDates] of [
+    // Minor 533: and under fr-FR, Oct 1 to Jan 1, whose long month names made the last two labels meet.
+    for (const [name, seriesDates, locale = "en-US"] of [
       ["15y-chart-across-a-year", ["2025-11-20", "2025-12-18", "2026-01-15", "2026-02-10"]],
       ["15z-chart-across-a-year-ends", ["2025-12-20", "2026-01-10"]],
+      // The fixture series has three points, so three dates.
+      ["15w-chart-fr-month-labels", ["2025-10-01", "2025-11-20", "2026-01-01"], "fr-FR"],
     ]) {
-      await tryStep(`locale en-US chart ${name}`, async () => {
-        THEME = "locale-en-US";
+      await tryStep(`locale ${locale} chart ${name}`, async () => {
+        THEME = `locale-${locale}`;
         const state = { active: false, seriesDates };
-        const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+        const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
         await ctx.route(isSinApi, makeHandler(state));
         const page = await ctx.newPage();
         page.setDefaultTimeout(8000);
@@ -3547,7 +3575,7 @@ try {
           width: document.documentElement.clientWidth,
           ticks: [...document.querySelectorAll("svg text")]
             .map((t) => ({ text: t.textContent ?? "", box: t.getBoundingClientRect() }))
-            .filter((t) => /[A-Z][a-z]{2}/.test(t.text))
+            .filter((t) => /\p{L}{3}/u.test(t.text))
             .map((t) => ({ text: t.text, left: t.box.left, right: t.box.right, top: t.box.top, bottom: t.box.bottom })),
         }));
         const extra = [];
@@ -3559,7 +3587,7 @@ try {
           if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) extra.push(`ticks overlap: "${a.text}" and "${b.text}"`);
         }
         await shoot(page, "mobile", name, `Spec 17.13 review focus 5: ticks ${ticks.map((t) => t.text).join(", ")}`);
-        await checkLocaleShot(page, "en-US", "a chart across a year", { baseline: mainShot("15-progress-bench"), extra });
+        await checkLocaleShot(page, locale, "a chart across a year", { baseline: mainShot("15-progress-bench"), extra });
         await ctx.close();
       });
     }
