@@ -2,7 +2,7 @@ import { type PersonalRecord, type RecordType, type UnitPreference, type Workout
 
 import { formatRecordByType, formatRecordPair } from "../units/format";
 import { formatSet } from "../workouts/format";
-import { recordRowLabels, sortRecords } from "./labels";
+import { recordRowLabel, sortRecords } from "./labels";
 
 /**
  * Spec 17.6 §6.1: the pure model behind the summary's record ledger. Every decision (what is shown, what leads, what
@@ -136,10 +136,8 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
     // Minor 476: if no lift rises, this one's rows aren't drawn; a first-ever record it holds becomes its line instead.
     const firstRecord = ordered.find((r) => r.previousValue === null);
     const shared = shown.every((b) => b.record.sourceSetId === shown[0]!.record.sourceSetId);
-    // 07.5 D12: two weights of the lift that read alike are told apart.
-    const labels = recordRowLabels(ordered, pref);
     const rows: LedgerRow[] = shown.map(({ record, pair }) => {
-      const label = labels.get(record)!;
+      const label = recordRowLabel(record, pref);
       return { key: `${record.recordType}:${record.atWeightKg ?? ""}`, type: record.recordType, label, oldText: pair.oldText, newText: pair.newText, gainText: pair.gainText, spoken: `${label}: ${pair.spoken}`, sourceText: shared ? null : sourceOf(record.sourceSetId) };
     });
     return {
