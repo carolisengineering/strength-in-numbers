@@ -58,11 +58,6 @@ export interface RecordLedger {
   /** The panel's lifts; empty when `heading` is null. */
   readonly lifts: readonly LedgerLift[];
   readonly firsts: readonly FirstTimeLine[];
-  /**
-   * Minor 477: a first line leads with an est. 1-rep max and the panel draws no estimate row (or isn't drawn), so the
-   * lines carry AC9's explanation themselves. Never both.
-   */
-  readonly explainFirsts: boolean;
 }
 
 /** AC11 (D4): more than 4 collapses to the first 3. */
@@ -156,6 +151,14 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
   // Minor 476: with no panel, a value-only lift is gone; only a first-ever record it held stays, as its line.
   const lifts = heading === null ? [] : drawn;
   const firsts = built.flatMap((b) => (b.kind === "first" ? [b.first] : heading === null && b.first !== null ? [b.first] : []));
-  const explainFirsts = firsts.some((f) => f.estimate) && !lifts.some((l) => l.hasEstimate);
-  return { heading, counted: heading === null ? 0 : rising, lifts, firsts, explainFirsts };
+  return { heading, counted: heading === null ? 0 : rising, lifts, firsts };
+}
+
+/**
+ * Minor 477: a first line leads with an est. 1-rep max and the panel shows no estimate row (or isn't drawn), so the lines
+ * carry AC9's explanation themselves. Never both. Minor 600: "shows" is what the panel draws now, collapsed or not.
+ */
+export function firstsNeedExplaining(ledger: RecordLedger, panelExpanded: boolean): boolean {
+  const shown = ledger.lifts.slice(0, collapsedCount(ledger.lifts.length, panelExpanded));
+  return ledger.firsts.some((f) => f.estimate) && !shown.some((l) => l.hasEstimate);
 }

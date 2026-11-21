@@ -5,8 +5,9 @@ import { classifyWorkoutError } from "../workouts/errors";
 import { reportUnexpected } from "../workouts/reportUnexpected";
 import { FirstTimeLines } from "./FirstTimeLines";
 import { useWorkoutRecords } from "./queries";
-import { buildRecordLedger, type LedgerSection } from "./recordLedger";
+import { buildRecordLedger, firstsNeedExplaining, type LedgerSection } from "./recordLedger";
 import { RecordLedgerPanel } from "./RecordLedgerPanel";
+import { useCollapseToggle } from "./useCollapseToggle";
 import styles from "./PersonalRecordsBlock.module.css";
 
 /**
@@ -18,6 +19,9 @@ import styles from "./PersonalRecordsBlock.module.css";
  */
 export function PersonalRecordsBlock({ workoutId, unitPreference, workout, section }: { workoutId: string; unitPreference: UnitPreference; workout: Pick<WorkoutDetail, "exercises">; section: LedgerSection }) {
   const query = useWorkoutRecords(workoutId);
+  // AC11: the panel's Show all, local and never stored (a data refresh never resets it); held here so the first-time
+  // lines explain the estimate only while the panel shows none (minor 600).
+  const collapse = useCollapseToggle();
 
   useEffect(() => {
     if (query.error) reportUnexpected("load-records", query.error);
@@ -34,8 +38,8 @@ export function PersonalRecordsBlock({ workoutId, unitPreference, workout, secti
           Couldn't load records
         </InlineNotice>
       ) : null}
-      {ledger.heading === null ? null : <RecordLedgerPanel heading={ledger.heading} lifts={ledger.lifts} />}
-      {ledger.firsts.length === 0 ? null : <FirstTimeLines lines={ledger.firsts} explain={ledger.explainFirsts} />}
+      {ledger.heading === null ? null : <RecordLedgerPanel heading={ledger.heading} lifts={ledger.lifts} collapse={collapse} />}
+      {ledger.firsts.length === 0 ? null : <FirstTimeLines lines={ledger.firsts} explain={firstsNeedExplaining(ledger, collapse.expanded)} />}
     </div>
   );
 }

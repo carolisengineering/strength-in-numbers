@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { makePersonalRecord, makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { storedKg } from "../../test/units";
-import { buildRecordLedger, collapsedCount, LEDGER_COLLAPSE_OVER, LEDGER_COLLAPSED_SHOWS, type LedgerSection } from "./recordLedger";
+import { buildRecordLedger, collapsedCount, firstsNeedExplaining, LEDGER_COLLAPSE_OVER, LEDGER_COLLAPSED_SHOWS, type LedgerSection } from "./recordLedger";
 
 const kgSet = (o: Record<string, unknown> = {}) => makeSet({ reps: 5, weight: 190, weightKg: 190, ...o });
 const workoutOf = (specs: ExerciseSpec[]) => makeWorkoutDetail({ exercises: specs });
@@ -107,19 +107,19 @@ describe("17.6 AC6 / 17.2 AC22 — a zero-gain estimate", () => {
 describe("minor 477 — the estimate is explained under first-time lines when the panel doesn't", () => {
   it("only first-time lines, one led by an estimate: explain them", () => {
     const w = workoutOf([lift("Bench Press")]);
-    expect(ledger([rec(w, 0, estimate(94, null))], w).explainFirsts).toBe(true);
+    expect(firstsNeedExplaining(ledger([rec(w, 0, estimate(94, null))], w), false)).toBe(true);
   });
   it("first lines with no estimate: nothing to explain", () => {
     const w = workoutOf([lift("Bench Press")]);
-    expect(ledger([rec(w, 0, heaviest(190, null))], w).explainFirsts).toBe(false);
+    expect(firstsNeedExplaining(ledger([rec(w, 0, heaviest(190, null))], w), false)).toBe(false);
   });
   it("a drawn lift with an estimate row explains it in the panel, so never under the lines too", () => {
     const w = workoutOf([lift("Bench Press"), lift("Squat")]);
-    expect(ledger([rec(w, 0, estimate(221.5, 215)), rec(w, 1, estimate(94, null))], w).explainFirsts).toBe(false);
+    expect(firstsNeedExplaining(ledger([rec(w, 0, estimate(221.5, 215)), rec(w, 1, estimate(94, null))], w), false)).toBe(false);
   });
   it("a drawn lift with no estimate row leaves the first line's estimate to be explained under the lines", () => {
     const w = workoutOf([lift("Bench Press"), lift("Squat")]);
-    expect(ledger([rec(w, 0, heaviest(190, 185)), rec(w, 1, estimate(94, null))], w).explainFirsts).toBe(true);
+    expect(firstsNeedExplaining(ledger([rec(w, 0, heaviest(190, 185)), rec(w, 1, estimate(94, null))], w), false)).toBe(true);
   });
 });
 
@@ -242,7 +242,7 @@ describe("17.6 AC13 — mixed lifts", () => {
 describe("17.6 AC14 / 17.2 AC16 / 17.2 AC24 — no set volume or timed rows", () => {
   it("set volume only, or no records, is an empty ledger", () => {
     const w = workoutOf([lift("Bench Press")]);
-    const empty = { heading: null, counted: 0, lifts: [], firsts: [], explainFirsts: false };
+    const empty = { heading: null, counted: 0, lifts: [], firsts: [] };
     expect(ledger([rec(w, 0, { recordType: "best_set_volume", value: 950, previousValue: 900, unit: "kg_reps" })], w)).toEqual(empty);
     expect(ledger([], w)).toEqual(empty);
   });
@@ -269,5 +269,24 @@ describe("17.6 AC11 — the collapse rule", () => {
     expect(collapsedCount(5, false)).toBe(3);
     expect(collapsedCount(7, true)).toBe(7);
     expect(collapsedCount(0, false)).toBe(0);
+  });
+});
+
+describe("17.6 AC9 — minor 600: the first-time explanation follows the collapsed panel", () => {
+  // Five rising lifts, only the 5th with an estimate row; a first-time line that leads with an estimate.
+  const w = workoutOf([lift("A"), lift("B"), lift("C"), lift("D"), lift("E"), lift("F")]);
+  const records = [
+    rec(w, 0, heaviest(190, 185)),
+    rec(w, 1, heaviest(190, 185)),
+    rec(w, 2, heaviest(190, 185)),
+    rec(w, 3, heaviest(190, 185)),
+    rec(w, 4, estimate(221.5, 215)),
+    rec(w, 5, estimate(94, null)),
+  ];
+  it("collapsed, the panel shows A–C with no estimate, so the first-time line explains it", () => {
+    expect(firstsNeedExplaining(ledger(records, w), false)).toBe(true);
+  });
+  it("expanded, the panel shows E's estimate row and explains it, so never under the lines too", () => {
+    expect(firstsNeedExplaining(ledger(records, w), true)).toBe(false);
   });
 });

@@ -30,6 +30,9 @@ export function formatSeconds(totalSeconds: number): string {
   return parts.length === 0 ? "0 s" : parts.join(" ");
 }
 
+/** The record and metric units a lb account reads in lb (minor 478: the gain rule and the chart share it). */
+export const convertsToLb = (unit: RecordUnit): boolean => unit === "kg" || unit === "kg_reps";
+
 function inUnit(kg: number, pref: UnitPreference): string {
   return pref === "lb" ? `${LB.format(kgToLb(kg))} lb` : `${KG.format(kg)} kg`;
 }
@@ -146,7 +149,7 @@ export function formatRecordPair(
   const gainText =
     record.recordType === "best_est_1rm"
       ? formatE1rmGain(record.value, record.previousValue, pref)
-      : record.unit === "kg" && pref === "lb"
+      : convertsToLb(record.unit) && pref === "lb"
         ? lbGainOfShown(record.value, record.previousValue)
         : `+${formatRecordValue(record.value - record.previousValue, record.unit, pref)}`;
   if (gainText === null || oldFull === newText) return valueOnly;
