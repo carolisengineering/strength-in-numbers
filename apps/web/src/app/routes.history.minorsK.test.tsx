@@ -42,9 +42,9 @@ async function deleteFrom(path: string, wide: boolean) {
   const app = renderApp("/app/history");
   // Opened from the list: /app/history, then /app/history/:id pushed on top of it.
   await app.router.navigate(path);
-  await screen.findAllByText("Newer push");
-  await app.user.click(screen.getByRole("button", { name: "Workout menu" }));
-  await app.user.click(screen.getByRole("button", { name: "Delete workout" }));
+  // At desktop widths the list row also says "Newer push", so wait for the summary's own menu, not the text.
+  await app.user.click(await screen.findByRole("button", { name: "Workout menu" }));
+  await app.user.click(await screen.findByRole("button", { name: "Delete workout" }));
   await app.user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
   return app;

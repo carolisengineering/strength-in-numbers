@@ -24,8 +24,9 @@ export function markLandedShown(store: LandedStore, workoutId: string): () => vo
 }
 
 /**
- * Starting a workout leaves the Start screen without a route change (the session replaces it on `/app/workouts`), so
- * the start removes every entry whose line was drawn; a discard then brings Start back without it (final review).
+ * The session, the waiting card or the gone card replace Start on `/app/workouts` with no route change, so
+ * `WorkoutsScreen` calls this when one does: every entry whose line was drawn is removed, and Start coming back (after a
+ * discard) never shows it again (final review, code review).
  */
 export function leaveLanded(store: LandedStore): void {
   const mounts = mountsOf(store);

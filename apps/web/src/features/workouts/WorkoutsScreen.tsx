@@ -37,6 +37,8 @@ export const ROUTINE_NOT_APPLIED_NOTICE = "You already had a workout in progress
 export interface WorkoutsLocationState {
   readonly notice?: "routine-gone" | "routine-not-applied" | "resumed";
   readonly startEmpty?: true;
+  /** Minor 673: which Start tap made the `startEmpty` entry, so only that tap starts on arrival. */
+  readonly startTap?: string;
 }
 
 type LocationNotice = NonNullable<WorkoutsLocationState["notice"]>;
@@ -111,13 +113,7 @@ export function WorkoutsScreen() {
     if (active.error) reportUnexpected("load-active", active.error);
   }, [active.error]);
 
-  if (finishing.waiting && finishing.op && finishing.op.workoutId !== tapping) {
-    return (
-      <Screen title="Workouts" hideTitle>
-        <WaitingFinishCard op={finishing.op} />
-      </Screen>
-    );
-  }
+  const waitingCard = finishing.waiting && finishing.op !== undefined && finishing.op !== null && finishing.op.workoutId !== tapping;
   // A refused finish whose workout the server no longer has live is gone (AC30); still live, it reopens (AC29).
   const refused = finishing.failed ? finishing.op : null;
   // A 404 counts only when it was the finish's own answer: a finish blocked by a write that got a 404 inherits the
@@ -125,6 +121,21 @@ export function WorkoutsScreen() {
   const ownNotFound = refused?.failure?.status === 404 && refused.failure.blockedBy === undefined;
   const gone =
     refused !== null && (ownNotFound || (!active.isPending && active.data !== undefined && active.data?.id !== refused.workoutId));
+  // Spec 06.7 AC27 (minors 636, 668): the session, the waiting card or the gone card replacing Start on the same path is
+  // leaving the saved line (a start here, or one from another device), so Start coming back never shows it again. A
+  // spinner or an error branch is not leaving.
+  const replacesStart = waitingCard || (refused !== null && gone) || (!active.isPending && active.data !== undefined && active.data !== null);
+  useEffect(() => {
+    if (replacesStart && landed) leaveLanded(landed);
+  }, [replacesStart, landed]);
+
+  if (waitingCard && finishing.op) {
+    return (
+      <Screen title="Workouts" hideTitle>
+        <WaitingFinishCard op={finishing.op} />
+      </Screen>
+    );
+  }
   if (refused !== null && gone) {
     return (
       <Screen title="Workouts" hideTitle>
@@ -156,8 +167,6 @@ export function WorkoutsScreen() {
         notice={shownNotice}
         onDismissNotice={dismissNotice}
         onStarted={(resumed) => {
-          // Spec 06.7 AC27: the session replaces Start on the same path, which is leaving the saved line.
-          if (landed) leaveLanded(landed);
           // Spec 17.12 AC26: a started workout turns the panes off, and the session's screen is a new instance, so
           // the list pane hands the notice over through the location rather than its own state.
           if (inList) {

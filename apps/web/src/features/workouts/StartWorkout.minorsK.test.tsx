@@ -86,7 +86,35 @@ const routes: RouteObject[] = [
   },
 ];
 
+async function keepEditing() {
+  setDesktop(true);
+  guard.blocking = true;
+  const fake = createWorkoutFake({ routines: [makeRoutine({ id: routineId(1), name: "Push A" })] });
+  prepareApp({ auth, fake });
+  const router = createMemoryRouter(routes, { initialEntries: [`/app/workouts/routines/${routineId(1)}/edit`] });
+  render(
+    <QueryClientProvider client={makeQueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  await screen.findByRole("heading", { name: "Start a workout" });
+  const list = document.querySelectorAll<HTMLElement>("[data-pane]")[0]!;
+  await userEvent.setup().click(within(list).getByRole("button", { name: "Start empty workout" }));
+  await waitFor(() => expect(guard.blocker?.state).toBe("blocked"));
+  act(() => guard.blocker!.reset!());
+  guard.blocking = false;
+  return { fake, router };
+}
+const starts = (fake: ReturnType<typeof createWorkoutFake>) => fake.requests.filter((r) => r.method === "POST" && r.path === "/v1/workouts");
+
 describe("minor 673 — a canceled leave disarms Start", () => {
+  it("code review: Keep editing, then straight to an old startEmpty entry (Back, then Leave): nothing starts", async () => {
+    const { fake, router } = await keepEditing();
+    await act(() => router.navigate("/app/workouts", { state: { startEmpty: true } }));
+    await waitFor(() => expect(router.state.location.state).toBeNull());
+    expect(starts(fake)).toEqual([]);
+  });
+
   it("Start beside a dirty editor, Keep editing, then a startEmpty entry this tap didn't make: nothing starts", async () => {
     setDesktop(true);
     guard.blocking = true;
