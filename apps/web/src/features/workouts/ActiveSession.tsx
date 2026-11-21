@@ -32,7 +32,7 @@ import { LogBarButton, type BarAction } from "./LogBarButton";
 import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
-import { failedOpCount, sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
+import { failedRowCount, sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
 import { FINISH_OFFLINE_NOTE, REFUSED_LEAD, REFUSED_OTHER, finishLocked, finishUnsentNote, refusedBlocked, refusedIncomplete } from "./outbox/finishMessages";
 import { useWaitingFinish } from "./useWaitingFinish";
 import { START_CLOCK_MESSAGE } from "./useBeginWorkout";
@@ -105,6 +105,8 @@ interface Banner {
 const OFFLINE_MESSAGE = "You're offline — try again when you have signal";
 const SECTION_LIMIT_ID = "session-section-limit";
 const EMPTY_IDS: ReadonlySet<string> = new Set();
+/** Minor 637: the refused finish ops whose banner has been scrolled into view, for the page load. */
+const scrolledRefusals = new Set<string>();
 /** Spec 10.7 AC39: a timed section's heading tag. */
 const SYNC_TAG = { pending: RESULT_COPY.notSaved, failed: RESULT_COPY.notSavedFailed } as const;
 
@@ -174,6 +176,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     setEndEarlyOpen(true);
   };
   const [flaggedIds, setFlaggedIds] = useState<ReadonlySet<string>>(EMPTY_IDS);
+  // Minor 638: the refused op whose re-read set `flaggedIds`; until it matches, the banner says the lead alone.
+  const [rereadFor, setRereadFor] = useState<string | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
   // Synchronous guards: React state would not have updated before a second tap lands.
   const structureLock = useRef(false);
@@ -766,7 +770,8 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const unsaved = pendingCount + failedCount;
   // Spec 06.7 AC21 (amends 06.2 AC16, 10.3 AC29, 10.7 AC39): queued writes no longer hold Finish — the finish op sends
   // after them (AC2). A write the server refused does: finishing past it would leave it behind (§6.7, D13).
-  const refused = failedOpCount(outboxState.ops, workout.id);
+  // Minor 642: refused rows, not ops, so a set whose create and edit both failed is one, as the banner says.
+  const refused = failedRowCount(outboxState.ops, workout.id, outboxState.idMap);
   // Spec 06.7 AC29, §6.7: a refused finish op is the banner's memory; the workout is live again (AC19).
   const refusedFinish = useWaitingFinish(workout.id);
   const refusedOp = refusedFinish.failed ? refusedFinish.op : null;
@@ -793,6 +798,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       track("finish_blocked", { incompleteCount: ids.length });
       scrollPending.current = ids.length > 0;
       setFlaggedIds(new Set(ids));
+      setRereadFor(refusedOpId);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per refused op
   }, [refusedKind, refusedOpId]);
@@ -800,22 +806,26 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // refused banner into view once per refused op, after that reveal (a flagged row's own scroll still comes later).
   const refusedRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (refusedOpId !== null) refusedRef.current?.scrollIntoView?.({ block: "nearest" });
+    // Minor 637: once per op for the page, so a return to the workout keeps the reveal of the current panel.
+    if (refusedOpId === null || scrolledRefusals.has(refusedOpId)) return;
+    scrolledRefusals.add(refusedOpId);
+    refusedRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [refusedOpId]);
-  const refusedText =
+  const refusedDetail =
     refusedKind === null
       ? null
-      : `${REFUSED_LEAD} ${
-          refusedKind === "blocked"
-            ? refusedBlocked(failedCount) // sets, not ops: a create and its edit are one row
-            : refusedKind === "incomplete"
-              ? flaggedIds.size > 0
-                ? refusedIncomplete(flaggedIds.size)
-                : REFUSED_OTHER
-              : refusedKind === "clock"
-                ? START_CLOCK_MESSAGE
-                : REFUSED_OTHER
-        }`;
+      : refusedKind === "blocked"
+        ? refusedBlocked(failedCount) // sets, not ops: a create and its edit are one row
+        : refusedKind === "incomplete"
+          ? rereadFor !== refusedOpId
+            ? null // minor 638: the lead alone until this op's re-read has flagged its sets (or found none)
+            : flaggedIds.size > 0
+              ? refusedIncomplete(flaggedIds.size)
+              : REFUSED_OTHER
+          : refusedKind === "clock"
+            ? START_CLOCK_MESSAGE
+            : REFUSED_OTHER;
+  const refusedText = refusedKind === null ? null : refusedDetail === null ? REFUSED_LEAD : `${REFUSED_LEAD} ${refusedDetail}`;
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy || refused > 0;
   // Spec 06.7 AC22: what Finish will do, said in both dialogs: no signal, or the sets that send first.
   const finishNote = !outboxState.online ? FINISH_OFFLINE_NOTE : pendingCount > 0 ? finishUnsentNote(pendingCount) : undefined;

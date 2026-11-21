@@ -196,8 +196,13 @@ function setKeyOf(op: SetOp, idMap: IdMap): string {
  * Spec 06.7 AC21: the writes of this workout the server refused — every failed op but the finish (a refused finish is
  * replaced by the next Finish tap, AC2). It locks every Finish door and is the `n` of `finishLocked(n)`.
  */
-export function failedOpCount(ops: readonly OutboxOp[], workoutId: string): number {
-  return ops.filter((o) => o.workoutId === workoutId && o.status === "failed" && o.kind !== "finish").length;
+/**
+ * Spec 06.7 AC21 (minor 642, owner 2026-11-21): how many *rows* of `workoutId` the server refused — a set, an exercise's
+ * note or a timer entry counts once however many of its writes failed, so the status line agrees with the banner. A
+ * refused finish op is not a row (it never locks Finish).
+ */
+export function failedRowCount(ops: readonly OutboxOp[], workoutId: string, idMap: IdMap): number {
+  return unsavedSets(ops, workoutId, idMap).failed + unsavedNotes(ops, workoutId).failed + unsavedTimerEntries(ops, workoutId).failed;
 }
 
 /**
