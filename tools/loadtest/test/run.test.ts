@@ -625,6 +625,116 @@ describe("minor 591 (final review) — a stop signal is handled until the result
   });
 });
 
+describe("minor 607 — a stop while the annotation opens never leaves it open", () => {
+  /** The annotation opens only when the test says so; the test fires stop signals meanwhile. */
+  function opening(overrides: Partial<RunDeps> = {}) {
+    let resolveOpen!: (id: number | undefined) => void;
+    const h = deps({ openAnnotation: vi.fn(() => new Promise<number | undefined>((r) => (resolveOpen = r))), ...overrides });
+    return { h, open: (id: number | undefined = 42) => resolveOpen(id) };
+  }
+
+  it.each<[StopSignal, number]>([
+    ["SIGTERM", 143],
+    ["SIGHUP", 129],
+    ["SIGINT", 1],
+  ])("%s before k6 starts: no k6, cleanup, no result, the annotation closed as stopped, exit %i", async (signal, code) => {
+    const { h, open } = opening();
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.openAnnotation).toHaveBeenCalled());
+    h.fire(signal);
+    open();
+    expect(await done).toBe(code);
+    expect(h.d.spawnK6).not.toHaveBeenCalled();
+    expect(h.d.cleanupAll).toHaveBeenCalledTimes(1);
+    expect(h.results).toHaveLength(0);
+    expect(h.d.closeAnnotation).toHaveBeenCalledWith(42, expect.objectContaining({ text: "load test: gym run on local stopped before k6 started" }));
+    expect(h.lines).toContain(`stopping before k6 starts (${signal}); cleanup follows`);
+  });
+
+  it("Review Focus 1: opening fails (no id): still no k6, cleanup, exit 143", async () => {
+    const { h, open } = opening();
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.openAnnotation).toHaveBeenCalled());
+    h.fire("SIGTERM");
+    open(undefined);
+    expect(await done).toBe(143);
+    expect(h.d.spawnK6).not.toHaveBeenCalled();
+    expect(h.d.cleanupAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("Review Focus 2: SIGTERM then Ctrl-C before k6: one stopping line, no k6, exit 143", async () => {
+    const { h, open } = opening();
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.openAnnotation).toHaveBeenCalled());
+    h.fire("SIGTERM");
+    h.fire("SIGINT");
+    open();
+    expect(await done).toBe(143);
+    expect(h.d.spawnK6).not.toHaveBeenCalled();
+    expect(h.lines.filter((l) => l.startsWith("stopping before k6 starts"))).toHaveLength(1);
+  });
+
+  it("Ctrl-C then SIGTERM before k6: the SIGTERM decides the exit (143)", async () => {
+    const { h, open } = opening();
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.openAnnotation).toHaveBeenCalled());
+    h.fire("SIGINT");
+    h.fire("SIGTERM");
+    open();
+    expect(await done).toBe(143);
+    expect(h.d.spawnK6).not.toHaveBeenCalled();
+  });
+
+  it("the handler is registered before the annotation opens", async () => {
+    const order: string[] = [];
+    const h = deps({
+      onStop: vi.fn(() => {
+        order.push("register");
+        return () => void order.push("release");
+      }),
+      openAnnotation: vi.fn(async () => {
+        order.push("open");
+        return 42;
+      }),
+    });
+    await runLoad(gym, h.d);
+    expect(order.slice(0, 2)).toEqual(["register", "open"]);
+  });
+});
+
+describe("minor 606 — a signal after k6 finished on its own keeps the run's exit code", () => {
+  /** k6 has already exited (with `k6Code`); cleanup waits for the test. */
+  function cleaningUp(k6Code: number, k6Summary: unknown) {
+    let finishCleanup!: () => void;
+    const h = deps({
+      spawnK6: vi.fn(() => ({ exited: Promise.resolve({ code: k6Code, signal: null }), kill: vi.fn() })),
+      cleanupAll: vi.fn(() => new Promise<{ removed: number }>((r) => (finishCleanup = () => r({ removed: 2 })))),
+      readSummary: vi.fn(() => k6Summary),
+    });
+    return { h, finish: () => finishCleanup() };
+  }
+
+  it.each<StopSignal>(["SIGTERM", "SIGHUP"])("%s during cleanup of a complete run: exit 0, one wait line, result complete", async (signal) => {
+    const { h, finish } = cleaningUp(0, passingSummary(3));
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.cleanupAll).toHaveBeenCalled());
+    h.fire(signal);
+    finish();
+    expect(await done).toBe(0);
+    expect(h.results[0]!.body).toMatchObject({ status: "complete", cleanup: "done" });
+    expect(h.lines.filter((l) => l.startsWith("cleanup is running"))).toHaveLength(1);
+  });
+
+  it("Review Focus 3: SIGHUP during cleanup after a failed threshold (k6 exit 99, no summary): exit 1, never 129", async () => {
+    const { h, finish } = cleaningUp(99, undefined);
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.cleanupAll).toHaveBeenCalled());
+    h.fire("SIGHUP");
+    finish();
+    expect(await done).toBe(1);
+  });
+});
+
 describe("minor 579 — --hold-scale 1 is a full run", () => {
   it("records holdScale null for 1, so the push gate accepts the run", async () => {
     const { d, results } = deps();
