@@ -983,6 +983,10 @@ const measureLedger = (page) =>
       firsts: [...document.querySelectorAll('ul[data-first-times] > li')].map((li) => li.textContent),
       overflowingRows: lines.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
       hscroll: main ? main.scrollWidth > main.clientWidth : false,
+      // Minor 473: an absence check passes on a failed read too, so read the failure (PersonalRecordsBlock's copy) and
+      // count the exercise regions (named sections that aren't records).
+      recordsError: document.body.innerText.includes("Couldn't load records"),
+      exerciseRegions: [...document.querySelectorAll("main section[aria-label], main section[aria-labelledby]")].filter((s) => !/record/i.test(nameOf(s))).length,
     };
   });
 
@@ -1329,6 +1333,8 @@ async function checkPanes(page, { editBar, selected = true }) {
     const list = regions[0];
     // Phase D: beside "Choose a routine" nothing is open, so no row is marked (`selected: false`).
     if (wantSelected && list && !list.querySelector('a[aria-current="page"]')) out.push("no row in the list is marked as the open one");
+    // Minor 671: beside "Choose a routine" a marked row is a violation, not a pass.
+    if (!wantSelected && list?.querySelector('a[aria-current="page"]')) out.push("a row is marked beside Choose a routine");
     if (wantBar) {
       // Any screen's bottom bar in the detail pane: History's Done (Phase B) and the routine editor's Cancel / Save.
       const detail = regions[1];
@@ -1356,7 +1362,8 @@ async function checkRoutinePanes(page, { editBar }) {
       return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight && !el.closest("dialog:not([open])");
     };
     const primaries = [...document.querySelectorAll('main [data-variant="primary"]')].filter(shown);
-    if (primaries.length > 1) out.push(`two primaries in view: ${primaries.map((b) => `"${b.textContent.trim()}"`).join(", ")}`);
+    // Minor 671: none in view is a violation too (a preview that never loaded passed the old `> 1`).
+    if (primaries.length !== 1) out.push(`${primaries.length} primaries in view, not 1: ${primaries.map((b) => `"${b.textContent.trim()}"`).join(", ")}`);
     return out;
   });
   if (!editBar) return found;
@@ -1364,6 +1371,8 @@ async function checkRoutinePanes(page, { editBar }) {
     const detail = document.querySelectorAll("[data-pane]")[1];
     const bar = detail?.querySelector("[data-action-bar]");
     if (!detail || !bar) return ["no bar in the detail pane to scroll under"];
+    // Minor 671: a pane that doesn't overflow leaves nothing under the bar to check.
+    if (!(detail.scrollHeight > detail.clientHeight + 1)) return ["the detail pane doesn't scroll, so nothing was checked under the bar"];
     detail.scrollTop = detail.scrollHeight;
     await new Promise((r) => window.requestAnimationFrame(() => window.requestAnimationFrame(r)));
     const b = bar.getBoundingClientRect();
@@ -2549,7 +2558,7 @@ try {
         expect(m.liftsWithoutEstimate === 0, `11: ${m.liftsWithoutEstimate} lift(s) without an est. 1-rep max row`);
         await go(`/app/history/${D.ids.latestFinished}`);
         m = await read("13 history detail");
-        expect(m.heading === null || m.heading.startsWith("Record"), `13: heading "${m.heading}" (want "Records from this workout…")`);
+        expect(m.heading !== null && m.heading.startsWith("Record") && !m.recordsError, `13: heading "${m.heading}", records error ${m.recordsError} (want "Records from this workout…")`);
         await go(`/app/history/${D.ids.firstWorkout}`);
         m = await read("27 first record");
         expect(m.heading === null, `27: a ledger heading "${m.heading}" on a first-records-only workout`);
@@ -2561,9 +2570,12 @@ try {
           [D.ids.plankOnly, "30-summary-no-volume", "A plank-only session: three stats, no volume, no records"],
           [D.finishedTimed.id, null, null],
         ]) {
+          const recordsRead = page.waitForResponse((r) => new URL(r.url()).pathname === "/v1/personal-records" && r.url().includes(id), { timeout: 8000 });
           await go(`/app/history/${id}`);
+          await recordsRead;
           m = await read(file ?? "97 timed");
           expect(m.recordRegions.length === 0 && m.firsts.length === 0, `${file ?? "97"}: records shown (${m.recordRegions.join(", ")}${m.firsts.join(", ")})`);
+          expect(!m.recordsError && m.exerciseRegions > 0, `${file ?? "97"}: records read failed or no exercises drawn`);
           if (file) await shoot(page, device, file, note);
         }
         await go(`/app/history/${D.ids.conditioning}`);
@@ -2614,7 +2626,7 @@ try {
           }
           await go(`/app/history/${D.ids.conditioning}`);
           m = await read("27d conditioning at 320");
-          expect(!m.hscroll && m.overflowingRows.length === 0, `27d conditioning: sideways scroll ${m.hscroll}, rows overflowing ${JSON.stringify(m.overflowingRows)}`);
+          expect(m.labels.length > 0 && !m.hscroll && m.overflowingRows.length === 0, `27d conditioning: rows ${m.labels.length}, sideways scroll ${m.hscroll}, rows overflowing ${JSON.stringify(m.overflowingRows)}`);
           // D6: the wider chart label fits the Metric group at 320 px.
           await go(`/app/exercises/${D.ids.bench}`);
           const metric = await page.getByRole("group", { name: "Metric" }).evaluate((group) => {
