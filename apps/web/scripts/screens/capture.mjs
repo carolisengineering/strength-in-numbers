@@ -831,6 +831,17 @@ async function shoot(page, device, name, note) {
   console.log(`  ${label}: ${dump.count} controls, ${dump.overlaps.length} overlaps, pinned hits ${report.at(-1).pinnedHits}`);
 }
 
+// Minor 690, final review I-1: every step that talks to the fake Hevy (key, import, send) starts only when it can end
+// before the app's quiet minute, given how long it may run: about three times each step's measured length (key 23 s,
+// import 59 s, send 27 s on 2026-11-22).
+const HEVY_STEP_MS = { key: 120_000, import: 180_000, send: 120_000 };
+async function waitOutQuietMinute(aheadMs) {
+  const wait = quietMinuteWaitMs(Date.now(), aheadMs);
+  if (!wait) return;
+  console.log(`  waiting ${Math.ceil(wait / 1000)} s for Hevy's quiet minute`);
+  await new Promise((r) => setTimeout(r, wait));
+}
+
 // Minors 509, 690: a SKIPPED step fails the run unless its label starts with a key here, each with the reason it may skip
 // by design. Empty: no step may skip today.
 const SKIP_ALLOWED = {};
@@ -2609,9 +2620,11 @@ try {
           [D.ids.plankOnly, "30-summary-no-volume", "A plank-only session: three stats, no volume, no records"],
           [D.finishedTimed.id, null, null],
         ]) {
-          const recordsRead = page.waitForResponse((r) => new URL(r.url()).pathname === "/v1/personal-records" && r.url().includes(id), { timeout: 8000 });
-          await go(`/app/history/${id}`);
-          await recordsRead;
+          // Together, so a navigation that throws never leaves the wait to reject unhandled (final review M-3).
+          await Promise.all([
+            page.waitForResponse((r) => new URL(r.url()).pathname === "/v1/personal-records" && r.url().includes(id), { timeout: 8000 }),
+            go(`/app/history/${id}`),
+          ]);
           m = await read(file ?? "97 timed");
           expect(m.recordRegions.length === 0 && m.firsts.length === 0, `${file ?? "97"}: records shown (${m.recordRegions.join(", ")}${m.firsts.join(", ")})`);
           expect(!m.recordsError && m.exerciseRegions > 0, `${file ?? "97"}: records read failed or no exercises drawn`);
@@ -3181,6 +3194,7 @@ try {
     });
     // Spec 20.0 AC32: the Hevy key screen with no key, with a key, and after a failed check.
     await tryStep("hevy key screen", async () => {
+      await waitOutQuietMinute(HEVY_STEP_MS.key);
       const hevyContext = async (seedKey, o = {}) => {
         const hctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await hctx.route(isSinApi, makeHandler({ active: false }));
@@ -3258,6 +3272,7 @@ try {
     });
     // Spec 20.1 AC29 (Phase A): the import's preflight, reading, routines, names and summary.
     await tryStep("hevy import", async () => {
+      await waitOutQuietMinute(HEVY_STEP_MS.import);
       const importContext = async (importMode = "ok") => {
         const ictx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         const istate = { active: false, importMode };
@@ -3364,12 +3379,7 @@ try {
     });
     // Spec 20.2 AC21: the Hevy line on a finished workout (Lower A), each state; the pairing sheet; the delete note.
     await tryStep("hevy send", async () => {
-      // Minor 690: the app's Hevy pacer holds every request in the first minute of the UTC hour.
-      const wait = quietMinuteWaitMs(Date.now());
-      if (wait) {
-        console.log(`  waiting ${Math.ceil(wait / 1000)} s for Hevy's quiet minute`);
-        await new Promise((r) => setTimeout(r, wait));
-      }
+      await waitOutQuietMinute(HEVY_STEP_MS.send);
       hevyWrite = "ok";
       const workout = D.allWorkouts.find((w) => w.id === D.ids.latestFinished);
       const sendContext = async (o = {}) => {

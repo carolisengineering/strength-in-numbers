@@ -230,8 +230,8 @@ describe("10.7 AC53 — still linear with timing lines", () => {
     });
     return Math.min(...runs);
   };
-  // 500 vs 2000, not larger: above about 2000 sections each doubling costs ×2.5 (garbage collection on the bigger
-  // heap), which would sit too close to the bound (minor 679).
+  // 500 vs 2000, not larger: measured, the reader costs ×1.8–1.9 per doubling up to about 2000 sections and ×2.5–2.8
+  // above (forcing garbage collection doesn't change it), which would sit too close to the bound (minor 679).
   it("2000 timed sections cost about 4× 500 (minimum of 7 runs, minor 679)", () => {
     const small = paste(500);
     const large = paste(2000);
