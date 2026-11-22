@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { insertIndexForSection, resultIssues, roundTimeIssues, sectionForNewExercise, timerChangeKeepsRecorded, timersEqual } from "@sin/core";
 
 import * as D from "./data.mjs";
+import { quietMinuteWaitMs } from "./quiet.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, "../..");
@@ -25,6 +26,15 @@ const isSinApi = (u) => u.origin === SIN_ORIGIN && u.pathname.startsWith("/v1/")
 // SCREENS_THEMES=light (or dark) and SCREENS_DEVICES=mobile (or desktop) narrow a run; default is all four.
 const THEMES = (process.env.SCREENS_THEMES ?? "light,dark").split(",").map((s) => s.trim()).filter(Boolean);
 const DEVICE_FILTER = (process.env.SCREENS_DEVICES ?? "mobile,desktop").split(",").map((s) => s.trim());
+// Minor 512: every context the run opens, until it closes, so a step that throws can close what it left open.
+const openContexts = new Set();
+/** The one way to open a context: tracked until it closes (by the step, by `tryStep` after a throw, or with the browser). */
+async function openContext(browser, options) {
+  const ctx = await browser.newContext(options);
+  openContexts.add(ctx);
+  ctx.on("close", () => openContexts.delete(ctx));
+  return ctx;
+}
 const CORE_SRC = "/@fs" + path.join(repoRoot, "packages/core/src/index.ts").split(path.sep).join("/");
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -821,8 +831,18 @@ async function shoot(page, device, name, note) {
   console.log(`  ${label}: ${dump.count} controls, ${dump.overlaps.length} overlaps, pinned hits ${report.at(-1).pinnedHits}`);
 }
 
+// Minors 509, 690: a SKIPPED step fails the run unless its label starts with a key here, each with the reason it may skip
+// by design. Empty: no step may skip today.
+const SKIP_ALLOWED = {};
+
 async function tryStep(label, fn) {
-  try { await fn(); } catch (e) { console.warn(`  SKIPPED ${label}: ${e.message.split("\n")[0]}`); report.push({ file: null, note: `SKIPPED ${label}: ${e.message.split("\n")[0]}` }); }
+  const before = new Set(openContexts);
+  try { await fn(); } catch (e) {
+    // Minor 512: close what this step opened and left open; a failing close must not hide the step's own error.
+    for (const ctx of [...openContexts].filter((c) => !before.has(c))) await ctx.close().catch(() => {});
+    console.warn(`  SKIPPED ${label}: ${e.message.split("\n")[0]}`);
+    report.push({ file: null, note: `SKIPPED ${label}: ${e.message.split("\n")[0]}` });
+  }
 }
 
 // Spec 17.7 AC2: a Segmented wraps rather than clips or scrolls. Four options sit four across or 2 × 2, never 3 + 1.
@@ -1049,7 +1069,7 @@ async function zoomPass(browser) {
   ];
   THEME = "light";
   for (const { device, viewport, fontSize } of CONFIGS) {
-    const ctx = await browser.newContext({ ...DEVICES.mobile, viewport, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+    const ctx = await openContext(browser, { ...DEVICES.mobile, viewport, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
     await ctx.route(isSinApi, makeHandler({ active: true }));
     const page = await ctx.newPage();
     page.setDefaultTimeout(8000);
@@ -1170,11 +1190,11 @@ async function desktopPass(browser) {
     THEME = theme;
     for (const config of CONFIGS) {
       const { device, viewport, fontSize, deviceScaleFactor = 1 } = config;
-      const ctx = await browser.newContext({ viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const ctx = await openContext(browser, { viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await ctx.route(isSinApi, makeHandler({ active: false }));
       const quietPage = await ctx.newPage();
       // Spec 17.12 AC26: a live workout's shots get a context of their own, whose fake has one in progress.
-      const liveCtx = await browser.newContext({ viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const liveCtx = await openContext(browser, { viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await liveCtx.route(isSinApi, makeHandler({ active: true }));
       const livePage = await liveCtx.newPage();
       for (const p of [quietPage, livePage]) {
@@ -1253,7 +1273,7 @@ async function desktopPass(browser) {
     }
     // Review Focus 3: a long display name at 1024 keeps the rail at 240 px and stays inside it.
     await tryStep(`desktop ${theme} long name`, async () => {
-      const ctx = await browser.newContext({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const ctx = await openContext(browser, { viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await ctx.route(isSinApi, makeHandler({ active: false, meName: LONG_NAME }));
       const page = await ctx.newPage();
       await page.goto(BASE + "/app/history");
@@ -1474,7 +1494,7 @@ try {
     THEME = theme;
     console.log(`== ${theme} / ${device}`);
     const state = { active: true };
-    const ctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+    const ctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
     await ctx.route(isSinApi, makeHandler(state));
     const page = await ctx.newPage();
     page.setDefaultTimeout(8000);
@@ -2339,7 +2359,7 @@ try {
     if (device === "mobile") {
       // Spec 17.11 AC24: the plan rows at 320 × 568 with a long typed value on a closed line.
       await tryStep("plan rows 320", async () => {
-        const nctx = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const nctx = await openContext(browser, { ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         try {
           await nctx.route(isSinApi, makeHandler({ active: false }));
           const np = await nctx.newPage();
@@ -2611,7 +2631,7 @@ try {
         await page.setViewportSize(opts.viewport);
       }
       // Spec 07.5 AC35, AC40: a lb account reads the weight in lb (70 lb logged in lb).
-      const lbCtx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const lbCtx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       try {
         await lbCtx.route(isSinApi, makeHandler({ active: false, unitPreference: "lb" }));
         const lp = await lbCtx.newPage();
@@ -2725,7 +2745,7 @@ try {
         const id = D.ids.sandbagHold;
         const records = D.records.filter((r) => r.exerciseId === id).map((r) => (r.recordType === "heaviest_weight" ? { ...r, previousValue: null } : r));
         if (!records.some((r) => r.previousValue === null) || !records.some((r) => r.previousValue !== null)) throw new Error("the 320 records need a was row and a first record");
-        const nctx = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const nctx = await openContext(browser, { ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await nctx.route(isSinApi, makeHandler({ active: false }));
         // Registered last, so it answers first; any other records read falls through to the fake.
         await nctx.route(
@@ -2744,7 +2764,7 @@ try {
     }
     await tryStep("deleted exercise page and the usage-failed list", async () => {
       // A fresh context whose catalog no longer serves Barbell Curl (its records still do), and whose usage read fails.
-      const dctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const dctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await dctx.route(isSinApi, makeHandler({ active: false, hideExercise: D.ids.curl, failUsage: true }));
       const dp = await dctx.newPage();
       dp.setDefaultTimeout(8000);
@@ -2758,7 +2778,7 @@ try {
     });
     if (device === "mobile") {
       await tryStep("600 exercises", async () => {
-        const mctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const mctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await mctx.route(isSinApi, makeHandler({ active: false, catalog: D.manyExercises(600) }));
         const mp = await mctx.newPage();
         mp.setDefaultTimeout(8000);
@@ -2772,7 +2792,7 @@ try {
     // Bench Press and whose routines (the one-off class among them) use it.
     await tryStep("manage exercises (edit, copy, delete)", async () => {
       const ms = { active: false, catalog: [...D.exercises, D.benchCopy], routines: D.routinesWithBenchCopy };
-      const xctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const xctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await xctx.route(isSinApi, makeHandler(ms));
       const xp = await xctx.newPage();
       xp.setDefaultTimeout(8000);
@@ -3081,7 +3101,7 @@ try {
         meta: { startedAt: D.active.startedAt, exerciseCount: D.active.exercises.length, setCount: D.active.exercises.reduce((n, e) => n + e.sets.length, 0), endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false },
       });
       const finishContext = async (status) => {
-        const fctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const fctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await fctx.route(isSinApi, makeHandler({ active: true }));
         // Registered last, so it is asked first: hold the finish's PATCH, let every other request through.
         await fctx.route((u) => isSinApi(u) && /^\/v1\/workouts\/[^/]+$/.test(u.pathname), (route) => (route.request().method() === "PATCH" ? undefined : route.fallback()));
@@ -3111,7 +3131,7 @@ try {
     // Spec 20.0 AC32: the Hevy key screen with no key, with a key, and after a failed check.
     await tryStep("hevy key screen", async () => {
       const hevyContext = async (seedKey, o = {}) => {
-        const hctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const hctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await hctx.route(isSinApi, makeHandler({ active: false }));
         await hctx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
         if (seedKey) {
@@ -3172,7 +3192,7 @@ try {
       await settle(pairings.hp);
       await shoot(pairings.hp, device, "hevy-pairings", "Pairings: by exercise, Sent as this, skips, markers, a deleted exercise (Spec 20.0 AC24)");
       await pairings.hctx.close();
-      const markers = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const markers = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await markers.route(isSinApi, makeHandler({ active: false, hevyMapping: D.hevyMappingNoMarkers }));
       await markers.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
       await markers.addInitScript(({ k, v }) => window.localStorage.setItem(k, v), { k: `sin:hevy:key:${D.me.id}`, v: JSON.stringify({ v: 1, key: D.hevyGoodKey }) });
@@ -3188,7 +3208,7 @@ try {
     // Spec 20.1 AC29 (Phase A): the import's preflight, reading, routines, names and summary.
     await tryStep("hevy import", async () => {
       const importContext = async (importMode = "ok") => {
-        const ictx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const ictx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         const istate = { active: false, importMode };
         await ictx.route(isSinApi, makeHandler(istate));
         await ictx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
@@ -3293,10 +3313,16 @@ try {
     });
     // Spec 20.2 AC21: the Hevy line on a finished workout (Lower A), each state; the pairing sheet; the delete note.
     await tryStep("hevy send", async () => {
+      // Minor 690: the app's Hevy pacer holds every request in the first minute of the UTC hour.
+      const wait = quietMinuteWaitMs(Date.now());
+      if (wait) {
+        console.log(`  waiting ${Math.ceil(wait / 1000)} s for Hevy's quiet minute`);
+        await new Promise((r) => setTimeout(r, wait));
+      }
       hevyWrite = "ok";
       const workout = D.allWorkouts.find((w) => w.id === D.ids.latestFinished);
       const sendContext = async (o = {}) => {
-        const sctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const sctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         const sstate = { active: false, hevyLink: o.link, hevyMapping: o.mapping ?? D.hevyMappingFor(workout) };
         await sctx.route(isSinApi, makeHandler(sstate));
         await sctx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
@@ -3407,7 +3433,7 @@ try {
     await ctx.close();
 
     // Logged out.
-    const anon = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+    const anon = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
     await anon.addInitScript(() => { window.__SIN_FAKE_AUTH__ = false; });
     await anon.route(isSinApi, makeHandler({ active: false }));
     const ap = await anon.newPage();
@@ -3455,7 +3481,7 @@ try {
 
     // The smallest phone (Spec 17.3 AC19 / AC21): the landing, and the sign-in error with a long detail (BL-20).
     if (device === "mobile") {
-      const small = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme });
+      const small = await openContext(browser, { ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme });
       await small.addInitScript(() => { window.__SIN_FAKE_AUTH__ = false; });
       await small.route(isSinApi, makeHandler({ active: false }));
       const sp = await small.newPage();
@@ -3512,7 +3538,7 @@ try {
     for (const locale of ["en-GB", "de-DE"]) {
       await tryStep(`locale ${locale}`, async () => {
         THEME = `locale-${locale}`;
-        const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
+        const ctx = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
         await ctx.route(isSinApi, makeHandler({ active: true }));
         const page = await ctx.newPage();
         page.setDefaultTimeout(8000);
@@ -3535,7 +3561,7 @@ try {
       // A start today (the time alone) is the baseline; then a start on Wed, Sep 30 at 12:05 PM Chicago time, the
       // longest en-US moment beside Change Time.
       const state = { active: true };
-      const ctx = await browser.newContext({ ...DEVICES.mobile, viewport: { width: 320, height: 568 }, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+      const ctx = await openContext(browser, { ...DEVICES.mobile, viewport: { width: 320, height: 568 }, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
       await ctx.route(isSinApi, makeHandler(state));
       const page = await ctx.newPage();
       page.setDefaultTimeout(8000);
@@ -3564,7 +3590,7 @@ try {
       await tryStep(`locale ${locale} chart ${name}`, async () => {
         THEME = `locale-${locale}`;
         const state = { active: false, seriesDates };
-        const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
+        const ctx = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
         await ctx.route(isSinApi, makeHandler(state));
         const page = await ctx.newPage();
         page.setDefaultTimeout(8000);
@@ -3602,7 +3628,7 @@ try {
   // The Light / Dark / System override (Spec 17.0 AC18): Profile on a light OS with Dark stored.
   {
     THEME = "override-dark";
-    const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+    const ctx = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
     await ctx.addInitScript(() => { try { window.localStorage.setItem("sin:pref:theme", "dark"); } catch { /* storage blocked */ } });
     await ctx.route(isSinApi, makeHandler({ active: false }));
     const page = await ctx.newPage();
@@ -3611,7 +3637,7 @@ try {
     await ctx.close();
 
     // The landing under the same override (Spec 17.3 AC27).
-    const anon = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light" });
+    const anon = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light" });
     await anon.addInitScript(() => {
       window.__SIN_FAKE_AUTH__ = false;
       try { window.localStorage.setItem("sin:pref:theme", "dark"); } catch { /* storage blocked */ }
@@ -3737,6 +3763,15 @@ if (DEVICE_FILTER.includes("mobile") && (keyboardFrame.length === 0 || report.so
 }
 if (DEVICE_FILTER.includes("mobile") && (historyOffsets.length === 0 || historyOffsets.some((h) => h.offset === null || h.offset > HISTORY_ROW_MAX_OFFSET))) {
   console.error("  HISTORY OFFSET: the check failed or did not run");
+  process.exitCode = 1;
+}
+// Minors 509, 690: any SKIPPED step fails the run unless SKIP_ALLOWED says why it may skip; the per-step checks above
+// also catch a step that never reached tryStep.
+for (const r of report) {
+  if (!r.note?.startsWith("SKIPPED ")) continue;
+  const label = r.note.slice("SKIPPED ".length);
+  if (Object.keys(SKIP_ALLOWED).some((k) => label.startsWith(k))) continue;
+  console.error(`  SKIPPED STEP: ${r.note}`);
   process.exitCode = 1;
 }
 fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, doubledTitles, historyOffsets, keyboardFrame, zoom, desktop, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
