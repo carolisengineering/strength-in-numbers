@@ -254,7 +254,7 @@ the point.
 - complete;
 - cleaned up (`cleanup: "done"`);
 - passing at least one step;
-- run on the full ladder, with no `--steps`, `--hold-scale` or `--lifters`.
+- run on the full ladder, with no `--steps`, `--hold-scale` (other than 1) or `--lifters`.
 
 `--allow-unpassed-push` overrides it. An older passing result doesn't count.
 

@@ -311,7 +311,7 @@ D1–D8, D10, D11, D13 and D14 are from the owner-approved design of 2026-11-05;
 
 ### Decisions this spec adds that the design did not cover (owner to confirm)
 
-- **D9 ✅ Only a gym run that passed can be pushed, and prod has guards.** The design says push happens "if the gym run passed" and what prod runs may be; the spec enforces both: a push run requires the newest gym result file for the target to pass (`status: "complete"`, `cleanup: "done"` so no leftover live workouts skew the push, a number for N, and the full ladder: no `--steps`, `--hold-scale` or `--lifters`, which the result file records as `flags`, because a push climbs the full ladder and one tested step is not enough; a file without `flags` doesn't pass, and an older passing file doesn't count), or an explicit override flag, and the `prod` target needs an explicit confirmation flag, a second flag for a push run, and an estimated request count under `PROD_MAX_REQUESTS` from `--dry-run` (AC27). Easy to loosen.
+- **D9 ✅ Only a gym run that passed can be pushed, and prod has guards.** The design says push happens "if the gym run passed" and what prod runs may be; the spec enforces both: a push run requires the newest gym result file for the target to pass (`status: "complete"`, `cleanup: "done"` so no leftover live workouts skew the push, a number for N, and the full ladder: no `--steps`, `--hold-scale` (other than 1) or `--lifters`, which the result file records as `flags`, because a push climbs the full ladder and one tested step is not enough; a file without `flags` doesn't pass, and an older passing file doesn't count), or an explicit override flag, and the `prod` target needs an explicit confirmation flag, a second flag for a push run, and an estimated request count under `PROD_MAX_REQUESTS` from `--dry-run` (AC27). Easy to loosen.
 - **D12 ✅ A Grafana service-account token with annotation-write is a new secret.** The design asks for a Grafana annotation per run but lists only a metrics-write token; posting an annotation needs the Grafana HTTP API and its own scoped token. Annotation failures never fail a run.
 - **D16 ✅ The Auth0 connection and the load-test application are created by hand (runbook); the script creates and validates only the accounts.** The design says a setup script creates the accounts; creating the connection and application by script would need broader Management API scopes for a one-time job.
 - **D17 ✅ N is the highest passing step, with a "non-monotonic" note if a lower step failed.** The design's wording ("the highest step where all three hold") is kept literally; the note stops it hiding an unreliable result (AC8).
@@ -381,3 +381,16 @@ Nine cheap leftovers, moved ahead of Task 7 at Carol's request:
 - **592** The Load test dashboard has a **target** variable (`staging`, `prod`, `local`; default `staging`), and every k6 query filters by `target="$target"`. k6 sets `options.tags.target`, so `k6_vus`, which has no request tags, carries the label too (checked against k6 2.3.0's JSON output). The API panels aren't filtered: they come from the API's own metrics.
 - **594** The API clients get `runLoad`'s base URL (`apisFor(baseUrl, tokens)`), so prod's isn't read from `prod.tfvars` twice. The redactor sorts its values once per new value, not on every `apply`.
 - **368, 578, 582, 584** k6 2.x in the README and D4; a comment that client ids are unique per account, not across accounts; `ensureSeeded` returns only `{ routineId }`; the nonce test uses `runNonce`.
+
+### Minors PR L build notes (2026-11-21)
+
+Load-test fixes before Task 7. 612 (filter the API panels by environment) moved to the production go-live (`observability.md` §5a).
+
+- **607** The stop handler registers before the Grafana annotation opens. A stop before k6 starts skips k6, runs cleanup, writes no result, closes the annotation as "stopped before k6 started" and exits 143 / 129 (1 for Ctrl-C). Signals during the token fetch and the seeding keep Node's default: nothing is open yet.
+- **606** A signal after k6 exited on its own only says to wait: cleanup finishes and the exit is the run's own (0 or 1). 143 / 129 now mean the signal stopped the run.
+- **608** One forward path while k6 runs; only the 2 s repeat rule for a deliberate second Ctrl-C differs.
+- **604** A 2xx token reply whose body can't be read (it stalled past the 10 s signal, or arrived cut) is retried like a network error. A 2xx that parses with no token stays final (590).
+- **605** k6 also gets `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` (and their lowercase forms), `SSL_CERT_FILE` and `SSL_CERT_DIR`.
+- **610** A static check pins `options.tags.target` in `k6/run.ts` (`purity.test.ts`).
+- **611** The Load test dashboard's "Load test runs" band matches tags `loadtest` and `$target`, so it follows the Target picked. Re-import `load-test.json`. The other dashboards still show every run.
+- **609** D9 and the runbook's push-gate list say `--hold-scale` "(other than 1)".

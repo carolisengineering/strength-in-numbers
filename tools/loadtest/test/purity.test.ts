@@ -49,3 +49,13 @@ describe("AC1 — k6-loadable modules import only relative paths", () => {
     expect(found).toContain("zod");
   });
 });
+
+// Minor 610: request metrics carry `target` per request, so only `k6_vus` (no request tags) would go empty without
+// the options-level tag, and the Load test dashboard's Simulated lifters panel with it. Pin the line.
+describe("minor 610 — every k6 metric carries the target the dashboard filters by", () => {
+  it("k6/run.ts's options carry tags: { target: TARGET }", () => {
+    const text = readFileSync(join(root, "k6", "run.ts"), "utf8");
+    const options = text.slice(text.indexOf("export const options"));
+    expect(options.slice(0, options.indexOf("\n};"))).toMatch(/\btags:\s*\{\s*target:\s*TARGET\s*\}/);
+  });
+});

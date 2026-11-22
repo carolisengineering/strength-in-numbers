@@ -58,7 +58,8 @@
         "target": {
           "type": "tags",
           "tags": [
-            "loadtest"
+            "loadtest",
+            "$target"
           ],
           "matchAny": false,
           "limit": 100

@@ -57,6 +57,7 @@ describe("Spec 16 AC26 — the Load test dashboard", () => {
     uid: string;
     templating: { list: { name: string; type: string; query?: string; includeAll?: boolean }[] };
     panels: { type: string; title: string; targets?: { expr: string }[] }[];
+    annotations: { list: { name: string; target?: { type?: string; tags?: string[]; matchAny?: boolean } }[] };
   };
   const exprs = dashboard.panels.flatMap((p) => (p.targets ?? []).map((t) => t.expr));
 
@@ -105,6 +106,12 @@ describe("Spec 16 AC26 — the Load test dashboard", () => {
     expect(selectors.length).toBeGreaterThan(0);
     for (const sel of selectors) expect(sel).toContain('target="$target"');
   });
+
+  // The tool tags every run's annotation with its target (`annotate.ts`), so the band can follow the Target picked.
+  it("minor 611 — the Load test runs band shows only the chosen target's runs", () => {
+    const band = dashboard.annotations.list.find((a) => a.name === "Load test runs");
+    expect(band?.target).toMatchObject({ type: "tags", tags: ["loadtest", "$target"], matchAny: false });
+  });
 });
 
 describe("Spec 16 AC25 — every dashboard shows the load-test runs", () => {
@@ -116,7 +123,8 @@ describe("Spec 16 AC25 — every dashboard shows the load-test runs", () => {
       expect.objectContaining({
         name: "Load test runs",
         datasource: { type: "grafana", uid: "-- Grafana --" },
-        target: expect.objectContaining({ type: "tags", tags: ["loadtest"] }),
+        // Minor 611: the Load test dashboard's band also matches its Target; the others show every run.
+        target: expect.objectContaining({ type: "tags", tags: f.endsWith(LOAD_TEST) ? ["loadtest", "$target"] : ["loadtest"] }),
       }),
     );
     // /code-review (16B): a repeated annotation query draws every run twice.
