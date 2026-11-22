@@ -58,7 +58,16 @@ async function attempt(email: string, s: Secrets, fetchFn: typeof fetch): Promis
   } catch {
     return { retry: true, why: "network error" };
   }
-  const body = (await res.json().catch(() => ({}))) as { access_token?: unknown; error?: unknown };
+  let body: { access_token?: unknown; error?: unknown };
+  try {
+    body = (await res.json()) as typeof body;
+  } catch (err) {
+    // Minor 604: on a 2xx the body is the token. One whose read fails (it stalls past the call's signal, or the
+    // stream breaks) is a network problem, so retry it. A body that arrived whole but isn't JSON (a SyntaxError: a
+    // proxy page, an Action's error) is deterministic, so it stays minor 590's final "no access_token".
+    if (res.ok && !(err instanceof SyntaxError)) return { retry: true, why: `HTTP ${res.status}, body unreadable` };
+    body = {};
+  }
   if (res.ok && typeof body.access_token === "string" && body.access_token !== "") return { token: body.access_token };
   // Minor 590: a 2xx with no token is usually a deterministic Action error; retrying costs 15 s and five logins.
   if (res.ok) return { retry: false, why: `HTTP ${res.status}, no access_token` };

@@ -212,7 +212,9 @@ down" alert on staging (Spec 13.0 D7).
    `ops/grafana/dashboards/api-overview.json` (keep the same UID, overwrite). Pick the same
    Prometheus data source.
 2. Set the **CPU limit (cores)** variable to `0.1` (Render free) and save the dashboard. For the
-   production Cloud Run it is `1`.
+   production Cloud Run it is `1`. If production writes to this same Grafana stack, do minor 612
+   first (filter the Load test dashboard's API panels by environment, and default `cpu_limit` from
+   the target).
 3. After the next post-deploy smoke, check (Spec 13.3 AC16):
    - [ ] **CPU cores in use** has data and reads plausibly against the 0.1 line.
    - [ ] **DB connections in use vs limit** shows a flat limit of 8 and an in-use line.

@@ -19,7 +19,10 @@ const jwt = (payload: unknown) => `eyJhbGciOiJSUzI1NiJ9.${Buffer.from(JSON.strin
 const DAY = 86_400;
 const goodToken = (i = 0) => jwt({ exp: START_MS / 1000 + DAY, n: i });
 
-type Reply = { status: number; body?: unknown; headers?: Record<string, string> } | Error;
+type Reply =
+  | { status: number; body?: unknown; headers?: Record<string, string>; raw?: true }
+  | { status: number; bodyFails: true }
+  | Error;
 
 /** A fake fetch answering from a script (by call order) and a clock that only `sleep` moves. */
 function harness(script: (call: number, body: Record<string, unknown>) => Reply) {
@@ -32,6 +35,9 @@ function harness(script: (call: number, body: Record<string, unknown>) => Reply)
     calls.push({ at: nowMs, url, body });
     const reply = script(calls.length - 1, body);
     if (reply instanceof Error) throw reply;
+    // Minor 604: a body that fails mid-read, as one whose 10 s signal fires after the headers.
+    if ("bodyFails" in reply) return new Response(new ReadableStream({ start: (c) => c.error(new Error("body timed out")) }), { status: reply.status });
+    if (reply.raw) return new Response(String(reply.body), { status: reply.status });
     return new Response(JSON.stringify(reply.body ?? {}), { status: reply.status, headers: reply.headers });
   }) as unknown as typeof fetch;
   const deps = {
@@ -118,6 +124,27 @@ describe("AC21 — tokens are fetched politely", () => {
     const h = harness(() => ({ status: 200, body: { error: "access_denied" } }));
     await expect(auth0Tokens(emails(1), s, h.deps, { needS: 3600 })).rejects.toThrow(/^token fetch failed for account #1 \(HTTP 200, no access_token\)$/);
     expect(h.calls).toHaveLength(1);
+  });
+
+  it("minor 604 — a 200 whose body fails is retried like a network error", async () => {
+    const h = harness((call) => (call === 0 ? { status: 200, bodyFails: true } : ok(0)));
+    await expect(auth0Tokens(emails(1), s, h.deps, { needS: 3600 })).resolves.toEqual([goodToken(0)]);
+    expect(h.calls).toHaveLength(2);
+    expect(h.sleeps).toContain(1000);
+  });
+
+  it("code review — a 200 whose whole body isn't JSON (a proxy page) stops at once, as minor 590's rule", async () => {
+    const h = harness(() => ({ status: 200, body: "<html>sign in to the proxy</html>", raw: true }));
+    await expect(auth0Tokens(emails(1), s, h.deps, { needS: 3600 })).rejects.toThrow(/^token fetch failed for account #1 \(HTTP 200, no access_token\)$/);
+    expect(h.calls).toHaveLength(1);
+  });
+
+  it("Review Focus 4 — a body that fails every time: five attempts, then the error naming the account, no secret", async () => {
+    const h = harness(() => ({ status: 200, bodyFails: true }));
+    const err = await auth0Tokens(emails(1), s, h.deps, { needS: 3600 }).catch((e: unknown) => e);
+    expect(h.calls).toHaveLength(5);
+    expect(String(err)).toContain("token fetch failed for account #1 after 5 attempts");
+    expect(String(err)).not.toMatch(/hunter2|client-secret/);
   });
 
   it("minor 587 — a Retry-After of 600 s waits 60 s and says so once", async () => {

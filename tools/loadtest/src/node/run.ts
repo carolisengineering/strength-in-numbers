@@ -221,97 +221,119 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   }
   args.push(K6_SCRIPT);
 
-  const annotation = await deps.openAnnotation({ target: target.name, type: cmd.type, startMs: start.getTime() });
-  let endText = `load test: ${cmd.type} run on ${target.name} did not finish`;
-  let summary: unknown;
-  let cleanup: "done" | "failed" = "done";
-  // One Ctrl-C can reach the CLI several times (the terminal's process group, tsx's relay), and a second SIGINT
-  // makes k6 abort without writing its summary. Forward one; a deliberate Ctrl-C after SIGINT_REPEAT_MS aborts.
-  // The handler stays through cleanup, where a Ctrl-C only says to wait: Node's default would leave accounts
-  // half cleaned and no result. Minor 591: a `kill` (SIGTERM) or a closed terminal (SIGHUP) takes the first
-  // Ctrl-C's path, k6 stops at its next safe point, cleanup runs and the result is written, but never sends k6 a
-  // second SIGINT: nobody is at the keyboard to mean it. The handler stays until the result is written and the
-  // annotation closed (final review), so a second signal after cleanup still only says to wait.
+  // The stop handler, by phase. It registers before the annotation opens (minor 607), so a signal while it opens
+  // can't take Node's default and leave it open; it stays until the result is written and the annotation closed
+  // (final review), so a later signal still only says to wait.
+  // - Before k6 starts: the first signal stops the run there. k6 never starts, cleanup runs, no result is written.
+  // - While k6 runs: one Ctrl-C can reach the CLI several times (the terminal's process group, tsx's relay), and a
+  //   second SIGINT makes k6 abort without writing its summary. Forward one; a deliberate Ctrl-C after
+  //   SIGINT_REPEAT_MS aborts. Minor 591: a `kill` (SIGTERM) or a closed terminal (SIGHUP) takes the first Ctrl-C's
+  //   path but never sends k6 a second SIGINT: nobody is at the keyboard to mean it (one path, minor 608).
+  // - After k6 exited: cleanup always finishes (Node's default would leave accounts half cleaned and no result), so a
+  //   signal only says to wait, and the exit is the run's own (minor 606).
+  // A SIGTERM / SIGHUP that stopped the run (before or during k6) makes the exit 143 / 129.
   let child: ReturnType<RunDeps["spawnK6"]> | undefined;
   let k6Done = false;
+  let stoppedEarly = false;
   let forwardedAt: number | undefined;
   let toldToWait = false;
   let stoppedBy: Exclude<StopSignal, "SIGINT"> | undefined;
   const release = deps.onStop((signal) => {
-    if (signal !== "SIGINT") stoppedBy ??= signal;
-    if (k6Done || !child) {
+    if (k6Done) {
       if (!toldToWait) deps.log("cleanup is running and finishes on its own; wait for the result");
       toldToWait = true;
       return;
     }
-    const t = deps.now().getTime();
-    if (signal !== "SIGINT") {
-      if (forwardedAt !== undefined) return;
-      deps.log(`stopping k6 (${signal}); cleanup and the result follow`);
-      forwardedAt = t;
-      child.kill("SIGINT");
+    if (signal !== "SIGINT") stoppedBy ??= signal;
+    if (!child) {
+      if (!stoppedEarly) deps.log(`stopping before k6 starts (${signal}); cleanup follows`);
+      stoppedEarly = true;
       return;
     }
-    if (forwardedAt !== undefined && t - forwardedAt < SIGINT_REPEAT_MS) return;
+    const t = deps.now().getTime();
+    if (forwardedAt !== undefined && (signal !== "SIGINT" || t - forwardedAt < SIGINT_REPEAT_MS)) return;
     if (forwardedAt === undefined) {
-      deps.log("stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary");
+      deps.log(
+        signal === "SIGINT"
+          ? "stopping k6 at the next safe point; Ctrl-C again after 2 s aborts it without a summary"
+          : `stopping k6 (${signal}); cleanup and the result follow`,
+      );
     }
     forwardedAt = t;
     child.kill("SIGINT");
   });
   try {
+    const annotation = await deps.openAnnotation({ target: target.name, type: cmd.type, startMs: start.getTime() });
+    let endText = `load test: ${cmd.type} run on ${target.name} did not finish`;
     try {
-      child = deps.spawnK6(args, env);
-      const exit = await child.exited;
-      deps.log(`k6 exited (code ${exit.code ?? "none"}${exit.signal ? `, signal ${exit.signal}` : ""})`);
-    } finally {
-      k6Done = true;
-      deps.log("cleaning up the load-test accounts…");
-      try {
-        const { removed } = await deps.cleanupAll(apis);
-        deps.log(`cleanup removed ${removed} workouts`);
-      } catch (err) {
-        // Never lose the run's result to a cleanup problem; say how to finish it by hand.
-        cleanup = "failed";
-        deps.log(`cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
-        deps.log(`finish it with: pnpm --filter @sin/loadtest run loadtest cleanup --target ${target.name} --lifters ${accounts}`);
+      if (stoppedEarly) {
+        endText = `load test: ${cmd.type} run on ${target.name} stopped before k6 started`;
+        k6Done = true;
+        // No result file on this path, so the annotation is the record that outlives a closed terminal.
+        if ((await cleanUp(deps, apis, target.name, accounts)) === "failed") endText += "; cleanup failed";
+        return stoppedBy ? STOP_EXIT[stoppedBy] : 1;
       }
-      summary = deps.readSummary(summaryPath);
-    }
+      let summary: unknown;
+      let cleanup: "done" | "failed";
+      try {
+        child = deps.spawnK6(args, env);
+        const exit = await child.exited;
+        deps.log(`k6 exited (code ${exit.code ?? "none"}${exit.signal ? `, signal ${exit.signal}` : ""})`);
+      } finally {
+        k6Done = true;
+        cleanup = await cleanUp(deps, apis, target.name, accounts);
+        summary = deps.readSummary(summaryPath);
+      }
 
-    const steps = stepResults(summary, schedule.stages.map((s) => s.lifters), cmd.type);
-    const r: Report = report({ target: target.name, type: cmd.type, pushFactor: cmd.push, steps });
-    // Complete only when every step was measured: a run stopped part-way keeps an honest N but is marked incomplete.
-    const complete = summary !== undefined && steps.length > 0 && steps.every((s) => s.measured);
-    deps.writeResult(`${stamp}-${target.name}-${cmd.type}.json`, {
-      target: target.name,
-      commit: await deps.commit(baseUrl),
-      type: cmd.type,
-      pushFactor: cmd.push,
-      steps,
-      n: r.n,
-      x: r.x,
-      nonMonotonic: r.nonMonotonic,
-      window: { start: start.toISOString(), end: deps.now().toISOString() },
-      // Not secret; with it a run's payloads can be rebuilt (minor 365).
-      runNonce: nonce,
-      status: complete ? "complete" : "incomplete",
-      cleanup,
-      // The push gate (D9) refuses a shortened gym run, so the result records how this one was run.
-      // Minor 579: `--hold-scale 1` holds each step for its full time, so it records as a full run.
-      flags: {
-        steps: cmd.steps ?? null,
-        holdScale: cmd.holdScale === undefined || cmd.holdScale === 1 ? null : cmd.holdScale,
-        lifters: cmd.lifters ?? null,
-      },
-    });
-    for (const line of table(steps)) deps.log(line);
-    deps.log(r.sentence);
-    endText = cmd.type === "gym" ? `${r.sentence} (N = ${r.n ?? "none"})` : r.sentence;
-    if (stoppedBy) return STOP_EXIT[stoppedBy];
-    return complete && cleanup === "done" ? 0 : 1;
+      const steps = stepResults(summary, schedule.stages.map((s) => s.lifters), cmd.type);
+      const r: Report = report({ target: target.name, type: cmd.type, pushFactor: cmd.push, steps });
+      // Complete only when every step was measured: a run stopped part-way keeps an honest N but is marked incomplete.
+      const complete = summary !== undefined && steps.length > 0 && steps.every((s) => s.measured);
+      deps.writeResult(`${stamp}-${target.name}-${cmd.type}.json`, {
+        target: target.name,
+        commit: await deps.commit(baseUrl),
+        type: cmd.type,
+        pushFactor: cmd.push,
+        steps,
+        n: r.n,
+        x: r.x,
+        nonMonotonic: r.nonMonotonic,
+        window: { start: start.toISOString(), end: deps.now().toISOString() },
+        // Not secret; with it a run's payloads can be rebuilt (minor 365).
+        runNonce: nonce,
+        status: complete ? "complete" : "incomplete",
+        cleanup,
+        // The push gate (D9) refuses a shortened gym run, so the result records how this one was run.
+        // Minor 579: `--hold-scale 1` holds each step for its full time, so it records as a full run.
+        flags: {
+          steps: cmd.steps ?? null,
+          holdScale: cmd.holdScale === undefined || cmd.holdScale === 1 ? null : cmd.holdScale,
+          lifters: cmd.lifters ?? null,
+        },
+      });
+      for (const line of table(steps)) deps.log(line);
+      deps.log(r.sentence);
+      endText = cmd.type === "gym" ? `${r.sentence} (N = ${r.n ?? "none"})` : r.sentence;
+      if (stoppedBy) return STOP_EXIT[stoppedBy];
+      return complete && cleanup === "done" ? 0 : 1;
+    } finally {
+      await deps.closeAnnotation(annotation, { endMs: deps.now().getTime(), text: endText });
+    }
   } finally {
-    await deps.closeAnnotation(annotation, { endMs: deps.now().getTime(), text: endText });
     release();
+  }
+}
+
+/** Empties the load-test accounts; a failure never loses the run's result, it says how to finish by hand. */
+async function cleanUp(deps: RunDeps, apis: Api[], target: string, accounts: number): Promise<"done" | "failed"> {
+  deps.log("cleaning up the load-test accounts…");
+  try {
+    const { removed } = await deps.cleanupAll(apis);
+    deps.log(`cleanup removed ${removed} workouts`);
+    return "done";
+  } catch (err) {
+    deps.log(`cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+    deps.log(`finish it with: pnpm --filter @sin/loadtest run loadtest cleanup --target ${target} --lifters ${accounts}`);
+    return "failed";
   }
 }
