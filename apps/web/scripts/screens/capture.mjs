@@ -995,9 +995,10 @@ const measureLedger = (page) =>
       overflowingRows: lines.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
       hscroll: main ? main.scrollWidth > main.clientWidth : false,
       // Minor 473: an absence check passes on a failed read too, so read the failure (PersonalRecordsBlock's copy) and
-      // count the exercise regions (named sections that aren't records).
+      // count the exercises drawn: only an exercise's section holds its sets list (FinishedWorkoutScreen's
+      // SummaryExercise), so the screen's own section, the notes and Hevy never count (/code-review).
       recordsError: document.body.innerText.includes("Couldn't load records"),
-      exerciseRegions: [...document.querySelectorAll("main section[aria-label], main section[aria-labelledby]")].filter((s) => !/record/i.test(nameOf(s))).length,
+      exerciseRegions: document.querySelectorAll("main section:has(> ol > li[data-set-type])").length,
     };
   });
 
