@@ -220,23 +220,26 @@ describe("10.7 AC53 — notes and placements are unchanged", () => {
 describe("10.7 AC53 — still linear with timing lines", () => {
   const paste = (k: number) =>
     Array.from({ length: k }, (_, i) => `S${i}\nTIME\n20 Minute Cap\nFor Time:\n3 Sets, 1 Set Every 4:00\n21-15-9\nThrusters\nPull-ups`).join("\n");
+  // Minimum, not median: a slow moment on the runner only ever adds time (minor 679).
   const time = (raw: string) => {
     readWorkoutText(raw);
-    const runs = [0, 1, 2].map(() => {
+    const runs = Array.from({ length: 7 }, () => {
       const t0 = performance.now();
       readWorkoutText(raw);
       return performance.now() - t0;
     });
-    return runs.sort((a, b) => a - b)[1]!;
+    return Math.min(...runs);
   };
-  it("1000 timed sections cost about 4× 250", () => {
-    const small = paste(250);
-    const large = paste(1000);
+  // 500 vs 2000, not larger: above about 2000 sections each doubling costs ×2.5 (garbage collection on the bigger
+  // heap), which would sit too close to the bound (minor 679).
+  it("2000 timed sections cost about 4× 500 (minimum of 7 runs, minor 679)", () => {
+    const small = paste(500);
+    const large = paste(2000);
     expect(readWorkoutText(large).sections.every((s) => s.timer?.format === "set_timer")).toBe(true);
-    const t250 = time(small);
-    const t1000 = time(large);
-    expect(t250).toBeLessThan(1000);
-    expect(t1000).toBeLessThan(1000);
-    expect(t1000 / t250).toBeLessThan(8);
+    const t500 = time(small);
+    const t2000 = time(large);
+    expect(t500).toBeLessThan(1000);
+    expect(t2000).toBeLessThan(1000);
+    expect(t2000 / t500).toBeLessThan(8); // linear ≈ 4, quadratic ≈ 16
   });
 });

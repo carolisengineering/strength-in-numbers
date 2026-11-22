@@ -52,31 +52,40 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.2 — routine reads (real Post
     for (const r of results) expect([sigA, sigB]).toContain(signature(r));
   });
 
-  it("AC30 — 50 routines × 30 items × 20 rows × 8 sections are read in ONE statement (plus the 09.3 sweep probe; amended by 09.3 AC30) within the bound", async () => {
-    const u = await insertUser(db);
-    const ex = await insertExercise(db, { ownerUserId: u });
-    await db.prisma.$executeRawUnsafe(`INSERT INTO "routine" (id, user_id, name) SELECT gen_random_uuid(), $1::uuid, 'R' || g FROM generate_series(1, 50) g`, u);
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "routine_section" (id, routine_id, position, name, notes)
-       SELECT gen_random_uuid(), r.id, p, repeat('n', 40), repeat('x', 2000) FROM "routine" r, generate_series(0, 7) p WHERE r.user_id = $1::uuid`, u);
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "routine_item" (id, routine_id, position, exercise_id, target_sets, target_reps_low, target_reps_high, section_id)
-       SELECT gen_random_uuid(), r.id, p, $2::uuid, 20, 5, 5,
-              (SELECT s.id FROM "routine_section" s WHERE s.routine_id = r.id AND s.position = LEAST(7, p / 4))
-       FROM "routine" r, generate_series(0, 29) p WHERE r.user_id = $1::uuid`, u, ex);
-    await db.prisma.$executeRawUnsafe(
-      `INSERT INTO "routine_item_set" (id, routine_item_id, position, set_type, reps_low, reps_high, weight, weight_unit)
-       SELECT gen_random_uuid(), ri.id, s, 'working', 5, 5, 100, 'kg' FROM "routine_item" ri, generate_series(0, 19) s`);
-    const seen = await startCapture(db);
-    const t0 = Date.now();
-    const list = (await repo().list(u)).routines;
-    const ms = Date.now() - t0;
-    await settleCapture(db, seen);
-    expect(list).toHaveLength(50);
-    expect(list.every((r) => r.sections.length === 8)).toBe(true);
-    expect(list.reduce((n, r) => n + r.items.reduce((m, i) => m + i.sets.length, 0), 0)).toBe(30_000);
-    expect(list[0]!.items.every((i) => i.sectionId !== null)).toBe(true);
-    expect(seen).toHaveLength(2); // amended by 09.3 AC30: the sweep probe, then the one list statement
-    expect(ms).toBeLessThan(LIST_BOUND_MS);
+  describe("AC30 — the 30 000-row read", () => {
+    // Seeded in beforeAll (minor 675): only the read is under the test limit. Not the file's top level: its afterEach
+    // empties the routine tables after AC2.
+    let u: string;
+    beforeAll(async () => {
+      if (!db) return;
+      u = await insertUser(db);
+      const ex = await insertExercise(db, { ownerUserId: u });
+      await db.prisma.$executeRawUnsafe(`INSERT INTO "routine" (id, user_id, name) SELECT gen_random_uuid(), $1::uuid, 'R' || g FROM generate_series(1, 50) g`, u);
+      await db.prisma.$executeRawUnsafe(
+        `INSERT INTO "routine_section" (id, routine_id, position, name, notes)
+         SELECT gen_random_uuid(), r.id, p, repeat('n', 40), repeat('x', 2000) FROM "routine" r, generate_series(0, 7) p WHERE r.user_id = $1::uuid`, u);
+      await db.prisma.$executeRawUnsafe(
+        `INSERT INTO "routine_item" (id, routine_id, position, exercise_id, target_sets, target_reps_low, target_reps_high, section_id)
+         SELECT gen_random_uuid(), r.id, p, $2::uuid, 20, 5, 5,
+                (SELECT s.id FROM "routine_section" s WHERE s.routine_id = r.id AND s.position = LEAST(7, p / 4))
+         FROM "routine" r, generate_series(0, 29) p WHERE r.user_id = $1::uuid`, u, ex);
+      await db.prisma.$executeRawUnsafe(
+        `INSERT INTO "routine_item_set" (id, routine_item_id, position, set_type, reps_low, reps_high, weight, weight_unit)
+         SELECT gen_random_uuid(), ri.id, s, 'working', 5, 5, 100, 'kg' FROM "routine_item" ri, generate_series(0, 19) s`);
+    }, 180_000);
+
+    it("AC30 — 50 routines × 30 items × 20 rows × 8 sections are read in ONE statement (plus the 09.3 sweep probe; amended by 09.3 AC30) within the bound", async () => {
+      const seen = await startCapture(db);
+      const t0 = Date.now();
+      const list = (await repo().list(u)).routines;
+      const ms = Date.now() - t0;
+      await settleCapture(db, seen);
+      expect(list).toHaveLength(50);
+      expect(list.every((r) => r.sections.length === 8)).toBe(true);
+      expect(list.reduce((n, r) => n + r.items.reduce((m, i) => m + i.sets.length, 0), 0)).toBe(30_000);
+      expect(list[0]!.items.every((i) => i.sectionId !== null)).toBe(true);
+      expect(seen).toHaveLength(2); // amended by 09.3 AC30: the sweep probe, then the one list statement
+      expect(ms).toBeLessThan(LIST_BOUND_MS);
+    });
   });
 });
