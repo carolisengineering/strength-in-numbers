@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { insertIndexForSection, resultIssues, roundTimeIssues, sectionForNewExercise, timerChangeKeepsRecorded, timersEqual } from "@sin/core";
 
 import * as D from "./data.mjs";
+import { quietMinuteWaitMs } from "./quiet.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, "../..");
@@ -25,6 +26,15 @@ const isSinApi = (u) => u.origin === SIN_ORIGIN && u.pathname.startsWith("/v1/")
 // SCREENS_THEMES=light (or dark) and SCREENS_DEVICES=mobile (or desktop) narrow a run; default is all four.
 const THEMES = (process.env.SCREENS_THEMES ?? "light,dark").split(",").map((s) => s.trim()).filter(Boolean);
 const DEVICE_FILTER = (process.env.SCREENS_DEVICES ?? "mobile,desktop").split(",").map((s) => s.trim());
+// Minor 512: every context the run opens, until it closes, so a step that throws can close what it left open.
+const openContexts = new Set();
+/** The one way to open a context: tracked until it closes (by the step, by `tryStep` after a throw, or with the browser). */
+async function openContext(browser, options) {
+  const ctx = await browser.newContext(options);
+  openContexts.add(ctx);
+  ctx.on("close", () => openContexts.delete(ctx));
+  return ctx;
+}
 const CORE_SRC = "/@fs" + path.join(repoRoot, "packages/core/src/index.ts").split(path.sep).join("/");
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -821,8 +831,29 @@ async function shoot(page, device, name, note) {
   console.log(`  ${label}: ${dump.count} controls, ${dump.overlaps.length} overlaps, pinned hits ${report.at(-1).pinnedHits}`);
 }
 
+// Minor 690, final review I-1: every step that talks to the fake Hevy (key, import, send) starts only when it can end
+// before the app's quiet minute, given how long it may run: about three times each step's measured length (key 23 s,
+// import 59 s, send 27 s on 2026-11-22).
+const HEVY_STEP_MS = { key: 120_000, import: 180_000, send: 120_000 };
+async function waitOutQuietMinute(aheadMs) {
+  const wait = quietMinuteWaitMs(Date.now(), aheadMs);
+  if (!wait) return;
+  console.log(`  waiting ${Math.ceil(wait / 1000)} s for Hevy's quiet minute`);
+  await new Promise((r) => setTimeout(r, wait));
+}
+
+// Minors 509, 690: a SKIPPED step fails the run unless its label starts with a key here, each with the reason it may skip
+// by design. Empty: no step may skip today.
+const SKIP_ALLOWED = {};
+
 async function tryStep(label, fn) {
-  try { await fn(); } catch (e) { console.warn(`  SKIPPED ${label}: ${e.message.split("\n")[0]}`); report.push({ file: null, note: `SKIPPED ${label}: ${e.message.split("\n")[0]}` }); }
+  const before = new Set(openContexts);
+  try { await fn(); } catch (e) {
+    // Minor 512: close what this step opened and left open; a failing close must not hide the step's own error.
+    for (const ctx of [...openContexts].filter((c) => !before.has(c))) await ctx.close().catch(() => {});
+    console.warn(`  SKIPPED ${label}: ${e.message.split("\n")[0]}`);
+    report.push({ file: null, note: `SKIPPED ${label}: ${e.message.split("\n")[0]}` });
+  }
 }
 
 // Spec 17.7 AC2: a Segmented wraps rather than clips or scrolls. Four options sit four across or 2 × 2, never 3 + 1.
@@ -963,6 +994,11 @@ const measureLedger = (page) =>
       firsts: [...document.querySelectorAll('ul[data-first-times] > li')].map((li) => li.textContent),
       overflowingRows: lines.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent),
       hscroll: main ? main.scrollWidth > main.clientWidth : false,
+      // Minor 473: an absence check passes on a failed read too, so read the failure (PersonalRecordsBlock's copy) and
+      // count the exercises drawn: only an exercise's section holds its sets list (FinishedWorkoutScreen's
+      // SummaryExercise), so the screen's own section, the notes and Hevy never count (/code-review).
+      recordsError: document.body.innerText.includes("Couldn't load records"),
+      exerciseRegions: document.querySelectorAll("main section:has(> ol > li[data-set-type])").length,
     };
   });
 
@@ -1049,7 +1085,7 @@ async function zoomPass(browser) {
   ];
   THEME = "light";
   for (const { device, viewport, fontSize } of CONFIGS) {
-    const ctx = await browser.newContext({ ...DEVICES.mobile, viewport, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+    const ctx = await openContext(browser, { ...DEVICES.mobile, viewport, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
     await ctx.route(isSinApi, makeHandler({ active: true }));
     const page = await ctx.newPage();
     page.setDefaultTimeout(8000);
@@ -1149,6 +1185,11 @@ const measureShell = (page) =>
       bottomNav: Boolean(bottomNav),
       railWidth: rail ? Math.round(box(rail).width) : null,
       mainWidth: Math.round(box(document.querySelector("main"))?.width ?? 0),
+      // Minor 647: the distance between <main>'s left gap and its right gap.
+      mainOffCenter: (() => {
+        const m = box(document.querySelector("main"));
+        return m ? Math.round(Math.abs(m.left - (window.innerWidth - m.right))) : null;
+      })(),
       railTargets: rail ? [...rail.querySelectorAll("a")].map((a) => ({ text: a.getAttribute("aria-label") ?? a.textContent.trim(), h: Math.round(box(a).height) })) : [],
       userOverflows: user ? user.scrollWidth > user.clientWidth + 1 || box(user).right > (rail ? box(rail).right : Infinity) + 0.5 : false,
       sideways: document.documentElement.scrollWidth > window.innerWidth,
@@ -1160,7 +1201,8 @@ async function desktopPass(browser) {
     { device: "desktop-1440", viewport: { width: 1440, height: 900 }, wide: true },
     { device: "desktop-1280", viewport: { width: 1280, height: 800 }, wide: true },
     { device: "desktop-1024", viewport: { width: 1024, height: 768 }, wide: true, mainWidth: 784 },
-    { device: "tablet-820", viewport: { width: 820, height: 1180 }, wide: false },
+    // Minor 647 (17.12 AC12): between 48rem and 64rem <main> is capped at 40rem and centered.
+    { device: "tablet-820", viewport: { width: 820, height: 1180 }, wide: false, mainWidth: 640, centered: true },
     // AC31: a 1280 × 800 window at 200% zoom, as a browser lays it out (§5): 640 × 400 CSS px at twice the pixel
     // density, so the phone shell (final review, Phase B: raising only the root font size kept the desktop layout,
     // squeezing the detail pane to ~80 px, a page no lifter sees). Checked for sideways scroll and overlaps.
@@ -1170,11 +1212,11 @@ async function desktopPass(browser) {
     THEME = theme;
     for (const config of CONFIGS) {
       const { device, viewport, fontSize, deviceScaleFactor = 1 } = config;
-      const ctx = await browser.newContext({ viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const ctx = await openContext(browser, { viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await ctx.route(isSinApi, makeHandler({ active: false }));
       const quietPage = await ctx.newPage();
       // Spec 17.12 AC26: a live workout's shots get a context of their own, whose fake has one in progress.
-      const liveCtx = await browser.newContext({ viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const liveCtx = await openContext(browser, { viewport, deviceScaleFactor, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await liveCtx.route(isSinApi, makeHandler({ active: true }));
       const livePage = await liveCtx.newPage();
       for (const p of [quietPage, livePage]) {
@@ -1187,6 +1229,24 @@ async function desktopPass(browser) {
           await page.goto(BASE + s.path);
           if (fontSize) await page.evaluate((f) => { document.documentElement.style.fontSize = f; }, fontSize);
           await settle(page);
+          // Minor 646 (17.12 AC6): the first Tab shows the skip link, measured in a real browser (jsdom can't).
+          const skipLink =
+            config.wide === true && s === DESKTOP_SCREENS[0]
+              ? await (async () => {
+                  await page.keyboard.press("Tab");
+                  const seen = await page.evaluate(() => {
+                    const el = document.activeElement;
+                    const r = el?.getBoundingClientRect();
+                    return { name: el?.textContent?.trim() ?? "", w: r?.width ?? 0, h: r?.height ?? 0, inside: r ? r.left >= 0 && r.top >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight : false };
+                  });
+                  await page.evaluate(() => document.activeElement?.blur());
+                  const cleared = await page.evaluate(() => document.activeElement === document.body);
+                  const found = [];
+                  if (seen.name !== "Skip to content" || !(seen.w > 1) || !(seen.h > 1) || !seen.inside) found.push(`the first Tab shows "${seen.name}" at ${Math.round(seen.w)} × ${Math.round(seen.h)}${seen.inside ? "" : ", outside the window"} (want a visible Skip to content)`);
+                  if (!cleared) found.push("focus stayed off <body> after the skip-link check");
+                  return found;
+                })()
+              : [];
           const rowOutOfView =
             config.wide === true && (s.name === "d7-history-workout" || s.name === "d8-history-edit")
               ? await page.evaluate(() => {
@@ -1199,6 +1259,8 @@ async function desktopPass(browser) {
               : null;
           await shoot(page, device, s.name, `Spec 17.12 AC11: ${s.name.slice(3)} at ${viewport.width} × ${viewport.height}${fontSize ? `, ${fontSize} text` : ""}`);
           const entry = await checkShell(page, `${theme}/${device}/${s.name}`, config);
+          for (const v of skipLink) console.error(`  DESKTOP ${entry.shot}: ${v}`);
+          entry.violations.push(...skipLink);
           // Spec 17.12 AC13–AC18, AC31: the two-pane screens, at the desktop sizes (not the tablet, not 200% text).
           if (s.panes && config.wide === true) {
             const found = await checkPanes(page, s);
@@ -1227,6 +1289,18 @@ async function desktopPass(browser) {
             console.error(`  DESKTOP ${entry.shot}: ${rowOutOfView}`);
             entry.violations.push(rowOutOfView);
           }
+          // Minor 687 (07.5 AC40): the per-weight list sits below the detail pane's fold; bring it into view and shoot it.
+          if (config.wide === true && s.name === "d13-exercise-reps-weights") {
+            const toggle = page.locator("[data-pane]").nth(1).getByRole("button", { name: "Show all 8 weights" });
+            if ((await toggle.count()) === 0) {
+              const v = "no Show all 8 weights in the detail pane";
+              console.error(`  DESKTOP ${entry.shot}: ${v}`);
+              entry.violations.push(v);
+            } else {
+              await toggle.scrollIntoViewIfNeeded();
+              await shoot(page, device, "d13b-exercise-reps-weights-list", "Spec 07.5 AC40: the five newest weights and Show all 8 weights in the detail pane");
+            }
+          }
           // Minor 665: the Exercises list pane's search field has room for its placeholder.
           if (config.wide === true && s.name === "d3-exercises") {
             const width = await page.evaluate(() => document.querySelector("[data-pane] input[type=search]")?.getBoundingClientRect().width ?? 0);
@@ -1253,7 +1327,7 @@ async function desktopPass(browser) {
     }
     // Review Focus 3: a long display name at 1024 keeps the rail at 240 px and stays inside it.
     await tryStep(`desktop ${theme} long name`, async () => {
-      const ctx = await browser.newContext({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const ctx = await openContext(browser, { viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await ctx.route(isSinApi, makeHandler({ active: false, meName: LONG_NAME }));
       const page = await ctx.newPage();
       await page.goto(BASE + "/app/history");
@@ -1309,6 +1383,8 @@ async function checkPanes(page, { editBar, selected = true }) {
     const list = regions[0];
     // Phase D: beside "Choose a routine" nothing is open, so no row is marked (`selected: false`).
     if (wantSelected && list && !list.querySelector('a[aria-current="page"]')) out.push("no row in the list is marked as the open one");
+    // Minor 671: beside "Choose a routine" a marked row is a violation, not a pass.
+    if (!wantSelected && list?.querySelector('a[aria-current="page"]')) out.push("a row is marked beside Choose a routine");
     if (wantBar) {
       // Any screen's bottom bar in the detail pane: History's Done (Phase B) and the routine editor's Cancel / Save.
       const detail = regions[1];
@@ -1336,7 +1412,8 @@ async function checkRoutinePanes(page, { editBar }) {
       return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight && !el.closest("dialog:not([open])");
     };
     const primaries = [...document.querySelectorAll('main [data-variant="primary"]')].filter(shown);
-    if (primaries.length > 1) out.push(`two primaries in view: ${primaries.map((b) => `"${b.textContent.trim()}"`).join(", ")}`);
+    // Minor 671: none in view is a violation too (a preview that never loaded passed the old `> 1`).
+    if (primaries.length !== 1) out.push(`${primaries.length} primaries in view, not 1: ${primaries.map((b) => `"${b.textContent.trim()}"`).join(", ")}`);
     return out;
   });
   if (!editBar) return found;
@@ -1344,6 +1421,8 @@ async function checkRoutinePanes(page, { editBar }) {
     const detail = document.querySelectorAll("[data-pane]")[1];
     const bar = detail?.querySelector("[data-action-bar]");
     if (!detail || !bar) return ["no bar in the detail pane to scroll under"];
+    // Minor 671: a pane that doesn't overflow leaves nothing under the bar to check.
+    if (!(detail.scrollHeight > detail.clientHeight + 1)) return ["the detail pane doesn't scroll, so nothing was checked under the bar"];
     detail.scrollTop = detail.scrollHeight;
     await new Promise((r) => window.requestAnimationFrame(() => window.requestAnimationFrame(r)));
     const b = bar.getBoundingClientRect();
@@ -1361,7 +1440,7 @@ async function checkRoutinePanes(page, { editBar }) {
 }
 
 /** One desktop-pass shot's checks (AC11, AC12): sideways scroll, rail targets, overlaps, and the layout for the width. */
-async function checkShell(page, shot, { wide, mainWidth }) {
+async function checkShell(page, shot, { wide, mainWidth, centered }) {
   const shell = await measureShell(page);
   const violations = [];
   if (shell.sideways) violations.push("the page scrolls sideways");
@@ -1371,6 +1450,7 @@ async function checkShell(page, shot, { wide, mainWidth }) {
   if (wide === true && (!shell.wide || !shell.rail || shell.header || shell.bottomNav)) violations.push("expected the rail and no header or bottom nav");
   if (wide === false && (shell.wide || shell.rail || !shell.header || !shell.bottomNav)) violations.push("expected the header and bottom nav, no rail");
   if (mainWidth && Math.abs(shell.mainWidth - mainWidth) > 1) violations.push(`<main> is ${shell.mainWidth} px wide, not ${mainWidth}`);
+  if (centered && !(shell.mainOffCenter <= 1)) violations.push(`<main> is ${shell.mainOffCenter} px off center`);
   for (const v of violations) console.error(`  DESKTOP ${shot}: ${v}`);
   return { shot, shell, violations };
 }
@@ -1474,7 +1554,7 @@ try {
     THEME = theme;
     console.log(`== ${theme} / ${device}`);
     const state = { active: true };
-    const ctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+    const ctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
     await ctx.route(isSinApi, makeHandler(state));
     const page = await ctx.newPage();
     page.setDefaultTimeout(8000);
@@ -2339,7 +2419,7 @@ try {
     if (device === "mobile") {
       // Spec 17.11 AC24: the plan rows at 320 × 568 with a long typed value on a closed line.
       await tryStep("plan rows 320", async () => {
-        const nctx = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const nctx = await openContext(browser, { ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         try {
           await nctx.route(isSinApi, makeHandler({ active: false }));
           const np = await nctx.newPage();
@@ -2529,7 +2609,7 @@ try {
         expect(m.liftsWithoutEstimate === 0, `11: ${m.liftsWithoutEstimate} lift(s) without an est. 1-rep max row`);
         await go(`/app/history/${D.ids.latestFinished}`);
         m = await read("13 history detail");
-        expect(m.heading === null || m.heading.startsWith("Record"), `13: heading "${m.heading}" (want "Records from this workout…")`);
+        expect(m.heading !== null && m.heading.startsWith("Record") && !m.recordsError, `13: heading "${m.heading}", records error ${m.recordsError} (want "Records from this workout…")`);
         await go(`/app/history/${D.ids.firstWorkout}`);
         m = await read("27 first record");
         expect(m.heading === null, `27: a ledger heading "${m.heading}" on a first-records-only workout`);
@@ -2541,9 +2621,14 @@ try {
           [D.ids.plankOnly, "30-summary-no-volume", "A plank-only session: three stats, no volume, no records"],
           [D.finishedTimed.id, null, null],
         ]) {
-          await go(`/app/history/${id}`);
+          // Together, so a navigation that throws never leaves the wait to reject unhandled (final review M-3).
+          await Promise.all([
+            page.waitForResponse((r) => new URL(r.url()).pathname === "/v1/personal-records" && r.url().includes(id), { timeout: 8000 }),
+            go(`/app/history/${id}`),
+          ]);
           m = await read(file ?? "97 timed");
           expect(m.recordRegions.length === 0 && m.firsts.length === 0, `${file ?? "97"}: records shown (${m.recordRegions.join(", ")}${m.firsts.join(", ")})`);
+          expect(!m.recordsError && m.exerciseRegions > 0, `${file ?? "97"}: records read failed or no exercises drawn`);
           if (file) await shoot(page, device, file, note);
         }
         await go(`/app/history/${D.ids.conditioning}`);
@@ -2594,7 +2679,7 @@ try {
           }
           await go(`/app/history/${D.ids.conditioning}`);
           m = await read("27d conditioning at 320");
-          expect(!m.hscroll && m.overflowingRows.length === 0, `27d conditioning: sideways scroll ${m.hscroll}, rows overflowing ${JSON.stringify(m.overflowingRows)}`);
+          expect(m.labels.length > 0 && !m.hscroll && m.overflowingRows.length === 0, `27d conditioning: rows ${m.labels.length}, sideways scroll ${m.hscroll}, rows overflowing ${JSON.stringify(m.overflowingRows)}`);
           // D6: the wider chart label fits the Metric group at 320 px.
           await go(`/app/exercises/${D.ids.bench}`);
           const metric = await page.getByRole("group", { name: "Metric" }).evaluate((group) => {
@@ -2611,7 +2696,7 @@ try {
         await page.setViewportSize(opts.viewport);
       }
       // Spec 07.5 AC35, AC40: a lb account reads the weight in lb (70 lb logged in lb).
-      const lbCtx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const lbCtx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       try {
         await lbCtx.route(isSinApi, makeHandler({ active: false, unitPreference: "lb" }));
         const lp = await lbCtx.newPage();
@@ -2725,7 +2810,7 @@ try {
         const id = D.ids.sandbagHold;
         const records = D.records.filter((r) => r.exerciseId === id).map((r) => (r.recordType === "heaviest_weight" ? { ...r, previousValue: null } : r));
         if (!records.some((r) => r.previousValue === null) || !records.some((r) => r.previousValue !== null)) throw new Error("the 320 records need a was row and a first record");
-        const nctx = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const nctx = await openContext(browser, { ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await nctx.route(isSinApi, makeHandler({ active: false }));
         // Registered last, so it answers first; any other records read falls through to the fake.
         await nctx.route(
@@ -2744,7 +2829,7 @@ try {
     }
     await tryStep("deleted exercise page and the usage-failed list", async () => {
       // A fresh context whose catalog no longer serves Barbell Curl (its records still do), and whose usage read fails.
-      const dctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const dctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await dctx.route(isSinApi, makeHandler({ active: false, hideExercise: D.ids.curl, failUsage: true }));
       const dp = await dctx.newPage();
       dp.setDefaultTimeout(8000);
@@ -2758,7 +2843,7 @@ try {
     });
     if (device === "mobile") {
       await tryStep("600 exercises", async () => {
-        const mctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const mctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await mctx.route(isSinApi, makeHandler({ active: false, catalog: D.manyExercises(600) }));
         const mp = await mctx.newPage();
         mp.setDefaultTimeout(8000);
@@ -2772,7 +2857,7 @@ try {
     // Bench Press and whose routines (the one-off class among them) use it.
     await tryStep("manage exercises (edit, copy, delete)", async () => {
       const ms = { active: false, catalog: [...D.exercises, D.benchCopy], routines: D.routinesWithBenchCopy };
-      const xctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const xctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await xctx.route(isSinApi, makeHandler(ms));
       const xp = await xctx.newPage();
       xp.setDefaultTimeout(8000);
@@ -3081,7 +3166,7 @@ try {
         meta: { startedAt: D.active.startedAt, exerciseCount: D.active.exercises.length, setCount: D.active.exercises.reduce((n, e) => n + e.sets.length, 0), endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false },
       });
       const finishContext = async (status) => {
-        const fctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const fctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await fctx.route(isSinApi, makeHandler({ active: true }));
         // Registered last, so it is asked first: hold the finish's PATCH, let every other request through.
         await fctx.route((u) => isSinApi(u) && /^\/v1\/workouts\/[^/]+$/.test(u.pathname), (route) => (route.request().method() === "PATCH" ? undefined : route.fallback()));
@@ -3110,8 +3195,9 @@ try {
     });
     // Spec 20.0 AC32: the Hevy key screen with no key, with a key, and after a failed check.
     await tryStep("hevy key screen", async () => {
+      await waitOutQuietMinute(HEVY_STEP_MS.key);
       const hevyContext = async (seedKey, o = {}) => {
-        const hctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const hctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         await hctx.route(isSinApi, makeHandler({ active: false }));
         await hctx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
         if (seedKey) {
@@ -3172,7 +3258,7 @@ try {
       await settle(pairings.hp);
       await shoot(pairings.hp, device, "hevy-pairings", "Pairings: by exercise, Sent as this, skips, markers, a deleted exercise (Spec 20.0 AC24)");
       await pairings.hctx.close();
-      const markers = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+      const markers = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
       await markers.route(isSinApi, makeHandler({ active: false, hevyMapping: D.hevyMappingNoMarkers }));
       await markers.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
       await markers.addInitScript(({ k, v }) => window.localStorage.setItem(k, v), { k: `sin:hevy:key:${D.me.id}`, v: JSON.stringify({ v: 1, key: D.hevyGoodKey }) });
@@ -3187,8 +3273,9 @@ try {
     });
     // Spec 20.1 AC29 (Phase A): the import's preflight, reading, routines, names and summary.
     await tryStep("hevy import", async () => {
+      await waitOutQuietMinute(HEVY_STEP_MS.import);
       const importContext = async (importMode = "ok") => {
-        const ictx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const ictx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         const istate = { active: false, importMode };
         await ictx.route(isSinApi, makeHandler(istate));
         await ictx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
@@ -3293,10 +3380,11 @@ try {
     });
     // Spec 20.2 AC21: the Hevy line on a finished workout (Lower A), each state; the pairing sheet; the delete note.
     await tryStep("hevy send", async () => {
+      await waitOutQuietMinute(HEVY_STEP_MS.send);
       hevyWrite = "ok";
       const workout = D.allWorkouts.find((w) => w.id === D.ids.latestFinished);
       const sendContext = async (o = {}) => {
-        const sctx = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+        const sctx = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
         const sstate = { active: false, hevyLink: o.link, hevyMapping: o.mapping ?? D.hevyMappingFor(workout) };
         await sctx.route(isSinApi, makeHandler(sstate));
         await sctx.route((u) => u.hostname === "api.hevyapp.com", hevyHandler);
@@ -3407,7 +3495,7 @@ try {
     await ctx.close();
 
     // Logged out.
-    const anon = await browser.newContext({ ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
+    const anon = await openContext(browser, { ...opts, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
     await anon.addInitScript(() => { window.__SIN_FAKE_AUTH__ = false; });
     await anon.route(isSinApi, makeHandler({ active: false }));
     const ap = await anon.newPage();
@@ -3455,7 +3543,7 @@ try {
 
     // The smallest phone (Spec 17.3 AC19 / AC21): the landing, and the sign-in error with a long detail (BL-20).
     if (device === "mobile") {
-      const small = await browser.newContext({ ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme });
+      const small = await openContext(browser, { ...opts, viewport: { width: 320, height: 568 }, colorScheme: theme });
       await small.addInitScript(() => { window.__SIN_FAKE_AUTH__ = false; });
       await small.route(isSinApi, makeHandler({ active: false }));
       const sp = await small.newPage();
@@ -3512,7 +3600,7 @@ try {
     for (const locale of ["en-GB", "de-DE"]) {
       await tryStep(`locale ${locale}`, async () => {
         THEME = `locale-${locale}`;
-        const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
+        const ctx = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
         await ctx.route(isSinApi, makeHandler({ active: true }));
         const page = await ctx.newPage();
         page.setDefaultTimeout(8000);
@@ -3535,7 +3623,7 @@ try {
       // A start today (the time alone) is the baseline; then a start on Wed, Sep 30 at 12:05 PM Chicago time, the
       // longest en-US moment beside Change Time.
       const state = { active: true };
-      const ctx = await browser.newContext({ ...DEVICES.mobile, viewport: { width: 320, height: 568 }, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+      const ctx = await openContext(browser, { ...DEVICES.mobile, viewport: { width: 320, height: 568 }, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
       await ctx.route(isSinApi, makeHandler(state));
       const page = await ctx.newPage();
       page.setDefaultTimeout(8000);
@@ -3564,7 +3652,7 @@ try {
       await tryStep(`locale ${locale} chart ${name}`, async () => {
         THEME = `locale-${locale}`;
         const state = { active: false, seriesDates };
-        const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
+        const ctx = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
         await ctx.route(isSinApi, makeHandler(state));
         const page = await ctx.newPage();
         page.setDefaultTimeout(8000);
@@ -3602,7 +3690,7 @@ try {
   // The Light / Dark / System override (Spec 17.0 AC18): Profile on a light OS with Dark stored.
   {
     THEME = "override-dark";
-    const ctx = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
+    const ctx = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale: "en-US" });
     await ctx.addInitScript(() => { try { window.localStorage.setItem("sin:pref:theme", "dark"); } catch { /* storage blocked */ } });
     await ctx.route(isSinApi, makeHandler({ active: false }));
     const page = await ctx.newPage();
@@ -3611,7 +3699,7 @@ try {
     await ctx.close();
 
     // The landing under the same override (Spec 17.3 AC27).
-    const anon = await browser.newContext({ ...DEVICES.mobile, colorScheme: "light" });
+    const anon = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light" });
     await anon.addInitScript(() => {
       window.__SIN_FAKE_AUTH__ = false;
       try { window.localStorage.setItem("sin:pref:theme", "dark"); } catch { /* storage blocked */ }
@@ -3737,6 +3825,15 @@ if (DEVICE_FILTER.includes("mobile") && (keyboardFrame.length === 0 || report.so
 }
 if (DEVICE_FILTER.includes("mobile") && (historyOffsets.length === 0 || historyOffsets.some((h) => h.offset === null || h.offset > HISTORY_ROW_MAX_OFFSET))) {
   console.error("  HISTORY OFFSET: the check failed or did not run");
+  process.exitCode = 1;
+}
+// Minors 509, 690: any SKIPPED step fails the run unless SKIP_ALLOWED says why it may skip; the per-step checks above
+// also catch a step that never reached tryStep.
+for (const r of report) {
+  if (!r.note?.startsWith("SKIPPED ")) continue;
+  const label = r.note.slice("SKIPPED ".length);
+  if (Object.keys(SKIP_ALLOWED).some((k) => label.startsWith(k))) continue;
+  console.error(`  SKIPPED STEP: ${r.note}`);
   process.exitCode = 1;
 }
 fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify({ base: BASE, doubledTitles, historyOffsets, keyboardFrame, zoom, desktop, report, frontDoor, exercisePage, planRows, offCenter, loggingLoop, segments, cardDeclutter, entryPanel, recordLedger, summaryFirstScreen, sheetRows, localeChecks, unmatched: [...unmatched], consoleErrors }, null, 1));
