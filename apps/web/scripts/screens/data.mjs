@@ -715,7 +715,8 @@ function computeRecords() {
           cands.push(["max_duration", s.durationS, "s"]);
         }
         for (const [type, value, unit] of cands) {
-          const k = `${we.exerciseId}|${type}`;
+          // Keyed by the lineage root, as core's records are (minor 688).
+          const k = `${rootOf(we.exerciseId)}|${type}`;
           const cur = best.get(k);
           if (!cur || value > cur.value) {
             best.set(k, { type, value, unit, prev: cur ? cur.value : null, s, w, we });
@@ -725,7 +726,7 @@ function computeRecords() {
     }
   }
   return [...best.values()].map((b) => ({
-    exerciseId: b.we.exerciseId,
+    exerciseId: rootOf(b.we.exerciseId),
     sourceExerciseId: b.we.exerciseId,
     exerciseName: b.we.exerciseNameSnapshot,
     recordType: b.type,
@@ -753,7 +754,8 @@ function repsAtWeightRecords() {
       if (we.modalitySnapshot !== "weight_reps" && we.modalitySnapshot !== "weighted_bodyweight") continue;
       for (const s of we.sets) {
         if (s.setType !== "working" || !(s.weightKg > 0) || !(s.reps > 0)) continue;
-        const k = `${we.exerciseId}|${s.weightKg}`;
+        // Keyed by the lineage root, as core's records are (minor 688).
+        const k = `${rootOf(we.exerciseId)}|${s.weightKg}`;
         if (s.reps > (best.get(k)?.reps ?? 0)) best.set(k, { reps: s.reps, s, w, we });
       }
     }
@@ -768,7 +770,7 @@ function repsAtWeightRecords() {
   return [...holder.values()]
     .filter((h) => h.reps >= 6)
     .map((h) => ({
-      exerciseId: h.we.exerciseId,
+      exerciseId: rootOf(h.we.exerciseId),
       sourceExerciseId: h.we.exerciseId,
       exerciseName: h.we.exerciseNameSnapshot,
       recordType: "max_reps_at_weight",
