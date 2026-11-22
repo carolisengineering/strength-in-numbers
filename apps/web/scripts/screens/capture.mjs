@@ -1173,6 +1173,11 @@ const measureShell = (page) =>
       bottomNav: Boolean(bottomNav),
       railWidth: rail ? Math.round(box(rail).width) : null,
       mainWidth: Math.round(box(document.querySelector("main"))?.width ?? 0),
+      // Minor 647: the distance between <main>'s left gap and its right gap.
+      mainOffCenter: (() => {
+        const m = box(document.querySelector("main"));
+        return m ? Math.round(Math.abs(m.left - (window.innerWidth - m.right))) : null;
+      })(),
       railTargets: rail ? [...rail.querySelectorAll("a")].map((a) => ({ text: a.getAttribute("aria-label") ?? a.textContent.trim(), h: Math.round(box(a).height) })) : [],
       userOverflows: user ? user.scrollWidth > user.clientWidth + 1 || box(user).right > (rail ? box(rail).right : Infinity) + 0.5 : false,
       sideways: document.documentElement.scrollWidth > window.innerWidth,
@@ -1184,7 +1189,8 @@ async function desktopPass(browser) {
     { device: "desktop-1440", viewport: { width: 1440, height: 900 }, wide: true },
     { device: "desktop-1280", viewport: { width: 1280, height: 800 }, wide: true },
     { device: "desktop-1024", viewport: { width: 1024, height: 768 }, wide: true, mainWidth: 784 },
-    { device: "tablet-820", viewport: { width: 820, height: 1180 }, wide: false },
+    // Minor 647 (17.12 AC12): between 48rem and 64rem <main> is capped at 40rem and centered.
+    { device: "tablet-820", viewport: { width: 820, height: 1180 }, wide: false, mainWidth: 640, centered: true },
     // AC31: a 1280 × 800 window at 200% zoom, as a browser lays it out (§5): 640 × 400 CSS px at twice the pixel
     // density, so the phone shell (final review, Phase B: raising only the root font size kept the desktop layout,
     // squeezing the detail pane to ~80 px, a page no lifter sees). Checked for sideways scroll and overlaps.
@@ -1211,6 +1217,24 @@ async function desktopPass(browser) {
           await page.goto(BASE + s.path);
           if (fontSize) await page.evaluate((f) => { document.documentElement.style.fontSize = f; }, fontSize);
           await settle(page);
+          // Minor 646 (17.12 AC6): the first Tab shows the skip link, measured in a real browser (jsdom can't).
+          const skipLink =
+            config.wide === true && s === DESKTOP_SCREENS[0]
+              ? await (async () => {
+                  await page.keyboard.press("Tab");
+                  const seen = await page.evaluate(() => {
+                    const el = document.activeElement;
+                    const r = el?.getBoundingClientRect();
+                    return { name: el?.textContent?.trim() ?? "", w: r?.width ?? 0, h: r?.height ?? 0, inside: r ? r.left >= 0 && r.top >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight : false };
+                  });
+                  await page.evaluate(() => document.activeElement?.blur());
+                  const cleared = await page.evaluate(() => document.activeElement === document.body);
+                  const found = [];
+                  if (seen.name !== "Skip to content" || !(seen.w > 1) || !(seen.h > 1) || !seen.inside) found.push(`the first Tab shows "${seen.name}" at ${Math.round(seen.w)} × ${Math.round(seen.h)}${seen.inside ? "" : ", outside the window"} (want a visible Skip to content)`);
+                  if (!cleared) found.push("focus stayed off <body> after the skip-link check");
+                  return found;
+                })()
+              : [];
           const rowOutOfView =
             config.wide === true && (s.name === "d7-history-workout" || s.name === "d8-history-edit")
               ? await page.evaluate(() => {
@@ -1223,6 +1247,8 @@ async function desktopPass(browser) {
               : null;
           await shoot(page, device, s.name, `Spec 17.12 AC11: ${s.name.slice(3)} at ${viewport.width} × ${viewport.height}${fontSize ? `, ${fontSize} text` : ""}`);
           const entry = await checkShell(page, `${theme}/${device}/${s.name}`, config);
+          for (const v of skipLink) console.error(`  DESKTOP ${entry.shot}: ${v}`);
+          entry.violations.push(...skipLink);
           // Spec 17.12 AC13–AC18, AC31: the two-pane screens, at the desktop sizes (not the tablet, not 200% text).
           if (s.panes && config.wide === true) {
             const found = await checkPanes(page, s);
@@ -1250,6 +1276,18 @@ async function desktopPass(browser) {
           if (rowOutOfView) {
             console.error(`  DESKTOP ${entry.shot}: ${rowOutOfView}`);
             entry.violations.push(rowOutOfView);
+          }
+          // Minor 687 (07.5 AC40): the per-weight list sits below the detail pane's fold; bring it into view and shoot it.
+          if (config.wide === true && s.name === "d13-exercise-reps-weights") {
+            const toggle = page.locator("[data-pane]").nth(1).getByRole("button", { name: "Show all 8 weights" });
+            if ((await toggle.count()) === 0) {
+              const v = "no Show all 8 weights in the detail pane";
+              console.error(`  DESKTOP ${entry.shot}: ${v}`);
+              entry.violations.push(v);
+            } else {
+              await toggle.scrollIntoViewIfNeeded();
+              await shoot(page, device, "d13b-exercise-reps-weights-list", "Spec 07.5 AC40: the five newest weights and Show all 8 weights in the detail pane");
+            }
           }
           // Minor 665: the Exercises list pane's search field has room for its placeholder.
           if (config.wide === true && s.name === "d3-exercises") {
@@ -1390,7 +1428,7 @@ async function checkRoutinePanes(page, { editBar }) {
 }
 
 /** One desktop-pass shot's checks (AC11, AC12): sideways scroll, rail targets, overlaps, and the layout for the width. */
-async function checkShell(page, shot, { wide, mainWidth }) {
+async function checkShell(page, shot, { wide, mainWidth, centered }) {
   const shell = await measureShell(page);
   const violations = [];
   if (shell.sideways) violations.push("the page scrolls sideways");
@@ -1400,6 +1438,7 @@ async function checkShell(page, shot, { wide, mainWidth }) {
   if (wide === true && (!shell.wide || !shell.rail || shell.header || shell.bottomNav)) violations.push("expected the rail and no header or bottom nav");
   if (wide === false && (shell.wide || shell.rail || !shell.header || !shell.bottomNav)) violations.push("expected the header and bottom nav, no rail");
   if (mainWidth && Math.abs(shell.mainWidth - mainWidth) > 1) violations.push(`<main> is ${shell.mainWidth} px wide, not ${mainWidth}`);
+  if (centered && !(shell.mainOffCenter <= 1)) violations.push(`<main> is ${shell.mainOffCenter} px off center`);
   for (const v of violations) console.error(`  DESKTOP ${shot}: ${v}`);
   return { shot, shell, violations };
 }
