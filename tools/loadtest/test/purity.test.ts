@@ -55,7 +55,11 @@ describe("AC1 — k6-loadable modules import only relative paths", () => {
 describe("minor 610 — every k6 metric carries the target the dashboard filters by", () => {
   it("k6/run.ts's options carry tags: { target: TARGET }", () => {
     const text = readFileSync(join(root, "k6", "run.ts"), "utf8");
-    const options = text.slice(text.indexOf("export const options"));
-    expect(options.slice(0, options.indexOf("\n};"))).toMatch(/\btags:\s*\{\s*target:\s*TARGET\s*\}/);
+    // Both ends must be found, or a -1 would widen the slice to the whole file and match a `target: TARGET` elsewhere.
+    const start = text.indexOf("export const options = {");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = text.indexOf("\n};", start);
+    expect(end).toBeGreaterThan(start);
+    expect(text.slice(start, end)).toMatch(/\btags:\s*\{\s*target:\s*TARGET\s*\}/);
   });
 });

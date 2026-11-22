@@ -662,6 +662,20 @@ describe("minor 607 — a stop while the annotation opens never leaves it open",
     expect(h.d.cleanupAll).toHaveBeenCalledTimes(1);
   });
 
+  it("code review — an early stop whose cleanup fails says so in the annotation, the record that outlives a closed terminal", async () => {
+    const { h, open } = opening({ cleanupAll: vi.fn(async () => Promise.reject(new Error("HTTP 503"))) });
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.openAnnotation).toHaveBeenCalled());
+    h.fire("SIGHUP");
+    open();
+    expect(await done).toBe(129);
+    expect(h.d.closeAnnotation).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({ text: "load test: gym run on local stopped before k6 started; cleanup failed" }),
+    );
+    expect(h.lines.some((l) => l.startsWith("finish it with: "))).toBe(true);
+  });
+
   it("Review Focus 2: SIGTERM then Ctrl-C before k6: one stopping line, no k6, exit 143", async () => {
     const { h, open } = opening();
     const done = runLoad(gym, h.d);

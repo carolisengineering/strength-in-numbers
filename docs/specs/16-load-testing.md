@@ -365,7 +365,7 @@ Twelve deferred minors that could spoil, stall or leak a secret in a staging run
 - **587, 590** Auth0's `Retry-After` is honored up to 60 s and logged, in the token fetch and the Management client; `x-ratelimit-reset` stays ignored. A `2xx` with no token isn't retried.
 - **589** Management API errors carry Auth0's fixed error code (`errorCode`, then `error`), never its message.
 - **588** `k6 version` must run before any token is fetched (exit 2 with "k6 isn't installed or isn't on PATH").
-- **586** k6 gets only `PATH`, `HOME`, `TMPDIR` and the tool's own variables (`node/k6-env.ts`).
+- **586** k6 gets only `PATH`, `HOME`, `TMPDIR` and the tool's own variables (`node/k6-env.ts`); since 605 also the proxy and CA variables.
 - **577, 580** k6 refuses at init when `LOADTEST_LIFTER_COUNT`, a lifter variable or `LOADTEST_RUN_NONCE` is missing or bad, naming the variable and never quoting its value. (Since minor 581, a lifter variable is checked at its VU's first iteration instead; see below.)
 - **593** The redactor also learns each value's JSON-escaped form, and the Management token.
 - **364** Cleanup stops with an error, naming the account by number, when a workout it deleted is still listed; the run records `cleanup: failed` and prints the hand-cleanup command as before.
@@ -386,10 +386,10 @@ Nine cheap leftovers, moved ahead of Task 7 at Carol's request:
 
 Load-test fixes before Task 7. 612 (filter the API panels by environment) moved to the production go-live (`observability.md` §5a).
 
-- **607** The stop handler registers before the Grafana annotation opens. A stop before k6 starts skips k6, runs cleanup, writes no result, closes the annotation as "stopped before k6 started" and exits 143 / 129 (1 for Ctrl-C). Signals during the token fetch and the seeding keep Node's default: nothing is open yet.
+- **607** The stop handler registers before the Grafana annotation opens. A stop before k6 starts skips k6, runs cleanup, writes no result, closes the annotation as "stopped before k6 started" (with "; cleanup failed" when it did, since no result file records it) and exits 143 / 129 (1 for Ctrl-C). Signals during the token fetch and the seeding keep Node's default: nothing is open yet.
 - **606** A signal after k6 exited on its own only says to wait: cleanup finishes and the exit is the run's own (0 or 1). 143 / 129 now mean the signal stopped the run.
 - **608** One forward path while k6 runs; only the 2 s repeat rule for a deliberate second Ctrl-C differs.
-- **604** A 2xx token reply whose body can't be read (it stalled past the 10 s signal, or arrived cut) is retried like a network error. A 2xx that parses with no token stays final (590).
+- **604** A 2xx token reply whose body can't be read (it stalled past the 10 s signal, or the stream broke) is retried like a network error. A 2xx that parses with no token, or whose whole body isn't JSON (a proxy page), stays final (590).
 - **605** k6 also gets `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` (and their lowercase forms), `SSL_CERT_FILE` and `SSL_CERT_DIR`. Go reads the two CA variables on Linux only; on macOS a custom CA goes in the Keychain.
 - **610** A static check pins `options.tags.target` in `k6/run.ts` (`purity.test.ts`).
 - **611** The Load test dashboard's "Load test runs" band matches tags `loadtest` and `$target`, so it follows the Target picked. Re-import `load-test.json`. The other dashboards still show every run.

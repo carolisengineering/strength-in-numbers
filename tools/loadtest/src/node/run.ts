@@ -269,7 +269,8 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
       if (stoppedEarly) {
         endText = `load test: ${cmd.type} run on ${target.name} stopped before k6 started`;
         k6Done = true;
-        await cleanUp(deps, apis, target.name, accounts);
+        // No result file on this path, so the annotation is the record that outlives a closed terminal.
+        if ((await cleanUp(deps, apis, target.name, accounts)) === "failed") endText += "; cleanup failed";
         return stoppedBy ? STOP_EXIT[stoppedBy] : 1;
       }
       let summary: unknown;
