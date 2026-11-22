@@ -110,7 +110,8 @@ function realDeps(target: Target): RunDeps {
       // SIGINT makes k6 abort without its summary). A `kill` or a closed terminal also goes through `runLoad` (onStop,
       // minor 591), so k6 stops gently and cleanup runs; the exit hook's SIGKILL is only the last resort, for a CLI
       // that ends while k6 still runs.
-      // Minor 586: only PATH, HOME, TMPDIR and the tool's own variables, never the whole shell environment.
+      // Minor 586: only the `K6_PASS_THROUGH` allow-list (`k6-env.ts`) and the tool's own variables, never the whole
+      // shell environment.
       const child = spawn("k6", args, { cwd: RESULTS_DIR, env: k6Env(process.env, env), stdio: "inherit", detached: true });
       const stopK6 = () => void child.kill("SIGKILL");
       process.once("exit", stopK6);
