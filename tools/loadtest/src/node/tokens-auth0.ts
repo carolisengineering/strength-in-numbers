@@ -58,7 +58,15 @@ async function attempt(email: string, s: Secrets, fetchFn: typeof fetch): Promis
   } catch {
     return { retry: true, why: "network error" };
   }
-  const body = (await res.json().catch(() => ({}))) as { access_token?: unknown; error?: unknown };
+  let body: { access_token?: unknown; error?: unknown };
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    // Minor 604: on a 2xx the body is the token. One that stalls past the call's signal (or arrives cut) is a
+    // network problem, so retry it; minor 590's "no access_token" is only for a body that parsed.
+    if (res.ok) return { retry: true, why: `HTTP ${res.status}, body unreadable` };
+    body = {};
+  }
   if (res.ok && typeof body.access_token === "string" && body.access_token !== "") return { token: body.access_token };
   // Minor 590: a 2xx with no token is usually a deterministic Action error; retrying costs 15 s and five logins.
   if (res.ok) return { retry: false, why: `HTTP ${res.status}, no access_token` };
