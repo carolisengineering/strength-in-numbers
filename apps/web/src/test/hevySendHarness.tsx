@@ -13,7 +13,8 @@ import { cleanupApp, prepareApp } from "./workoutHarness";
 /**
  * Test-only (Spec 20.2): the real app with one finished workout (`WORKOUT_ID`), the owner's `200` status, the mapping,
  * the fake link server (fingerprints read from the workout fake, so an edit there flips `sent` → `changed`) and the
- * fake Hevy. The key is stored after `prepareApp` (which clears `sin:hevy:`) unless `key: false`.
+ * fake Hevy. The key is stored after `prepareApp` (which clears `sin:hevy:`) unless `key: false`. `statusReads` counts
+ * the `GET /v1/hevy/status` reads for `owner: false` (0 for the owner).
  */
 export function setupSendScreen(
   auth: Parameters<typeof prepareApp>[0]["auth"],
@@ -31,10 +32,19 @@ export function setupSendScreen(
   let mapping: HevyMapping = opts.mapping ?? fixture.mapping;
   const patches: unknown[] = [];
   const patchFailures: number[] = [];
+  // Minor 486: not the owner answers the same 404 as the default handler (`msw/handlers.ts`), counted, so a test can
+  // wait for the status read to have happened instead of sleeping.
+  let statusReads = 0;
   server.use(
-    ...(opts.owner === false
-      ? []
-      : [http.get(`${API_BASE_URL}/v1/hevy/status`, () => HttpResponse.json({ enabled: true, pairCount: 2, linkCount: link.rows.size, recordsStale: false }))]),
+    opts.owner === false
+      ? http.get(`${API_BASE_URL}/v1/hevy/status`, () => {
+          statusReads += 1;
+          return new HttpResponse(
+            JSON.stringify({ type: "https://strengthinnumbers.app/problems/not-found", title: "Not Found", status: 404, detail: "d", instance: "req-1" }),
+            { status: 404, headers: { "content-type": "application/problem+json" } },
+          );
+        })
+      : http.get(`${API_BASE_URL}/v1/hevy/status`, () => HttpResponse.json({ enabled: true, pairCount: 2, linkCount: link.rows.size, recordsStale: false })),
     http.get(`${API_BASE_URL}/v1/hevy/mapping`, () => HttpResponse.json(mapping)),
     http.patch(`${API_BASE_URL}/v1/hevy/mapping`, async ({ request }) => {
       const body = (await request.json()) as { upsert?: HevyMapping["pairs"] };
@@ -55,7 +65,7 @@ export function setupSendScreen(
     ...hevyApiHandlers(hevy, { hold: (op) => (op === "create" ? opts.holdCreate : undefined) }),
   );
   if (opts.key !== false) hevyKeyStore.set(USER_ID, VALID_KEY, { remember: true });
-  return { fake, link, hevy, detail, patches, failPatch: (status: number) => void patchFailures.push(status) };
+  return { fake, link, hevy, detail, patches, failPatch: (status: number) => void patchFailures.push(status), statusReads: () => statusReads };
 }
 
 export function cleanupSendScreen(): void {

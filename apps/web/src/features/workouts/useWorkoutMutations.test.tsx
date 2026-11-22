@@ -212,6 +212,38 @@ describe("exercise-structure writes", () => {
     expect(reread.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(WORKOUT_KEYS.active))).toHaveLength(3);
   });
 
+  it("minor 596 — Remove exercise stops asking once the second re-read lands, and resolves only then", async () => {
+    const { qc, detail } = seeded();
+    const held = deferred<WorkoutDetail>();
+    let getActiveCalls = 0;
+    const client = fakeClient({
+      getActive: () => {
+        getActiveCalls += 1;
+        return getActiveCalls === 1 ? Promise.resolve(detail) : held.promise;
+      },
+      removeExercise: async () => undefined,
+    });
+    const { result } = renderHook(() => ({ active: useActiveWorkout(), remove: useRemoveExercise() }), { wrapper: wrapperWith(qc, client) });
+    await waitFor(() => expect(result.current.active.isSuccess).toBe(true));
+    // The first re-read is canceled (a set write's guard); the later ones run for real.
+    const reread = vi.spyOn(qc, "invalidateQueries").mockImplementationOnce(async () => undefined);
+    let settled = false;
+    let removing!: Promise<void>;
+    act(() => {
+      removing = result.current.remove.mutateAsync({ id: "we", setCount: 0 }).then(() => {
+        settled = true;
+      });
+    });
+    await waitFor(() => expect(getActiveCalls).toBe(2));
+    expect(settled).toBe(false);
+    await act(async () => {
+      held.resolve({ ...detail });
+      await removing;
+    });
+    expect(settled).toBe(true);
+    expect(reread.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(WORKOUT_KEYS.active))).toHaveLength(2);
+  });
+
   it("a remove answering 404 counts as success", async () => {
     const { qc } = seeded();
     const { result } = renderHook(() => useRemoveExercise(), {

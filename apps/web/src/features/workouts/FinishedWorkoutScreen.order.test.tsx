@@ -28,6 +28,7 @@ import { editDoneButton, openEditFromSummary } from "../../test/sessionHelpers";
 import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
+import { HEVY_KEYS } from "../hevy/keys";
 import { WORKOUT_KEYS } from "./queries";
 
 afterEach(() => {
@@ -208,11 +209,14 @@ describe("17.6 AC24 — the Hevy block moves unchanged", () => {
     expect(await within(hevy).findByRole("button", { name: "Send to Hevy" })).toBeInTheDocument();
   });
 
-  it("not the owner and no routine note: nothing follows the last exercise", async () => {
+  it("not the owner and no routine note: nothing follows the last exercise (minor 486)", async () => {
     const s = setupSendScreen(auth, { owner: false });
-    renderApp(`/app/history/${WORKOUT_ID}`);
+    const { queryClient } = renderApp(`/app/history/${WORKOUT_ID}`);
     const last = await screen.findByRole("region", { name: "Row" });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(() => expect(s.statusReads()).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(queryClient.getQueryCache().findAll({ queryKey: HEVY_KEYS.statusAll }).every((q) => q.state.status === "error")).toBe(true),
+    );
     expect(s.detail.routineNotes ?? null).toBeNull();
     const after = Array.from(screen.getByRole("main").querySelectorAll("*")).filter((el) => !last.contains(el) && follows(last, el));
     expect(after).toEqual([]);

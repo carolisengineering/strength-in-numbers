@@ -25,6 +25,7 @@ import { makeSet } from "../../../test/workoutFixtures";
 import { server } from "../../../test/msw/server";
 import { inTimeZone } from "../../../test/timeZone";
 import { renderApp } from "../../../test/workoutHarness";
+import { HEVY_KEYS } from "../keys";
 import { hevyKeyStore } from "../keyStore";
 import { SENDING_RECHECK_MS } from "./useHevyLink";
 
@@ -40,11 +41,14 @@ const sendButton = () => screen.findByRole("button", { name: "Send to Hevy" });
 const linkCalls = (s: ReturnType<typeof setupSendScreen>, method: string) => s.link.log.filter((r) => r.method === method);
 
 describe("20.2 AC1 / AC2 / AC3 — section rendering", () => {
-  it("not the owner (the default 404 status): no section and no link request", async () => {
+  it("not the owner (the default 404 status): no section and no link request (minor 486)", async () => {
     const s = setupSendScreen(auth, { owner: false });
-    renderApp(HISTORY);
+    const { queryClient } = renderApp(HISTORY);
     await screen.findByRole("heading", { name: "Workout summary" });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(() => expect(s.statusReads()).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(queryClient.getQueryCache().findAll({ queryKey: HEVY_KEYS.statusAll }).every((q) => q.state.status === "error")).toBe(true),
+    );
     expect(screen.queryByRole("region", { name: "Hevy" })).toBeNull();
     expect(s.link.log).toEqual([]);
   });
