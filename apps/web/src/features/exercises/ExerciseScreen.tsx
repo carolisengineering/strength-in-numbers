@@ -22,6 +22,7 @@ import { EXERCISES_PATH, exercisePath, FROM_RECORDS, isFromRecords, RECORDS_PATH
 import { useExerciseUsage } from "./usage";
 import { classifyExerciseError, exerciseErrorMessage } from "./exerciseErrors";
 import { disclosureToggle } from "./disclosureToggle";
+import { useExercisesLayoutState } from "./exercisesLayoutState";
 import type { Resolution } from "./resolveExercise";
 import { useDeleteExercise } from "./useExerciseMutations";
 import { useExercisePage } from "./useExercisePage";
@@ -66,6 +67,7 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   const [status, setStatus] = useState("");
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const navigate = useNavigate();
+  const layout = useExercisesLayoutState();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
@@ -74,11 +76,14 @@ export function ExerciseScreen({ exerciseId }: { exerciseId: string }) {
   // Owned here, not by the dialog: the handler must outlive the `found` branch it was started from.
   const confirmDelete = async (row: Exercise, routineCount: number) => {
     setDeletingRow(row);
+    // Minor 659: keep this page selected until the navigation, even when no id in the URL opened it.
+    layout.hold(row.id);
     try {
       await del.mutateAsync({ id: row.id, routineCount });
       void navigate(EXERCISES_PATH, { replace: true, state: { notice: "deleted", name: row.name } });
     } catch (error) {
       const kind = classifyExerciseError(error);
+      layout.hold(null);
       setDeletingRow(null);
       setDeleteOpen(false);
       setDeleteError(exerciseErrorMessage(kind, "delete"));
