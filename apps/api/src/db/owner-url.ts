@@ -58,7 +58,7 @@ export function resolveOwnerUrl(env: Record<string, string | undefined>): OwnerU
   try {
     const url = resolveDatabaseUrl(owner.url);
     const parsed = new URL(url);
-    const secrets = [owner.url, url, parsed.password, decodeURIComponent(parsed.password), parsed.host, parsed.hostname];
+    const secrets = [owner.url, url, parsed.password, decodedOrRaw(parsed.password), parsed.host, parsed.hostname];
     return { ok: true, url, hostname: parsed.hostname, secrets };
   } catch (err) {
     return {
@@ -67,6 +67,18 @@ export function resolveOwnerUrl(env: Record<string, string | undefined>): OwnerU
       fields: { error_class: (err as Error)?.constructor?.name ?? typeof err, reason: redactedMessage(err, owner.url) },
       detail: redacted(err, [owner.url]),
     };
+  }
+}
+
+/**
+ * The password percent-decoded for the secrets list, or as written when it isn't valid percent-encoding: resolving the
+ * URL never refused such a password, so listing a secret mustn't start to (final review, minor 416).
+ */
+function decodedOrRaw(password: string): string {
+  try {
+    return decodeURIComponent(password);
+  } catch {
+    return password;
   }
 }
 

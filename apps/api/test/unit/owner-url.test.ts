@@ -126,3 +126,12 @@ describe("minor 441 — one list of local hosts", () => {
     }
   });
 });
+
+describe("minor 416 (final review) — a password that isn't valid percent-encoding resolves as before", () => {
+  it("postgresql://o:p%zz@h/d: resolved, its raw password among the secrets", () => {
+    const r = resolveOwnerUrl({ OWNER_DATABASE_URL: "postgresql://o:p%zz@h/d" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.secrets).toContain("p%zz");
+  });
+});
