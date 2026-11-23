@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Link } from "react-router";
+import { Link, useLocation, useMatch } from "react-router";
 import type { UnitPreference, WorkoutSummary } from "@sin/core";
 import { TrophyIcon } from "../../ui/icons";
 import { usePane } from "../../ui/paneContext";
@@ -8,6 +8,7 @@ import { formatVolumeKg } from "../units/format";
 import { historyTimedLines } from "../sectionTimer/timedSectionLine";
 import { timedMore } from "../sectionTimer/timerCopy";
 import { formatLocalDate } from "../workouts/format";
+import { summaryEntryState } from "../workouts/summaryEntry";
 import { hasOwnTitle } from "../workouts/WorkoutText";
 import { historyBadgeText } from "./historyCopy";
 import styles from "./HistoryScreen.module.css";
@@ -28,17 +29,23 @@ export function HistoryRow({ workout, unitPreference }: { workout: WorkoutSummar
   // Spec 17.12 AC16: the workout open in the detail pane beside the list.
   const selected = usePane().selectedId === workout.id;
   // Minor 653: a deep link at desktop widths can open a workout whose row sits below the list pane's fold. `nearest`
-  // never moves a row that is already in view, so a click on a row doesn't scroll.
+  // never moves a row that is already in view, so a click on a row doesn't scroll. Minor 695: only when the route
+  // names this workout; a derived selection (the newest, or the next after a delete) leaves the list where it is.
+  const routeId = useMatch("/app/history/:id/*")?.params.id ?? null;
+  const scrollTo = selected && routeId === workout.id;
   const ref = useRef<HTMLAnchorElement>(null);
   useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selected]);
+    if (scrollTo) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [scrollTo]);
+  // Minor 696: a row on the list itself marks the summary as opened from it, so a delete there goes Back.
+  const { pathname } = useLocation();
 
   return (
     <Link
       ref={ref}
       className={selected ? `${styles.row} ${selection.selected}` : styles.row}
       to={`/app/history/${encodeURIComponent(workout.id)}`}
+      state={summaryEntryState(pathname, "/app/history")}
       aria-current={selected ? "page" : undefined}
     >
       <span className={styles.top} data-row-title="">

@@ -30,6 +30,7 @@ import { KEEP_IN_ROUTINES } from "./messages";
 import { outboxKey } from "./outbox/outbox";
 import type { FinishOp } from "./outbox/ops";
 import { REST_KEY } from "./restStore";
+import { FROM_HOME } from "./summaryEntry";
 
 let online = true;
 vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
@@ -85,7 +86,8 @@ describe("06.7 AC15 — a finish with no signal is not treated as in the cloud",
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
     // Final review: the summary reads the tap's reason once and clears it, so a reload (a browser router keeps
     // history state) or Back words the message from the outbox instead of a stale "no signal".
-    await waitFor(() => expect(router.state.location.state ?? null).toBeNull());
+    // Minor 696: only the list mark stays, so a delete there goes Back to Workouts.
+    await waitFor(() => expect(router.state.location.state ?? null).toEqual(FROM_HOME));
     expect(screen.getByTestId("finish-saved")).toHaveTextContent("There's no signal");
     expect(events()).toContain("workout_finish_queued");
     expect(observability.track).toHaveBeenCalledWith("workout_finish_queued", { reason: "offline" });
@@ -150,7 +152,7 @@ describe("06.7 AC14 — online, a finish that lands in time is today's result, i
     await user.click(finishButton());
     await user.click(within(dialog()).getByRole("button", { name: "Finish" }));
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
-    expect(router.state.location.state ?? null).toBeNull();
+    expect(router.state.location.state ?? null).toEqual(FROM_HOME); // no `saved` (minor 696: the list mark only)
     await screen.findByRole("heading", { level: 1, name: "Workout summary" });
     expect(patches(fake)).toHaveLength(1);
     expect(events().filter((e) => e === "workout_finished")).toHaveLength(1);

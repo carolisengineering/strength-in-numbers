@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -152,6 +152,17 @@ describe("17.12 AC6 — skip link and focus order", () => {
     expect(mainOf()).toHaveFocus();
     await user.tab();
     expect(mainOf()).not.toHaveFocus();
+    expect(mainOf()).not.toHaveAttribute("tabindex");
+  });
+
+  it("minor 694 — a click after Skip to content drops main's borrowed tabindex", async () => {
+    const user = userEvent.setup();
+    renderShell();
+    await user.tab();
+    await user.keyboard("{Enter}");
+    expect(mainOf()).toHaveFocus();
+    expect(mainOf()).toHaveAttribute("tabindex", "-1");
+    fireEvent.pointerDown(mainOf());
     expect(mainOf()).not.toHaveAttribute("tabindex");
   });
 

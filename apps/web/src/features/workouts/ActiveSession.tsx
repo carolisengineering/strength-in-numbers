@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { canLinkRule, ROUTINE_SECTIONS_MAX, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { useSession } from "../../auth/useSession";
@@ -35,6 +35,7 @@ import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
 import { failedRowCount, sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
 import { FINISH_OFFLINE_NOTE, REFUSED_LEAD, finishLocked, finishUnsentNote } from "./outbox/finishMessages";
 import { refusedDetailFor, type RefusedKind } from "./refusedDetail";
+import { summaryEntryState } from "./summaryEntry";
 import { useWaitingFinish } from "./useWaitingFinish";
 import { RESULT_COPY } from "./result/resultCopy";
 import { ResultSheet } from "./result/ResultSheet";
@@ -124,6 +125,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function ActiveSession({ workout, notice, onDismissNotice, onGone }: ActiveSessionProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const client = useWorkoutClient();
   const { user } = useSession();
   const catalog = useCatalog();
@@ -596,8 +598,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
    */
   function afterFinished(state?: { saved: "offline" | "slow" }) {
     if (mounted.current) {
-      if (state) void navigate(`/app/workouts/${workout.id}`, { state });
-      else void navigate(`/app/workouts/${workout.id}`);
+      // Minor 696: marked as opened from Workouts' list, so a delete there goes Back to it.
+      const entry = summaryEntryState(pathname, "/app/workouts");
+      const next = entry || state ? { ...entry, ...state } : undefined;
+      void navigate(`/app/workouts/${workout.id}`, next === undefined ? undefined : { state: next });
     } else if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workout.id) {
       queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
     }

@@ -1,5 +1,6 @@
 import { useId } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
+import { summaryEntryState } from "./summaryEntry";
 import { Button } from "../../ui/Button";
 import { formatStartedAt } from "./format";
 import { KEEP_OPEN, WAITING_OFFLINE, WAITING_ONLINE, waitingTitle } from "./messages";
@@ -18,6 +19,7 @@ export function WaitingFinishCard({ op }: { op: FinishOp }) {
   const outbox = useOutbox();
   const { online, durable } = useOutboxState();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const headingId = useId();
   const status = [online ? WAITING_ONLINE : WAITING_OFFLINE, durable ? null : KEEP_OPEN].filter((t) => t !== null).join(" ");
   return (
@@ -32,7 +34,7 @@ export function WaitingFinishCard({ op }: { op: FinishOp }) {
         {status}
       </p>
       <div className={styles.actions}>
-        <Button variant="secondary" onClick={() => void navigate(`/app/workouts/${op.workoutId}`)}>
+        <Button variant="secondary" onClick={() => void navigate(`/app/workouts/${op.workoutId}`, { state: summaryEntryState(pathname, "/app/workouts") })}>
           View workout
         </Button>
         <Button variant="secondary" onClick={() => outbox?.retryNow()}>

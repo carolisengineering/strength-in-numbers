@@ -66,7 +66,15 @@ export function AppShell() {
     const target = main.querySelector<HTMLElement>("h1") ?? main;
     if (!target.hasAttribute("tabindex")) {
       target.setAttribute("tabindex", "-1");
-      target.addEventListener("blur", () => target.removeAttribute("tabindex"), { once: true });
+      // Minor 694: a click on blank space inside <main> keeps its focus, so no blur would come; the next press drops
+      // the lent tabindex too, and with it the ring around the whole column.
+      const drop = () => {
+        target.removeAttribute("tabindex");
+        target.removeEventListener("blur", drop);
+        document.removeEventListener("pointerdown", drop, { capture: true });
+      };
+      target.addEventListener("blur", drop, { once: true });
+      document.addEventListener("pointerdown", drop, { once: true, capture: true });
     }
     target.focus();
   };

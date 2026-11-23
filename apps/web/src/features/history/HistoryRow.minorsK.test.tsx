@@ -9,10 +9,10 @@ import { HistoryRow } from "./HistoryRow";
 const scrollIntoView = vi.fn();
 afterEach(() => scrollIntoView.mockReset());
 
-function renderRow(workout: WorkoutSummary, selectedId: string | null = null) {
+function renderRow(workout: WorkoutSummary, selectedId: string | null = null, path = "/app/history") {
   Element.prototype.scrollIntoView = scrollIntoView;
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <PaneContext.Provider value={{ slot: selectedId === null ? null : "list", selectedId }}>
         <HistoryRow workout={workout} unitPreference="kg" />
       </PaneContext.Provider>
@@ -36,7 +36,7 @@ describe("minor 599 — a blank title falls back to the routine name", () => {
 describe("minor 653 — the selected row scrolls into view", () => {
   it("a selected row asks once, with block: nearest", () => {
     const w = makeWorkoutSummary({});
-    renderRow(w, w.id);
+    renderRow(w, w.id, `/app/history/${w.id}`);
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
@@ -44,5 +44,20 @@ describe("minor 653 — the selected row scrolls into view", () => {
   it("an unselected row never does", () => {
     renderRow(makeWorkoutSummary({}), "another-id");
     expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+});
+
+describe("minor 695 — only a route-given id scrolls its row", () => {
+  it("a derived selection on bare /app/history never scrolls", () => {
+    const w = makeWorkoutSummary({});
+    renderRow(w, w.id, "/app/history");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("the row the route names scrolls once, with block: nearest", () => {
+    const w = makeWorkoutSummary({});
+    renderRow(w, w.id, `/app/history/${w.id}`);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
 });

@@ -23,6 +23,7 @@ import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
 import { deleteSetIn, discardWorkout, finishButton, logButton } from "../../test/sessionHelpers";
 import { WORKOUT_KEYS } from "./queries";
+import { FROM_HOME } from "./summaryEntry";
 
 const scrollIntoView = vi.fn();
 
@@ -231,7 +232,7 @@ describe("AC28 — other finish outcomes", () => {
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${id}`), { timeout: 4000 });
-    expect(router.state.location.state ?? null).toBeNull();
+    expect(router.state.location.state ?? null).toEqual(FROM_HOME); // no `saved` (minor 696: the list mark only)
     expect(screen.queryByRole("alert")).toBeNull();
     expect(patches(fake)).toHaveLength(2);
   });
