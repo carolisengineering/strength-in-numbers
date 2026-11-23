@@ -14,9 +14,10 @@ import { isUserId, type UserId } from "@sin/core";
  *
  * The setting is always transaction-local (`is_local = true`): it ends with the transaction, so a pooled connection
  * never carries one user's id into another's call. `shared()` is the root client, only for the shared reference tables
- * and statements that read no table; the query audit (Spec 21.0) holds the list.
+ * and statements that read no table; `crossUserMaintenance()` is the same root client for the operator commands'
+ * listings across users (minor 404). The query audit (Spec 21.0) holds both lists.
  *
- * Until Phase C nothing reads `app.user_id` / `app.auth_sub`, so this changes no behavior.
+ * The row-level security policies read `app.user_id` / `app.auth_sub` (Spec 21.1 Phase D, minor 437).
  */
 
 /** The raw half of a Prisma client: what every SQL helper takes (moved here from `set-entry.prisma.ts`). */
@@ -48,6 +49,11 @@ export interface UserScopedDb {
   forAuthSub(authSub: string): ScopedClient;
   /** The root client, unscoped: the shared reference tables and statements that read no table, nothing else. */
   shared(): RawClient;
+  /**
+   * The same root client, for listings across users in the operator commands (`records:rebuild`, `account:purge`), on the
+   * owner login only (minor 404). Spec 21.1 AC16's scan pins its call sites.
+   */
+  crossUserMaintenance(): RawClient;
   /** False for a bare `PrismaClient` wrapped by `toScoped` (tests and maintenance scripts on the owner login). */
   readonly scoped: boolean;
 }
@@ -119,6 +125,7 @@ export function createScopedDb(prisma: PrismaClient): UserScopedDb {
     as: (userId) => scopedClient(prisma, USER_SETTING, checkedUserId(userId)),
     forAuthSub: (authSub) => scopedClient(prisma, AUTH_SUB_SETTING, checkedAuthSub(authSub)),
     shared: () => prisma,
+    crossUserMaintenance: () => prisma,
     scoped: true,
   };
 }
@@ -139,6 +146,7 @@ export function toScoped(db: UserScopedDb | PrismaClient): UserScopedDb {
     as: (userId) => (checkedUserId(userId), client),
     forAuthSub: (authSub) => (checkedAuthSub(authSub), client),
     shared: () => db,
+    crossUserMaintenance: () => db,
     scoped: false,
   };
 }

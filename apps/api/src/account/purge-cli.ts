@@ -13,8 +13,7 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { pino } from "pino";
 import { isUserId } from "@sin/core";
-import { resolveDatabaseUrl } from "../db.js";
-import { ownerDatabaseUrl } from "../db/owner-url.js";
+import { resolveOwnerUrl } from "../db/owner-url.js";
 import { runPurge, type PurgeOptions } from "./purge.js";
 
 const USAGE = "usage: [--confirm] [--user <id>] [--skip-grace]";
@@ -58,26 +57,19 @@ export async function main(
   deps: { makePrisma?: (url: string) => PrismaClient } = {},
 ): Promise<number> {
   const log = pino({ level: env.LOG_LEVEL ?? "info" });
-  const owner = ownerDatabaseUrl(env);
+  const owner = resolveOwnerUrl(env);
   if (!owner.ok) {
-    log.error(owner.error);
+    // `fields`, never `{ err }`: a malformed URL's TypeError carries the raw string in an enumerable `input`.
+    if (owner.fields) log.error(owner.fields, owner.error);
+    else log.error(owner.error);
     return 1;
   }
-  const databaseUrl = owner.url;
   const args = parsePurgeArgs(argv);
   if (!args.ok) {
     log.error(args.error);
     return 1;
   }
-  let url: string;
-  try {
-    url = resolveDatabaseUrl(databaseUrl);
-  } catch (err) {
-    // Not `{ err }`: a malformed URL's TypeError carries the raw string (password
-    // included) in an enumerable `input` property that pino would print.
-    log.error({ error_class: (err as Error)?.constructor?.name ?? typeof err, reason: (err as Error)?.message }, "OWNER_DATABASE_URL rejected");
-    return 1;
-  }
+  const url = owner.url;
 
   const owned = deps.makePrisma === undefined;
   const prisma = deps.makePrisma ? deps.makePrisma(url) : new PrismaClient({ datasourceUrl: url });

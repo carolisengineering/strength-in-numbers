@@ -1,7 +1,7 @@
 // apps/api/test/integration/login-check.integration.test.ts
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assertLoginCannotBypassRls, DatabaseLoginRejectedError, UnsafeDatabaseLoginError } from "../../src/db/login-check.js";
+import { assertLoginCannotBypassRls, DatabaseLoginRejectedError, DatabaseMisconfiguredError, UnsafeDatabaseLoginError } from "../../src/db/login-check.js";
 import { shouldRunIntegration, startIntegrationDb, startMigratedDb, TEST_APP_PASSWORD, type AppIntegrationDb, type IntegrationDb } from "./helpers.js";
 
 /** Spec 21.1 AC24 — the boot check against real roles: the four unsafe cases, row_security off, and a clean sin_app. */
@@ -82,6 +82,41 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC24 — the boot check on r
       ownsTables: false,
       memberOfBypass: [],
       rowSecurity: true,
+    });
+  });
+
+  describe("21.1 AC26 — minor 411: a missing database or a bad URL is a verdict, not a retry", () => {
+    // Prisma 6.19's own words, which MISSING_DATABASE_TEXT / INVALID_URL_TEXT (login-check.ts) are written from: a Prisma
+    // upgrade that rewords them fails here first.
+    const PRISMA_TEXT = {
+      "missing-database": /Database `sin_missing_411` does not exist/,
+      "invalid-url": /The provided database string is invalid\. Error parsing connection string: invalid port number/,
+    };
+    const misconfigured = async (url: string, kind: "missing-database" | "invalid-url") => {
+      const client = new PrismaClient({ datasourceUrl: url });
+      opened.push(client);
+      const raw = await client.$queryRaw`SELECT 1`.catch((e: unknown) => e);
+      expect(raw).toBeInstanceOf(Prisma.PrismaClientInitializationError);
+      expect((raw as Error).message).toMatch(PRISMA_TEXT[kind]);
+      const started = Date.now();
+      const err = await assertLoginCannotBypassRls(client).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(DatabaseMisconfiguredError);
+      expect((err as DatabaseMisconfiguredError).kind).toBe(kind);
+      expect(Date.now() - started).toBeLessThan(2_000);
+      const u = new URL(db.url);
+      expect((err as Error).message).not.toContain(u.host);
+      expect((err as Error).message).not.toContain(u.password);
+    };
+
+    it("the database named in the URL doesn't exist: missing-database, in under 2 s, naming no host or password", async () => {
+      const u = new URL(db.url);
+      u.pathname = "/sin_missing_411";
+      await misconfigured(u.toString(), "missing-database");
+    });
+
+    it("a URL Prisma can't use (a port that isn't a number): invalid-url", async () => {
+      const u = new URL(db.url);
+      await misconfigured(`postgresql://${u.username}:${u.password}@localhost:notaport/sin`, "invalid-url");
     });
   });
 

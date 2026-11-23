@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RLS_TABLES } from "../../src/db/rls-tables.js";
 import { shouldRunIntegration, startMigratedDb, type IntegrationDb } from "./helpers.js";
 
-describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase D — migration 0021 (real Postgres)", () => {
+describe.skipIf(!shouldRunIntegration())("21.1 AC36 — the integration suite runs with row-level security on: Spec 21.1 Phase D, migration 0021 (real Postgres)", () => {
   let db: IntegrationDb;
 
   beforeAll(async () => {

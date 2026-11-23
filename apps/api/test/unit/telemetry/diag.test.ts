@@ -177,3 +177,23 @@ describe("#121 — span export failures read clearly and are reported once", () 
     expect(reported.has(passedOn!.error!)).toBe(true);
   });
 });
+
+describe("minor 359 — pool collection has its own slot and prefix", () => {
+  it("a db_pool report and then a metrics export report, inside the throttle window, both log, each with its own prefix", () => {
+    const sink = { warn: vi.fn() };
+    const r = createThrottledReporter(sink, { now: () => 0 });
+    r.report("collection failed: engine gone", undefined, "db_pool");
+    r.report("metrics export failed: ECONNREFUSED", undefined, "metrics");
+    expect(sink.warn).toHaveBeenCalledTimes(2);
+    expect(sink.warn.mock.calls[0]).toEqual([{ signal: "db_pool", err: undefined }, "DB pool metrics problem: collection failed: engine gone"]);
+    expect(sink.warn.mock.calls[1]![1]).toBe("telemetry export problem: metrics export failed: ECONNREFUSED");
+  });
+
+  it("db_pool is throttled in its own slot", () => {
+    const sink = { warn: vi.fn() };
+    const r = createThrottledReporter(sink, { now: () => 0 });
+    r.report("a", undefined, "db_pool");
+    r.report("b", undefined, "db_pool");
+    expect(sink.warn).toHaveBeenCalledTimes(1);
+  });
+});

@@ -2,7 +2,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { ConfigError } from "../../src/config.js";
-import { assertLoginCannotBypassRls, DatabaseLoginRejectedError, DatabaseUnreachableError, UnsafeDatabaseLoginError } from "../../src/db/login-check.js";
+import { assertLoginCannotBypassRls, DatabaseLoginRejectedError, DatabaseMisconfiguredError, DatabaseUnreachableError, UnsafeDatabaseLoginError } from "../../src/db/login-check.js";
 import { startupFailureMessage } from "../../src/startup-failure.js";
 
 /** Spec 21.1 AC24, AC26 — the verdicts and the retry, with a fake client and a fake clock. */
@@ -199,4 +199,20 @@ describe("Spec 21.1 AC26 — connectivity is not a verdict", () => {
     await expect(assertLoginCannotBypassRls(fake({ failures: [boom] }).client, clock)).rejects.toBe(boom);
     expect(clock.sleeps).toEqual([]);
   });
+});
+
+describe("21.1 AC26 — minor 411: a missing database or a bad URL refuses at once", () => {
+  for (const [kind, text] of [
+    ["missing-database", "Invalid `prisma.$queryRaw()` invocation:\n\n\nDatabase `sin_x` does not exist"],
+    ["invalid-url", "The provided database string is invalid. Error parsing connection string: invalid port number in database URL."],
+  ] as const) {
+    it(`${kind}: the verdict, with no sleep`, async () => {
+      const clock = fakeClock();
+      const { client } = fake({ failures: [new Prisma.PrismaClientInitializationError(text, "test")] });
+      const err = await assertLoginCannotBypassRls(client, clock).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(DatabaseMisconfiguredError);
+      expect((err as DatabaseMisconfiguredError).kind).toBe(kind);
+      expect(clock.sleeps).toEqual([]);
+    });
+  }
 });

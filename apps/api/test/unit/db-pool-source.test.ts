@@ -21,15 +21,16 @@ describe("AC1 — off by default", () => {
   it("with no telemetry handle nothing is registered and $metrics is never read", () => {
     const json = vi.fn();
     const fakePrisma = { $metrics: { json }, _engine: { libraryStarted: true } } as unknown as PrismaClient;
-    expect(wirePoolMetrics(undefined, fakePrisma, "postgresql://u:p@h/db")).toBe(false);
+    expect(wirePoolMetrics(undefined, fakePrisma, "postgresql://u:p@h/db")).toBeUndefined(); // minor 358: no handle to stop
     expect(json).not.toHaveBeenCalled();
   });
 
   it("with a handle it registers the source and the resolved limit", () => {
-    const registerDbPool = vi.fn();
+    const stop = { stop: vi.fn() };
+    const registerDbPool = vi.fn(() => stop);
     const handle = { forceFlush: vi.fn(), shutdown: vi.fn(), registerDbPool } as unknown as TelemetryHandle;
     const fakePrisma = { $metrics: { json: vi.fn() }, _engine: { libraryStarted: false } } as unknown as PrismaClient;
-    expect(wirePoolMetrics(handle, fakePrisma, "postgresql://u:p@h/db?connection_limit=12")).toBe(true);
+    expect(wirePoolMetrics(handle, fakePrisma, "postgresql://u:p@h/db?connection_limit=12")).toBe(stop); // minor 358: the handle to stop at shutdown
     expect(registerDbPool).toHaveBeenCalledWith(expect.objectContaining({ engineStarted: expect.any(Function) }), 12);
   });
 });

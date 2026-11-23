@@ -7,7 +7,8 @@ export interface WarnSink {
 
 const DEFAULT_INTERVAL_MS = 5 * 60_000;
 
-export type TelemetrySignal = "metrics" | "traces" | "other";
+/** `db_pool` (minor 359): the pool collection's own problems, in their own slot, so they never hide an OTLP export failure. */
+export type TelemetrySignal = "metrics" | "traces" | "other" | "db_pool";
 /** The log line's `signal` field: an export problem's signal, or `sdk` for any other SDK warning (#126). */
 export type TelemetryWarnSignal = TelemetrySignal | "sdk";
 
@@ -66,7 +67,7 @@ export function createThrottledReporter(
   // signal passes it (an OTLP error like "connect ECONNREFUSED" names none).
   const report = (message: string, err?: unknown, signal: TelemetrySignal = signalOf(message)): void => {
     if (!allowed(signal)) return;
-    sink.warn({ signal, err }, `telemetry export problem: ${message}`);
+    sink.warn({ signal, err }, signal === "db_pool" ? `DB pool metrics problem: ${message}` : `telemetry export problem: ${message}`);
   };
 
   // #126 — an SDK warning that isn't about an export has its own slot and

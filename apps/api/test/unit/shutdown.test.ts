@@ -158,3 +158,24 @@ describe("AC12 — telemetry flush on shutdown", () => {
     expect(exit).toHaveBeenCalledWith(0);
   });
 });
+
+describe("minor 358 — pool metrics stop before the pool closes", () => {
+  it("beforeDisconnect runs once, right before $disconnect", async () => {
+    const order: string[] = [];
+    const app = { close: vi.fn(async () => void order.push("app.close")) };
+    const prisma = { $disconnect: vi.fn(async () => void order.push("prisma.$disconnect")) };
+    const exit = vi.fn<(code: number) => void>();
+    await createGracefulShutdown({ app, prisma, exit, beforeDisconnect: () => void order.push("pool metrics stop") })("SIGTERM");
+    expect(order).toEqual(["app.close", "pool metrics stop", "prisma.$disconnect"]);
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+
+  it("Review Focus 5: with telemetry off (no beforeDisconnect), shutdown still disconnects and exits 0", async () => {
+    const app = { close: vi.fn(async () => {}) };
+    const prisma = { $disconnect: vi.fn(async () => {}) };
+    const exit = vi.fn<(code: number) => void>();
+    await createGracefulShutdown({ app, prisma, exit })("SIGTERM");
+    expect(prisma.$disconnect).toHaveBeenCalledTimes(1);
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+});

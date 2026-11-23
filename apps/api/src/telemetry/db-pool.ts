@@ -60,16 +60,23 @@ export function readPoolNumbers(json: unknown): PoolNumbers | undefined {
   return numbers;
 }
 
+/** Minor 358: stops the pool collection before shutdown disconnects the client. */
+export interface PoolMetricsHandle {
+  stop(): void;
+}
+
 /**
  * Registers the pool instruments. One batch callback reads the source once per collection; it returns without
- * reading while the engine is stopped (AC7), and on any failure observes nothing and reports (AC8).
+ * reading while the engine is stopped (AC7) or after `stop()` (minor 358), and on any failure observes nothing and
+ * reports (AC8), unless `stop()` came first: a read cut off by the shutdown's `$disconnect` is not a problem.
  */
 export function registerDbPoolMetrics(
   meter: Meter,
   source: PoolMetricsSource,
   limit: number | undefined,
   report: (message: string, err?: unknown) => void,
-): void {
+): PoolMetricsHandle {
+  let stopped = false;
   const connections = meter.createObservableGauge("sin.db.pool.connections", {
     description: "Database connections in the pool, by state (busy / idle)",
   });
@@ -86,11 +93,12 @@ export function registerDbPoolMetrics(
 
   meter.addBatchObservableCallback(
     async (result) => {
-      if (!source.engineStarted()) return;
+      if (stopped || !source.engineStarted()) return;
       try {
         const numbers = readPoolNumbers(await source.json());
+        if (stopped) return;
         if (numbers === undefined) {
-          report("DB pool metrics: Prisma's metrics JSON had an unexpected shape");
+          report("Prisma's metrics JSON had an unexpected shape");
           return;
         }
         if (numbers.busy !== undefined) result.observe(connections, numbers.busy, { state: "busy" });
@@ -99,7 +107,7 @@ export function registerDbPoolMetrics(
         if (numbers.waitSecondsTotal !== undefined) result.observe(waitTime, numbers.waitSecondsTotal);
         if (numbers.waitsTotal !== undefined) result.observe(waits, numbers.waitsTotal);
       } catch (err) {
-        report(`DB pool metrics collection failed: ${exportErrorText(err)}`, err);
+        if (!stopped) report(`collection failed: ${exportErrorText(err)}`, err);
       }
     },
     [connections, waiting, waitTime, waits],
@@ -110,4 +118,9 @@ export function registerDbPoolMetrics(
       .createObservableGauge("sin.db.pool.limit", { description: "The pool's configured connection limit" })
       .addCallback((result) => result.observe(limit));
   }
+  return {
+    stop: () => {
+      stopped = true;
+    },
+  };
 }

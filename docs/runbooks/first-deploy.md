@@ -320,7 +320,7 @@ commands) all need the same value, so export it once for the shell session, from
 repo root:
 
 ```bash
-export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
+export OWNER_DATABASE_URL='<the owner string, the direct host (no `-pooler` in its name), ending &sslaccept=strict>'
 ```
 
 The string must carry `sslmode=require&sslaccept=strict` (B1): the Prisma CLI reads the raw URL, so the wrapper these
@@ -622,7 +622,7 @@ the policies from `0020` do nothing until `0021`, which S7 applies **after** mer
 RLS stays off, so afterward the running API (still on the owner login) behaves as before.
 
 ```bash
-export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
+export OWNER_DATABASE_URL='<the owner string, the direct host (no `-pooler` in its name), ending &sslaccept=strict>'
 pnpm run db:migrate:status    # expect: only 0020 pending
 pnpm run db:migrate:deploy
 pnpm run db:migrate:status    # expect: up to date
@@ -679,7 +679,7 @@ unset OWNER_DATABASE_URL APP_ROLE_PASSWORD
 the moment it runs), from an up-to-date `main`:
 
 ```bash
-export OWNER_DATABASE_URL='<the owner string, the direct -pooler-free host, ending &sslaccept=strict>'
+export OWNER_DATABASE_URL='<the owner string, the direct host (no `-pooler` in its name), ending &sslaccept=strict>'
 pnpm run db:migrate:status    # expect: only 0021 pending
 pnpm run db:migrate:deploy
 pnpm --filter @sin/api run db:rls -- status    # expect: "target: … remote host ep-…" (this database's id), then 19 lines ending "on", no WARNING

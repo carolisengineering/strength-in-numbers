@@ -77,13 +77,13 @@ export function bareClientUses(p: ts.Program, files: readonly string[]): string[
   return out;
 }
 
-/** AC16: every `.shared()` call outside the handle itself, as `file#enclosing function`. */
-function sharedCallSites(files: readonly string[]): string[] {
+/** AC16: every `.<name>()` call outside the handle itself, as `file#enclosing function`. */
+function callSitesOf(name: "shared" | "crossUserMaintenance", files: readonly string[]): string[] {
   const out = new Set<string>();
   for (const file of files) {
     const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
     const visit = (node: ts.Node) => {
-      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "shared" && node.arguments.length === 0) {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === name && node.arguments.length === 0) {
         out.add(`${rel(file)}#${enclosingName(node)}`);
       }
       ts.forEachChild(node, visit);
@@ -139,15 +139,19 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
   });
 });
 
-describe("Spec 21.1 AC16 — shared() is only for the shared reference reads", () => {
-  it("the call sites are exactly the exercise reference reads and the operator scripts' cross-user listings", () => {
-    expect(sharedCallSites(filesIn(["src/repositories", "src/auth", "src/records", "src/account", "src/routes", "src/hevy"]))).toEqual([
-      "src/account/purge.ts#runPurge",
-      "src/records/rebuild.ts#rebuildRecords",
+describe("Spec 21.1 AC16 — minor 404: shared() is only for the shared reference reads", () => {
+  const SCANNED = ["src/repositories", "src/auth", "src/records", "src/account", "src/routes", "src/hevy"];
+
+  it("shared()'s call sites are exactly the exercise reference reads", () => {
+    expect(callSitesOf("shared", filesIn(SCANNED))).toEqual([
       "src/repositories/exercise.prisma.ts#listEquipment",
       "src/repositories/exercise.prisma.ts#listMuscleGroups",
       "src/repositories/exercise.prisma.ts#validateReferences",
     ]);
+  });
+
+  it("the operator scripts' cross-user listings use crossUserMaintenance(), and nothing else does", () => {
+    expect(callSitesOf("crossUserMaintenance", filesIn(SCANNED))).toEqual(["src/account/purge.ts#runPurge", "src/records/rebuild.ts#rebuildRecords"]);
   });
 
   it("the audit classifies the reference reads shared on purpose, and the listings cross-user maintenance", () => {

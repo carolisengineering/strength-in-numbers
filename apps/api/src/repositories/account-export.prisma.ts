@@ -6,7 +6,7 @@ import type { HevySectionRule } from "@sin/core";
 import { exerciseColumns, toExerciseRecord, type ExerciseDbRow } from "./exercise.prisma.js";
 import { ROUTINE_WITH_ITEMS, toRoutine, type RoutineDbRow } from "./routine.prisma.js";
 import { SET_ENTRY_COLUMNS, toSetRecord, type RawClient, type SetEntryDbRow } from "./set-entry.prisma.js";
-import { toUserRecord } from "./user.prisma.js";
+import { fromRow, USER_COLUMNS, type UserDbRow } from "./user.prisma.js";
 import {
   routineIsOneOffSql,
   WE_PLANNED_SETS,
@@ -89,7 +89,9 @@ export function createAccountExportRepository(
                        ORDER BY created_at, id), '[]'::json)
                  FROM "hevy_link" WHERE user_id = ${userId}::uuid) AS links`;
           const hevy = clock!;
-          const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+          // Minor 409: the same columns and mapper as every user read (`fromRow`), so the export and /me can't drift.
+          const [user] = await tx.$queryRaw<UserDbRow[]>`SELECT ${USER_COLUMNS} FROM "user" WHERE id = ${userId}::uuid`;
+          if (user === undefined) throw new Error("account export: the user row is gone");
           const exerciseRows = await tx.$queryRaw<ExerciseDbRow[]>`
             SELECT ${exerciseColumns()}
             FROM "exercise" WHERE owner_user_id = ${userId}::uuid
@@ -137,7 +139,7 @@ export function createAccountExportRepository(
           const links = hevy.links.map((l) => ({ ...l, synced_at: l.synced_at === null ? null : new Date(l.synced_at) }));
           return {
             exportedAt: clock!.exported_at,
-            user: toUserRecord(user),
+            user: fromRow(user),
             exercises: exerciseRows.map(toExerciseRecord),
             routines: routineRows.map(toRoutine),
             workouts,

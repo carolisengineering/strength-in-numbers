@@ -5,7 +5,7 @@ import { main as appRoleMain } from "../../src/db/app-role-cli.js";
 import { main as purgeMain } from "../../src/account/purge-cli.js";
 import { main as recordsMain } from "../../src/records/cli.js";
 import { main as seedMain } from "../../src/seed/cli.js";
-import { ownerDatabaseUrl, OWNER_URL_MISSING } from "../../src/db/owner-url.js";
+import { isLocalHost, ownerDatabaseUrl, OWNER_URL_MISSING, resolveOwnerUrl } from "../../src/db/owner-url.js";
 
 /**
  * Spec 21.1 AC28 — maintenance commands use only `OWNER_DATABASE_URL`. After the switch `DATABASE_URL` is the restricted
@@ -83,5 +83,55 @@ describe("Spec 21.1 AC28 — each maintenance CLI refuses a lone DATABASE_URL, w
   it("db:app-role", async () => {
     const io = { prompt: () => Promise.resolve(""), out: () => undefined, err: () => undefined, isTTY: false };
     expect(await appRoleMain([], LONE, { io, makePrisma })).toBe(1);
+  });
+});
+
+describe("minor 416 — resolveOwnerUrl", () => {
+  it("missing or empty: the one message", () => {
+    expect(resolveOwnerUrl({})).toEqual({ ok: false, error: OWNER_URL_MISSING });
+    expect(resolveOwnerUrl({ OWNER_DATABASE_URL: "" })).toEqual({ ok: false, error: OWNER_URL_MISSING });
+  });
+
+  it("a malformed URL is rejected, and nothing in the result holds its password or host", () => {
+    const r = resolveOwnerUrl({ OWNER_DATABASE_URL: "postgresql://neondb_owner:s3cr3t/pw@ep-example.neon.tech/neondb" });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toBe("OWNER_DATABASE_URL rejected");
+    expect(r.fields?.error_class).toBe("TypeError");
+    expect(JSON.stringify(r)).not.toMatch(/s3cr3t|neondb_owner|ep-example/);
+  });
+
+  it("a good URL: resolved (TLS backfilled), with its hostname and the secrets a message must never show", () => {
+    const r = resolveOwnerUrl({ OWNER_DATABASE_URL: "postgresql://o:p%40ss@ep-x.neon.tech/sin" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.url).toContain("sslmode=require");
+    expect(r.url).toContain("sslaccept=strict");
+    expect(r.hostname).toBe("ep-x.neon.tech");
+    expect(r.secrets).toEqual(expect.arrayContaining(["postgresql://o:p%40ss@ep-x.neon.tech/sin", r.url, "p%40ss", "p@ss", "ep-x.neon.tech"]));
+  });
+});
+
+describe("minor 441 — one list of local hosts", () => {
+  it("Review Focus 2: localhost, 127.0.0.1, [::1] and the compose service db are local; a bare ::1 and a Neon host are not", () => {
+    for (const host of ["localhost", "127.0.0.1", "[::1]", "db"]) expect(isLocalHost(host), host).toBe(true);
+    for (const host of ["::1", "ep-x.neon.tech"]) expect(isLocalHost(host), host).toBe(false);
+    expect(new URL("postgresql://o:p@[::1]:5433/sin").hostname).toBe("[::1]");
+  });
+
+  it("owner-url.ts and database-url.ts import nothing from Prisma (deploy-prod runs with no generated client)", () => {
+    for (const file of ["../../src/db/owner-url.ts", "../../src/db/database-url.ts"]) {
+      const source = readFileSync(new URL(file, import.meta.url), "utf8");
+      expect(source, file).not.toMatch(/from "@prisma\/client"|from "\.\.\/db\.js"/);
+    }
+  });
+});
+
+describe("minor 416 (final review) — a password that isn't valid percent-encoding resolves as before", () => {
+  it("postgresql://o:p%zz@h/d: resolved, its raw password among the secrets", () => {
+    const r = resolveOwnerUrl({ OWNER_DATABASE_URL: "postgresql://o:p%zz@h/d" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.secrets).toContain("p%zz");
   });
 });

@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { OWNER_URL_MISSING } from "../../src/db/owner-url.js";
+import { LOCAL_HOSTS, OWNER_URL_MISSING } from "../../src/db/owner-url.js";
 
 /**
  * Spec 21.1 AC28, §6.8 — `scripts/owner-env.mjs` runs the repo-pinned Prisma with `DATABASE_URL` set from
@@ -13,6 +13,7 @@ const SCRIPT = fileURLToPath(new URL("../../scripts/owner-env.mjs", import.meta.
 
 interface OwnerEnvModule {
   OWNER_URL_MISSING: string;
+  LOCAL_HOSTS: ReadonlySet<string>;
   resolveOwnerEnv(env: Record<string, string | undefined>): { ok: true; env: Record<string, string | undefined> } | { ok: false; error: string };
 }
 const load = async () => (await import(SCRIPT)) as OwnerEnvModule;
@@ -26,6 +27,10 @@ function run(env: Record<string, string>, code: string) {
 describe("Spec 21.1 AC28 — owner-env", () => {
   it("its message is the library's, exactly", async () => {
     expect((await load()).OWNER_URL_MISSING).toBe(OWNER_URL_MISSING);
+  });
+
+  it("minor 441 — its local hosts are the library's, exactly", async () => {
+    expect([...(await load()).LOCAL_HOSTS].sort()).toEqual([...LOCAL_HOSTS].sort());
   });
 
   it("resolveOwnerEnv maps the owner URL to DATABASE_URL and does not change the real environment", async () => {

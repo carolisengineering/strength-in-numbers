@@ -53,12 +53,21 @@ describe.skipIf(!shouldRunIntegration())("Spec 13.3 — pool metrics on real Pos
     await db?.stop();
   });
 
-  it("AC7 — an idle client: two collections issue no SQL and open no session", async () => {
-    expect(await metricPoints(h.reader, METRIC_NAMES.dbPoolConnections)).toEqual([]);
-    expect(await metricPoints(h.reader, METRIC_NAMES.dbPoolConnections)).toEqual([]);
-    expect(queries).toEqual([]);
-    expect(jsonCalls).toBe(0);
-    expect(await sessions()).toBe(0);
+  /** Minor 362: the sessions a failing count saw (application name, state, query start), never a URL. */
+  const sessionRows = async (): Promise<string> =>
+    JSON.stringify(
+      await checker.$queryRaw<{ application_name: string; state: string | null; query_start: Date | null }[]>`
+        SELECT application_name, state, query_start FROM pg_stat_activity
+        WHERE datname = 'sin_test' AND backend_type = 'client backend' AND pid <> pg_backend_pid()`,
+    );
+
+  it("AC7 — minor 362: an idle client: two collections issue no SQL and open no session", async () => {
+    expect(await metricPoints(h.reader, METRIC_NAMES.dbPoolConnections), "pool series on the first collection, before any query").toEqual([]);
+    expect(await metricPoints(h.reader, METRIC_NAMES.dbPoolConnections), "pool series on the second collection, before any query").toEqual([]);
+    expect(queries, "SQL the collections issued").toEqual([]);
+    expect(jsonCalls, "$metrics.json() calls before the engine started").toBe(0);
+    const open = await sessions();
+    expect(open, open === 0 ? "" : `sessions the collections opened: ${await sessionRows()}`).toBe(0);
   });
 
   it("AC7 — after the first query the pool series appear, and collecting adds no SQL", async () => {

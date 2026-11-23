@@ -103,6 +103,15 @@ describe("Spec 21.1 AC9 — one handle, two entry points", () => {
     expect(fake.txOptions).toEqual([]);
   });
 
+  it("minor 404 — crossUserMaintenance() is the root client too: no transaction, no setting, in both factories", async () => {
+    const fake = new FakePrisma();
+    await createScopedDb(asPrisma(fake)).crossUserMaintenance().$queryRaw`SELECT 1`;
+    expect(fake.log).toEqual([{ sql: "SELECT 1", values: [] }]);
+    expect(fake.txOptions).toEqual([]);
+    const bare = asPrisma(new FakePrisma());
+    expect(toScoped(bare).crossUserMaintenance()).toBe(bare);
+  });
+
   it("a scoped $transaction sends set_config first, then hands the callback the ordinary transaction client", async () => {
     const fake = new FakePrisma();
     const id = parseUserId(uuidv7());

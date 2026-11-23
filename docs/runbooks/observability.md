@@ -164,7 +164,9 @@ still starts, but every export is refused (401) until the header is set.
 After the restart, the API log has no `ConfigError`. Any later export failure shows as one
 `warn` line per signal per 5 minutes: `telemetry export problem: …` with `signal`. Other SDK
 warnings have their own line, at most one per 5 minutes: `telemetry SDK warning: …` with
-`signal: "sdk"` (#126). They never hide an export failure.
+`signal: "sdk"` (#126). They never hide an export failure. A failure to read the database pool's
+numbers (Spec 13.3) has its own line too, at most one per 5 minutes: `DB pool metrics problem: …` with
+`signal: "db_pool"` (minor 359).
 
 ## 4. Import dashboards and alerts
 

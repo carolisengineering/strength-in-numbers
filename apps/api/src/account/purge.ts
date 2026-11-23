@@ -117,10 +117,10 @@ export async function runPurge(
   hooks: PurgeHooks = {},
 ): Promise<PurgeSummary> {
   // Spec 21.1 §6.8: an operator command on the owner login. Listing the eligible accounts is cross-user, so it runs
-  // unscoped (`shared()`); everything about one account runs on `as(account)`.
+  // unscoped (`crossUserMaintenance()`, minor 404); everything about one account runs on `as(account)`.
   const scoped = toScoped(db);
   const graceSeconds = graceSecondsFor(opts.skipGrace);
-  const listed = await listEligible(scoped.shared(), graceSeconds, opts.userId ?? null);
+  const listed = await listEligible(scoped.crossUserMaintenance(), graceSeconds, opts.userId ?? null);
   const summary: PurgeSummary = { dryRun: !opts.confirm, listed, purged: 0, skipped: 0, failed: 0, targetMissed: false };
 
   for (const a of listed) {

@@ -49,6 +49,23 @@ export class DatabaseLoginRejectedError extends ConfigError {
 }
 
 /**
+ * Minor 411: a database that doesn't exist, or a URL Prisma can't parse, will not fix itself, so it is a verdict at once
+ * rather than 20 s of retries ending in "could not reach". One fixed line each, naming no URL, host or password.
+ */
+export class DatabaseMisconfiguredError extends ConfigError {
+  readonly kind: "missing-database" | "invalid-url";
+  constructor(kind: "missing-database" | "invalid-url") {
+    const message =
+      kind === "missing-database"
+        ? "Refusing to start: the database named in DATABASE_URL does not exist (docs/runbooks/first-deploy.md)."
+        : "Refusing to start: DATABASE_URL is not a valid database URL.";
+    super([message]);
+    this.kind = kind;
+    this.message = message;
+  }
+}
+
+/**
  * Gave up after the retries. One fixed line that keeps only Prisma's code, not its message, which names the host (Spec 15
  * §7). The client's own `log` option still prints a `prisma:error` line for each failed attempt, as it does for any
  * database error while the API runs.
@@ -72,6 +89,13 @@ const TRANSIENT_SQLSTATES = new Set(["57P01", "57P02", "57P03"]);
 /** Prisma 6.19 gives these no error code through $queryRaw: wrong password or no password ("Authentication failed…"), and a
  * NOLOGIN role that has a password ("User was denied access…"). login-check.integration.test.ts pins both on a real server. */
 const REJECTED_LOGIN_TEXT = /Authentication failed against database server|User was denied access on the database/;
+/**
+ * Minor 411: Prisma 6.19's init errors through $queryRaw, pinned on the compose Postgres by login-check.integration.test.ts
+ * ("Database `sin_missing_411` does not exist"; "The provided database string is invalid. Error parsing connection
+ * string: invalid port number …"). A TLS failure stays retried: only Neon can show its wording, so nothing pins it here.
+ */
+const MISSING_DATABASE_TEXT = /Database `[^`]*` does not exist/;
+const INVALID_URL_TEXT = /The provided database string is invalid/;
 
 interface RoleRow {
   rolname: string;
@@ -145,6 +169,13 @@ function isRejectedLogin(err: unknown): boolean {
   return false;
 }
 
+function misconfiguration(err: unknown): "missing-database" | "invalid-url" | null {
+  if (!(err instanceof Prisma.PrismaClientInitializationError)) return null;
+  if (MISSING_DATABASE_TEXT.test(err.message)) return "missing-database";
+  if (INVALID_URL_TEXT.test(err.message)) return "invalid-url";
+  return null;
+}
+
 /** What a give-up line may say about the error: its Prisma code or class, never its message. */
 function errorDetail(err: unknown): string {
   const { code, errorCode } = err as { code?: unknown; errorCode?: unknown };
@@ -186,6 +217,8 @@ export async function assertLoginCannotBypassRls(
     } catch (err) {
       if (err instanceof AttemptTimedOut) throw new DatabaseUnreachableError(Math.round(deadlineMs / 1000), "timed out");
       if (isRejectedLogin(err)) throw new DatabaseLoginRejectedError();
+      const misconfigured = misconfiguration(err);
+      if (misconfigured !== null) throw new DatabaseMisconfiguredError(misconfigured);
       if (!isConnectivity(err)) throw err;
       if (now() + delay - started > deadlineMs) throw new DatabaseUnreachableError(Math.round(deadlineMs / 1000), errorDetail(err));
       await sleep(delay);
