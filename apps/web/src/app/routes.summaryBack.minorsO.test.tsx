@@ -36,6 +36,8 @@ const NEWER = finished(5, "Newer push");
 type App = ReturnType<typeof renderApp>;
 
 async function deleteHere({ user }: App) {
+  // The live session has its own Workout menu: wait until the summary has replaced it (slow CI runners).
+  await screen.findByRole("heading", { level: 1, name: "Workout summary" }, { timeout: 5000 });
   await user.click(await screen.findByRole("button", { name: "Workout menu" }));
   await user.click(await screen.findByRole("button", { name: "Delete workout" }));
   await user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
