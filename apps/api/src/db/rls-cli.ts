@@ -36,11 +36,6 @@ export function parseRlsArgs(argv: readonly string[]): { ok: true; command: RlsC
   return args.length === 1 && command !== undefined ? { ok: true, command } : { ok: false, error: USAGE };
 }
 
-/**
- * A run that acted on the wrong database must show it. Staging and production can both be `neondb` / `neondb_owner`, so a
- * remote target also shows the host's first label, Neon's endpoint id; the region and domain stay out of the output.
- */
-
 function describeStatus(status: readonly RlsTableStatus[]): string {
   const width = Math.max(...status.map((s) => s.table.length)) + 2;
   const lines = status.map((s) => `${s.table.padEnd(width)}${s.enabled ? "on" : "OFF"}\n`).join("");
@@ -65,6 +60,8 @@ export async function main(
     return 1;
   }
   const { url, secrets } = owner;
+  // A run that acted on the wrong database must show it. Staging and production can both be `neondb` / `neondb_owner`, so
+  // a remote target also shows the host's first label, Neon's endpoint id; the region and domain stay out of the output.
   const where = isLocalHost(owner.hostname) ? "local host" : `remote host ${owner.hostname.split(".")[0]}`;
 
   const owned = deps.makePrisma === undefined;

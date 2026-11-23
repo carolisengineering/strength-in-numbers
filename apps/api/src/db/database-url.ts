@@ -1,10 +1,8 @@
 // apps/api/src/db/database-url.ts
 /**
- * No `@prisma/client` import (minor 416): `owner-url.ts` resolves the owner URL through this, and `deploy-prod` runs
- * `check-migrate-status.ts` with no generated client.
- */
-/**
- * Prisma client + readiness probe (Spec 01 §6.4, §8 Q9).
+ * The database URL resolver (Spec 01 §6.4, §8 Q9; moved here from `db.ts`, minor 416). No `@prisma/client` import, ever:
+ * `owner-url.ts` resolves the owner URL through this, and `deploy-prod` runs `check-migrate-status.ts` with no generated
+ * client. The Prisma client and the readiness probe stay in `db.ts`.
  *
  * Render's managed Postgres caps connections low and requires TLS, but its
  * blueprint hands us the raw connection string. We backfill `sslmode=require`
