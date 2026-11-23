@@ -20,7 +20,7 @@ vi.mock("../../observability/reportError", () => ({ reportError: observability.r
 import { onlineManager } from "@tanstack/react-query";
 import { localStorageAdapter } from "../../storage/storage";
 import { USER_ID } from "../../test/catalogHarness";
-import { finishButton } from "../../test/sessionHelpers";
+import { finishButton, logButton } from "../../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail, type ExerciseSpec } from "../../test/workoutFixtures";
 import { createWorkoutFake } from "../../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../../test/workoutHarness";
@@ -182,5 +182,20 @@ describe("06.7 AC34 — accessibility", () => {
     const region = screen.getByTestId("finish-saved");
     expect(region).toHaveAttribute("role", "status");
     expect(region).not.toHaveAttribute("aria-live", "assertive");
+  });
+});
+
+describe("minor 641 — a set queued offline before the Finish tap is on the summary", () => {
+  it("log a set with no signal, tap Finish: the summary lists it", async () => {
+    const { active, user, router } = await setup({ offline: true });
+    await user.click(logButton("X"));
+    await waitFor(() => expect(storedOps().some((o) => (o.kind as string) === "create")).toBe(true));
+
+    await user.click(finishButton());
+    await user.click(within(dialog()).getByRole("button", { name: "Finish" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/workouts/${active.id}`));
+    const exercise = await screen.findByRole("region", { name: "X" });
+    expect(within(exercise).getAllByRole("listitem")).toHaveLength(2);
   });
 });

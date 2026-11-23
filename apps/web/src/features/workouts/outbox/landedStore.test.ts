@@ -107,3 +107,56 @@ describe("06.7 AC27 — the landed store (sin:workout:landed)", () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("minor 630 — the landed store and storage failures (Spec 06.7 §6.9, amended 2026-11-22)", () => {
+  it("a second tab's entry survives: each write re-reads the file", () => {
+    const storage = memoryStorageAdapter();
+    const a = createLandedStore({ storage, userId: "u1", report: vi.fn() });
+    const b = createLandedStore({ storage, userId: "u1", report: vi.fn() });
+    a.add(item("w1"));
+    b.add(item("w2"));
+    const third = createLandedStore({ storage, userId: "u1", report: vi.fn() });
+    expect(third.list().map((x) => x.workoutId)).toEqual(["w2", "w1"]);
+  });
+
+  it("a removal in one tab keeps the other tab's newer entry", () => {
+    const storage = memoryStorageAdapter();
+    const a = createLandedStore({ storage, userId: "u1", report: vi.fn() });
+    a.add(item("w1"));
+    const b = createLandedStore({ storage, userId: "u1", report: vi.fn() });
+    b.add(item("w2"));
+    a.remove("w1");
+    expect(createLandedStore({ storage, userId: "u1", report: vi.fn() }).list().map((x) => x.workoutId)).toEqual(["w2"]);
+  });
+
+  it("when storage can't be written, the line still shows for this page load", () => {
+    const storage: StorageAdapter = {
+      ...memoryStorageAdapter(),
+      set: () => {
+        throw new Error("quota");
+      },
+    };
+    const { store, report } = setup(storage);
+    store.add(item("w1"));
+    store.add(item("w2"));
+    expect(store.list().map((x) => x.workoutId)).toEqual(["w2", "w1"]);
+    expect(report).toHaveBeenCalledOnce();
+  });
+
+  it("Review Focus 5: a read that fails during a write keeps the entries in memory", () => {
+    const inner = memoryStorageAdapter();
+    let reads = 0;
+    const storage: StorageAdapter = {
+      ...inner,
+      get: (key) => {
+        reads += 1;
+        if (reads > 1) throw new Error("read failed");
+        return inner.get(key);
+      },
+    };
+    const { store } = setup(storage);
+    store.add(item("w1"));
+    store.add(item("w2"));
+    expect(store.list().map((x) => x.workoutId)).toEqual(["w2", "w1"]);
+  });
+});

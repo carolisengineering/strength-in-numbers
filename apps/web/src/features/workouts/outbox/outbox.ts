@@ -14,7 +14,7 @@ import { track } from "../../../observability/track";
 import { LEGACY_OUTBOX_FILE, OUTBOX_FILE_PREFIX } from "../../../storage/clearUserData";
 import { watchExternalWrites, type StorageAdapter } from "../../../storage/storage";
 import type { SendOptions, WorkoutClient } from "../workoutClient";
-import { backoffMs, classify, failureOf } from "./classify";
+import { backoffMs, classify, failureOf, lostSession } from "./classify";
 import {
   combine,
   isFinishOp,
@@ -166,6 +166,18 @@ export type TestableOutbox = Outbox & {
 const EMPTY: { ops: readonly OutboxOp[]; idMap: IdMap } = { ops: [], idMap: {} };
 
 /**
+ * Minor 633 (code review): an op that failed on a lost sign-in goes back to the queue on load and on Retry now. Nothing
+ * else would send it, and a finish of its workout waits behind it (`sendable`), so leaving it failed would strand the
+ * finish. Every other failure stays failed for the lifter to see (Spec 06.2 AC5).
+ */
+function requeueLost(op: OutboxOp, now: number): OutboxOp {
+  if (op.status !== "failed" || !lostSession(op.failure)) return op;
+  const requeued = { ...op, status: "queued" as const, attempted: true, nextAttemptAt: now };
+  delete requeued.failure;
+  return requeued as OutboxOp;
+}
+
+/**
  * The persisted queue of set writes (Spec 06.2 §6). React-free: the provider wires it to TanStack
  * Query; tests drive it with `memoryStorageAdapter()`, a stub REST client and fake timers.
  */
@@ -178,6 +190,10 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
   const listeners = new Set<() => void>();
   let storageOk = true;
   let draining = false;
+  /** Minor 618: Retry now was tapped during a send; if that send goes back to the queue, it goes again at once. */
+  let retryRequested = false;
+  /** Set when the flag was spent: the drain loop's next attempt is forced, even offline, as Retry now's is. */
+  let retryForced = false;
   let stopped = true;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -223,7 +239,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
   const ownOps = (parsed: NonNullable<ReturnType<typeof parseOutboxFile>>): { ops: readonly OutboxOp[]; idMap: IdMap } => ({
     ops: parsed.ops
       .filter((op) => op.userId === userId)
-      .map((op) => (op.status === "sending" ? { ...op, status: "queued" as const, attempted: true } : op)),
+      .map((op) => (op.status === "sending" ? { ...op, status: "queued" as const, attempted: true } : requeueLost(op, Date.now()))),
     idMap: parsed.idMap,
   });
 
@@ -396,6 +412,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     const timedOut = new Promise<never>((_, reject) => {
       deadline = setTimeout(() => {
         controller.abort();
+        // Minor 622 (won't fix): a fresh id, not the sent one; nothing surfaces it. Carry the sent id through before showing it.
         reject(ApiError.network(newRequestId(), new Error("outbox send timed out")));
       }, SEND_TIMEOUT_MS);
     });
@@ -459,13 +476,14 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
 
   /**
    * Spec 06.7 AC2: a finish whose workout has a failed op can't go without it (that would drop a write the lifter
-   * believes is saved): it fails too, with the same failure and `blockedBy` naming the op.
+   * believes is saved): it fails too, with the same failure and `blockedBy` naming the op. An op that failed on a lost
+   * sign-in doesn't count (minor 633): the finish stays queued behind it, and `sendable` keeps it waiting.
    */
   function blockFinishes(error: unknown): void {
     const blocked: FinishOp[] = [];
     const ops = state.ops.map((o) => {
       if (!isFinishOp(o) || o.status === "failed") return o;
-      const root = state.ops.find((r) => !isFinishOp(r) && r.workoutId === o.workoutId && r.status === "failed");
+      const root = state.ops.find((r) => !isFinishOp(r) && r.workoutId === o.workoutId && r.status === "failed" && !lostSession(r.failure));
       if (!root) return o;
       // `failure` is optional in the file: a failed op without one must still block, or the finish would wait forever.
       const failure = root.failure ?? { status: 0, type: "unknown", requestId: null };
@@ -513,6 +531,15 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
   /** Back to the queue with 06.2's backoff, never sooner than the server's Retry-After (Spec 05.2 AC14). */
   function retryLater(op: OutboxOp, attempts: number, error: unknown): void {
     const floor = error instanceof ApiError ? (error.retryAfterMs ?? 0) : 0;
+    // Minor 618: Retry now was tapped while this op was sending; it goes again at once, as the tap asked, unless the
+    // server's answer asked for a wait the lifter never saw (Spec 05.2 AC14).
+    if (retryRequested && floor === 0) {
+      retryRequested = false;
+      retryForced = true;
+      patchOp(op.id, { status: "queued", nextAttemptAt: Date.now() });
+      return;
+    }
+    retryRequested = false;
     patchOp(op.id, { status: "queued", nextAttemptAt: Date.now() + Math.max(backoffMs(attempts, random), floor) });
   }
 
@@ -607,6 +634,12 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
         }
         forced = false;
         await send(op);
+        // Minor 618: the flag belongs to the send it was tapped during, whatever its outcome.
+        retryRequested = false;
+        if (retryForced) {
+          retryForced = false;
+          forced = true;
+        }
       }
     } finally {
       draining = false;
@@ -721,9 +754,10 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       }
     },
     retryNow: () => {
+      if (draining) retryRequested = true;
       clearTimer();
       const now = Date.now();
-      set({ ops: state.ops.map((o) => (o.status === "queued" ? { ...o, nextAttemptAt: now } : o)) });
+      set({ ops: state.ops.map((o) => (o.status === "queued" ? { ...o, nextAttemptAt: now } : requeueLost(o, now))) });
       void drain({ force: true });
     },
     start: () => {

@@ -1,11 +1,11 @@
-import { useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
 import type { UpdatedWorkout, WorkoutDetail } from "@sin/core";
 
 import { Button } from "../../../ui/Button";
 import { Field } from "../../../ui/Field";
 import { Sheet } from "../../../ui/Sheet";
-import { SheetActions, sheetError } from "../../../ui/SheetActions";
+import { SheetActions, sheetError, type SheetError } from "../../../ui/SheetActions";
 import { EDIT_COPY } from "../edit/editCopy";
 import { reportUnexpected } from "../reportUnexpected";
 import {
@@ -47,9 +47,13 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
   const [form, setForm] = useState<ChangeTimeForm>(() => initialValues(workout));
   const formId = useId();
   const [errors, setErrors] = useState<ChangeTimeErrors>({});
-  const [requestId, setRequestId] = useState<string | null>(null);
-  // Minor 558: every stored errors object is one Save's or check's answer, so its form line is a new failure.
-  const formError = useMemo(() => (errors.form ? sheetError(errors.form, requestId) : null), [errors, requestId]);
+  // Minor 573: built when the failure happens, never per render. Minor 558: every answer is a new object, so a repeated
+  // failure is heard again.
+  const [formError, setFormError] = useState<SheetError | null>(null);
+  function showErrors(next: ChangeTimeErrors, requestId: string | null = null) {
+    setErrors(next);
+    setFormError(next.form ? sheetError(next.form, requestId) : null);
+  }
   const inFlight = useRef(false);
   // Took inputs the browser cannot read as a number (`badInput`) report "", which must not count as blank.
   const [unreadable, setUnreadable] = useState({ hours: false, minutes: false });
@@ -60,19 +64,19 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
     const field: ChangeTimeField = key === "hours" || key === "minutes" ? "took" : key;
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => ({ ...e, [field]: undefined, form: undefined }));
-    setRequestId(null);
+    setFormError(null);
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (inFlight.current) return;
     if (unreadable.hours || unreadable.minutes) {
-      setErrors({ took: EDIT_COPY.tookWhole });
+      showErrors({ took: EDIT_COPY.tookWhole });
       return;
     }
     const built = buildPatch(workout, form);
     if (!built.ok) {
-      setErrors(built.errors);
+      showErrors(built.errors);
       return;
     }
     if (built.patch === null) {
@@ -81,12 +85,11 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
     }
     const rejected = validate(workout, built.patch, new Date());
     if (rejected !== null) {
-      setErrors(rejected);
+      showErrors(rejected);
       return;
     }
     inFlight.current = true;
-    setErrors({});
-    setRequestId(null);
+    showErrors({});
     try {
       await mutation.mutateAsync({ workout, patch: built.patch });
       onClose();
@@ -98,10 +101,9 @@ export function ChangeTimeSheet({ open, workout: latest, mutation, onClose, onSa
         onClose();
         onVanished();
       } else if (failure.type === "fields") {
-        setErrors(failure.errors);
+        showErrors(failure.errors);
       } else {
-        setErrors({ form: failure.text });
-        setRequestId(failure.requestId);
+        showErrors({ form: failure.text }, failure.requestId);
       }
     } finally {
       inFlight.current = false;

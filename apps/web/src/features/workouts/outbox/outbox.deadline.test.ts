@@ -191,3 +191,94 @@ describe("06.7 AC5 — the REST write methods forward an optional signal to api.
     expect(calls[8]!.options.body).toStrictEqual({ endedAt: "2026-11-08T10:00:00.000Z" });
   });
 });
+
+describe("minor 618 — Retry now during a hung send", () => {
+  it("the op goes as soon as the hung send gives up, with no backoff", async () => {
+    const h = hangingRest();
+    const outbox = make({ rest: h.rest });
+    outbox.start();
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.createSet).toHaveBeenCalledTimes(1);
+    outbox.retryNow();
+    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(1);
+    // Today it waits out backoffMs(1, 0.5) = 1000 ms first.
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+  });
+
+  it("it goes even offline, as Retry now does", async () => {
+    let online = true;
+    const h = hangingRest();
+    const outbox = make({ rest: h.rest, isOnline: () => online });
+    outbox.start();
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
+    await vi.advanceTimersByTimeAsync(0);
+    online = false;
+    outbox.retryNow();
+    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS + 1);
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+  });
+
+  it("Review Focus 4: the flag is spent on that send; the next ordinary retry backs off", async () => {
+    const h = hangingRest();
+    const outbox = make({ rest: h.rest });
+    outbox.start();
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
+    await vi.advanceTimersByTimeAsync(0);
+    outbox.retryNow();
+    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS + 1);
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+    // The forced retry hangs too and gives up: backoffMs(2, 0.5) = 2000 ms before the third.
+    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS + 1);
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(h.createSet).toHaveBeenCalledTimes(3);
+  });
+
+  it("Review Focus 4: a Retry now whose send succeeds leaves nothing behind for a later failure", async () => {
+    const h = hangingRest();
+    const outbox = make({ rest: h.rest });
+    outbox.start();
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
+    await vi.advanceTimersByTimeAsync(0);
+    outbox.retryNow();
+    h.pending[0]!.resolve(makeSet({ id: S1, clientGeneratedId: KEY }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outbox.getState().ops).toEqual([]);
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: { ...body(), clientGeneratedId: "30000000-0000-4000-8000-000000000002" } });
+    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS + 1);
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+    // That send went at 0 ms and gave up at SEND_TIMEOUT_MS: backoffMs(1, 0.5) = 1000 ms, so the next goes at 21 s.
+    await vi.advanceTimersByTimeAsync(998);
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.createSet).toHaveBeenCalledTimes(3);
+  });
+
+  it("final review: a Retry now tapped before the server answered 429 still waits out Retry-After (Spec 05.2 AC14)", async () => {
+    const h = hangingRest();
+    const outbox = make({ rest: h.rest });
+    outbox.start();
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
+    await vi.advanceTimersByTimeAsync(0);
+    outbox.retryNow();
+    h.pending[0]!.reject(new ApiError({ status: 429, type: "about:blank", title: "t", requestId: "r", retryAfterMs: 30_000 }));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.createSet).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+  });
+
+  it("Review Focus 4: Retry now with nothing sending sends a queued op at once (unchanged)", async () => {
+    const h = hangingRest();
+    const outbox = make({ rest: h.rest, isOnline: () => false });
+    outbox.start();
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.createSet).not.toHaveBeenCalled();
+    outbox.retryNow();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.createSet).toHaveBeenCalledTimes(1);
+  });
+});
