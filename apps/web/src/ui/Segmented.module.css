@@ -32,7 +32,8 @@
 
 /* Four options are 4 across or 2 × 2, never 3 + 1: below the strip minimum the track floor is half the width. */
 .four {
-  grid-template-columns: repeat(auto-fit, minmax(max(var(--segment-min-width), min(calc(50% - 1px), calc((var(--segment-strip-min) - 100%) * 999))), 1fr));
+  /* Minor 443: capped at the strip's own width, so a strip narrower than the floor stacks instead of overflowing. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(var(--segment-min-width), min(calc(50% - 1px), calc((var(--segment-strip-min) - 100%) * 999)))), 1fr));
 }
 
 .option {

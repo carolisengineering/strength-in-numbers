@@ -1,4 +1,5 @@
 import { kgToLb, LB_TO_KG, RECORD_TYPE_VALUES, type PersonalRecord, type RecordType, type UnitPreference } from "@sin/core";
+import { reportError } from "../../observability/reportError";
 import { formatRecordByType, formatWeightKgPrecise } from "../units/format";
 
 export function recordLabel(type: RecordType): string {
@@ -21,8 +22,12 @@ export function recordLabel(type: RecordType): string {
       // Spec 07.5 R3: the type alone, for places with no record in hand; a row names its weight (`recordRowLabel`).
       return "Most reps at a weight";
     default: {
+      // Minor 680: still exhaustive at compile time, but a type a newer server sends (past the tolerant parse) gets a
+      // generic label rather than throwing while a summary renders. Static tags only (DESIGN §8.1).
       const unreachable: never = type;
-      throw new Error(`Unhandled record type: ${String(unreachable)}`);
+      void unreachable;
+      reportError(new Error("unknown record type"), { source: "records", op: "unknown-record-type" });
+      return "Record";
     }
   }
 }

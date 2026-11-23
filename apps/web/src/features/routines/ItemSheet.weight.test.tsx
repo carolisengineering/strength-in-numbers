@@ -131,3 +131,17 @@ describe("10.2 AC18 — stored values the exercise cannot carry are cleaned by a
     expect(onPlanned).toHaveBeenCalledWith({ mode: "quick", weight: null, weightUnit: null });
   });
 });
+
+describe("minor 444 — two unit strips don't share a radio group", () => {
+  it("two item sheets at once: their Weight unit radios have different names", () => {
+    render(
+      <>
+        <ItemSheet open title="Bench Press" item={item()} modality="weight_reps" onDone={vi.fn()} onPlanned={vi.fn()} onClose={vi.fn()} />
+        <ItemSheet open title="Row" item={item()} modality="weight_reps" onDone={vi.fn()} onPlanned={vi.fn()} onClose={vi.fn()} />
+      </>,
+    );
+    const names = screen.getAllByRole("group", { name: "Weight unit" }).map((g) => within(g).getAllByRole("radio")[0]!.getAttribute("name"));
+    expect(names).toHaveLength(2);
+    expect(names[0]).not.toBe(names[1]);
+  });
+});

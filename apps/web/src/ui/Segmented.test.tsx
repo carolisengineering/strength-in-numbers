@@ -178,3 +178,9 @@ describe("17.7 AC1 — disabled", () => {
     expect(ruleFor(".option:has(.radio:disabled)")).toMatch(/color:\s*var\(--color-muted\)/);
   });
 });
+
+describe("minor 443 — the four-option floor is capped at the strip's width", () => {
+  it("below about 161 px the four options stack instead of overflowing", () => {
+    expect(ruleFor(".four")).toMatch(/minmax\(min\(100%,\s*max\(var\(--segment-min-width\)/);
+  });
+});

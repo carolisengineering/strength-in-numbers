@@ -1,9 +1,11 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useMatch } from "react-router";
 
 import { useIsDesktop } from "../../ui/breakpoints";
 import { Panes } from "../../ui/Panes";
 import { useSelectedId } from "../../ui/selection";
 import { mostRecentLoggedId } from "./exerciseRows";
+import { ExercisesLayoutContext } from "./exercisesLayoutState";
 import { ExercisesListScreen, type ExercisesView } from "./ExercisesListScreen";
 import { EXERCISES_PATH, isFromRecords, RECORDS_PATH } from "./paths";
 import { useExerciseList } from "./useExerciseList";
@@ -25,9 +27,31 @@ export function ExercisesLayout() {
   const routeId = onRecords ? null : (match?.params.id ?? null);
   const { rows, usage } = useExerciseList({ enabled: wide });
   const recent = usage.data === undefined ? null : mostRecentLoggedId(rows, usage.data);
-  const selectedId = useSelectedId(routeId, recent === null ? NONE : [recent]);
+  const derived = useSelectedId(routeId, recent === null ? NONE : [recent]);
+  // Minor 659: a page deleting the exercise that opened by default holds it until the delete's navigation, or the row
+  // leaving the catalog would move the derived selection first and unmount the page and its dialog.
+  // Tied to the entry it was taken on, so it lapses in the very render the navigation lands (an effect would leave one
+  // render where the index mounts the deleted exercise's page afresh and flashes its deleted variant).
+  const [held, setHeld] = useState<{ id: string; key: string } | null>(null);
+  const hold = useCallback((id: string | null) => setHeld(id === null ? null : { id, key: location.key }), [location.key]);
+  useEffect(() => setHeld(null), [location.key]);
+  const selectedId = held !== null && held.key === location.key ? held.id : derived;
+  // Minor 662: the search text lives here, so the list keeps it when a resize moves it between the index and the pane.
+  // Below 64rem every navigation clears it, as when the phone's list unmounted and came back.
+  const [query, setQuery] = useState("");
+  const lastPath = useRef(location.pathname);
+  useEffect(() => {
+    if (lastPath.current === location.pathname) return;
+    lastPath.current = location.pathname;
+    if (!wide) setQuery("");
+  }, [location.pathname, wide]);
+  const state = useMemo(() => ({ hold, query, setQuery }), [hold, query]);
   const listView: ExercisesView = onRecords || (routeId !== null && isFromRecords(location.state)) ? "records" : "all";
-  return <Panes list={<ExercisesListScreen view={listView} />} selectedId={selectedId} />;
+  return (
+    <ExercisesLayoutContext.Provider value={state}>
+      <Panes list={<ExercisesListScreen view={listView} />} selectedId={selectedId} />
+    </ExercisesLayoutContext.Provider>
+  );
 }
 
 const NONE: readonly string[] = [];

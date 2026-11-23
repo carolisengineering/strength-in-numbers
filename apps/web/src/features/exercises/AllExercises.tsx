@@ -17,6 +17,7 @@ import { reportUnexpected } from "../workouts/reportUnexpected";
 import styles from "./AllExercises.module.css";
 import { metaLine } from "./exerciseRows";
 import { useExercisesTitle } from "./exercisesTitle";
+import { useExercisesLayoutState } from "./exercisesLayoutState";
 import { EXERCISES_COPY } from "./messages";
 import { exercisePath } from "./paths";
 import { useExerciseList } from "./useExerciseList";
@@ -93,7 +94,8 @@ function ExerciseList({ onSearch }: { onSearch: () => void }) {
   const muscles = useMuscleGroups();
   const equipment = useEquipment();
   const navigate = useNavigate();
-  const [query, setQuery] = useState("");
+  // Minor 662: held by the layout, so a resize across 64rem keeps it.
+  const { query, setQuery } = useExercisesLayoutState();
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {

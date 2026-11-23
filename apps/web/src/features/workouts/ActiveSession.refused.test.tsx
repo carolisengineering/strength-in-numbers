@@ -156,7 +156,7 @@ describe("06.7 AC29 — Review Focus 3 and 4: a set refused behind a waiting fin
     // Review Focus 3: the summary can't stay on a workout that isn't finished.
     await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
     const alert = await banner();
-    expect(alert).toHaveTextContent(`${REFUSED_LEAD} ${refusedBlocked(1)}`);
+    expect(alert).toHaveTextContent(`${REFUSED_LEAD} ${refusedBlocked(1, 1)}`);
     expect(finishButton()).toBeDisabled();
 
     // Review Focus 4: the row has its own Discard; discarding it unlocks Finish.
@@ -194,7 +194,7 @@ describe("06.7 AC29 — final review: the blocked banner counts sets, not ops", 
       { ...base(w, "u1"), kind: "update", workoutExerciseId: w.exercises[0]!.id, target: { clientGeneratedId: KEY }, body: { reps: 6 } },
       finishBlockedBy(w, "c1"),
     ]);
-    expect(await banner()).toHaveTextContent(`${REFUSED_LEAD} ${refusedBlocked(1)}`);
+    expect(await banner()).toHaveTextContent(`${REFUSED_LEAD} ${refusedBlocked(1, 1)}`);
   });
 
   it("a refused note (no set) never says a set couldn't be saved", async () => {

@@ -47,22 +47,24 @@ describe("06.7 AC33 — the offline-finish copy is static and in one file", () =
     expect(copy.landedLine(1)).toBe("Your workout saved: a new record");
     expect(copy.landedLine(0)).toBe("Your workout saved.");
     expect(copy.landedLine(null)).toBe("Your workout saved.");
-    expect(copy.refusedBlocked(1)).toBe("1 set couldn't be saved. Fix or discard it, then tap Finish again.");
-    expect(copy.refusedBlocked(2)).toBe("2 sets couldn't be saved. Fix or discard them, then tap Finish again.");
+    expect(copy.refusedBlocked(1, 1)).toBe("1 set couldn't be saved. Fix or discard it, then tap Finish again.");
+    expect(copy.refusedBlocked(2, 2)).toBe("2 sets couldn't be saved. Fix or discard them, then tap Finish again.");
     expect(copy.refusedIncomplete(1)).toBe("1 working set is missing data. Fix or delete it, then tap Finish again.");
     expect(copy.refusedIncomplete(2)).toBe("2 working sets are missing data. Fix or delete them, then tap Finish again.");
     expect(copy.finishLocked(1)).toBe("1 thing couldn't be saved — fix it first");
     expect(copy.finishLocked(2)).toBe("2 things couldn't be saved — fix them first");
   });
 
-  it("only integer parameters are interpolated, and every function takes one number", () => {
+  it("only integer parameters are interpolated, and every function takes counts only", () => {
     // Every `${…}` in the file names a parameter typed `number` (or `number | null`): no value, name, id or time.
-    const params = new Set([...SOURCE.matchAll(/\((\w+): number(?: \| null)?\)/g)].map((m) => m[1]));
+    const params = new Set([...SOURCE.matchAll(/[(,]\s*(\w+): number(?: \| null)?[,)]/g)].map((m) => m[1]));
     const interpolated = [...SOURCE.matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]!.trim());
     expect(interpolated.length).toBeGreaterThan(0);
     for (const expression of interpolated) expect(params, expression).toContain(expression);
+    // One count each, except AC29's banner, which takes the refused rows and how many are sets (minor 697).
+    const arity: Record<string, number> = { refusedBlocked: 2 };
     for (const [name, value] of Object.entries(copy)) {
-      if (typeof value === "function") expect(value.length, name).toBe(1);
+      if (typeof value === "function") expect(value.length, name).toBe(arity[name] ?? 1);
       else expect(typeof value, name).toBe("string");
     }
   });

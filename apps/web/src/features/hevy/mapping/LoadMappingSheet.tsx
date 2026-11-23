@@ -230,7 +230,10 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
           <SheetActions
             error={step.error}
             status={
-              step.resolved.needsRule.length > 0 ? <span id={needsChoiceId}>{loadOffNeedsChoice(step.resolved.needsRule.length)}</span> : null
+              // Minor 561: a polite region, mounted empty, so the count dropping and the line going are both heard.
+              <span role="status">
+                {step.resolved.needsRule.length > 0 ? <span id={needsChoiceId}>{loadOffNeedsChoice(step.resolved.needsRule.length)}</span> : null}
+              </span>
             }
             primary={
               <Button

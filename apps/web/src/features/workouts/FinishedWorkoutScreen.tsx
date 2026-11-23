@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
+import { FROM_HOME, isFromHome } from "./summaryEntry";
 import type { WorkoutDetail } from "@sin/core";
 
 import { BackLink } from "../../ui/BackLink";
@@ -129,7 +130,8 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   useEffect(() => {
     if (tapped === undefined) return;
     titleRef.current?.focus();
-    void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    // Minor 696: the list mark stays, so a delete here still goes Back to the list.
+    void navigate(`${location.pathname}${location.search}`, { replace: true, state: isFromHome(location.state) ? FROM_HOME : null });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
   }, []);
   const home = SECTION_HOME[section];
@@ -308,7 +310,7 @@ function DeleteWorkoutControl({
   showButton: boolean;
 }) {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, state } = useLocation();
   const del = useDeleteWorkout();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<{ text: string; requestId: string | null } | null>(null);
@@ -324,7 +326,10 @@ function DeleteWorkoutControl({
       // Spec 17.12 AC18: at desktop widths `/app/history` shows its newest workout itself, so a delete from there is
       // already where it lands: replace, or Back would land on the same page again. Minor 654: a delete from the deleted
       // workout's own page under it (`/app/history/:id`) replaces too, or Back would land on Not found.
-      void navigate(afterDelete, { replace: pathname === afterDelete || pathname.startsWith(`${afterDelete}/`) });
+      // Minor 696: a summary opened from its section's list (History's row, or Workouts' Finish and waiting card) goes
+      // Back to that list instead, so the stack doesn't hold the list twice and the first Back isn't lost.
+      if (isFromHome(state)) void navigate(-1);
+      else void navigate(afterDelete, { replace: pathname === afterDelete || pathname.startsWith(`${afterDelete}/`) });
     } catch (caught) {
       setOpen(false);
       reportUnexpected("discard", caught);

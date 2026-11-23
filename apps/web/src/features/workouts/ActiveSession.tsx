@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { canLinkRule, ROUTINE_SECTIONS_MAX, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { useSession } from "../../auth/useSession";
@@ -33,9 +33,10 @@ import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
 import { failedRowCount, sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
-import { FINISH_OFFLINE_NOTE, REFUSED_LEAD, REFUSED_OTHER, finishLocked, finishUnsentNote, refusedBlocked, refusedIncomplete } from "./outbox/finishMessages";
+import { FINISH_OFFLINE_NOTE, REFUSED_LEAD, finishLocked, finishUnsentNote } from "./outbox/finishMessages";
+import { refusedDetailFor, type RefusedKind } from "./refusedDetail";
+import { summaryEntryState } from "./summaryEntry";
 import { useWaitingFinish } from "./useWaitingFinish";
-import { START_CLOCK_MESSAGE } from "./useBeginWorkout";
 import { RESULT_COPY } from "./result/resultCopy";
 import { ResultSheet } from "./result/ResultSheet";
 import { useResultActions } from "./result/useResultActions";
@@ -124,6 +125,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function ActiveSession({ workout, notice, onDismissNotice, onGone }: ActiveSessionProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const client = useWorkoutClient();
   const { user } = useSession();
   const catalog = useCatalog();
@@ -596,8 +598,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
    */
   function afterFinished(state?: { saved: "offline" | "slow" }) {
     if (mounted.current) {
-      if (state) void navigate(`/app/workouts/${workout.id}`, { state });
-      else void navigate(`/app/workouts/${workout.id}`);
+      // Minor 696: marked as opened from Workouts' list, so a delete there goes Back to it.
+      const entry = summaryEntryState(pathname, "/app/workouts");
+      const next = entry || state ? { ...entry, ...state } : undefined;
+      void navigate(`/app/workouts/${workout.id}`, next === undefined ? undefined : { state: next });
     } else if (queryClient.getQueryData<WorkoutDetail | null>(WORKOUT_KEYS.active)?.id === workout.id) {
       queryClient.removeQueries({ queryKey: WORKOUT_KEYS.active });
     }
@@ -771,7 +775,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // Spec 06.7 AC29, §6.7: a refused finish op is the banner's memory; the workout is live again (AC19).
   const refusedFinish = useWaitingFinish(workout.id);
   const refusedOp = refusedFinish.failed ? refusedFinish.op : null;
-  const refusedKind: "blocked" | "incomplete" | "clock" | "other" | null =
+  const refusedKind: RefusedKind | null =
     refusedOp === null
       ? null
       : refusedOp.failure?.blockedBy !== undefined
@@ -807,20 +811,18 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     scrolledRefusals.add(refusedOpId);
     refusedRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [refusedOpId]);
+  // Rows, not ops: a create and its edit are one row (minor 642), and the banner says what the line says (minor 697).
   const refusedDetail =
     refusedKind === null
       ? null
-      : refusedKind === "blocked"
-        ? refusedBlocked(failedCount) // sets, not ops: a create and its edit are one row
-        : refusedKind === "incomplete"
-          ? rereadFor !== refusedOpId
-            ? null // minor 638: the lead alone until this op's re-read has flagged its sets (or found none)
-            : flaggedIds.size > 0
-              ? refusedIncomplete(flaggedIds.size)
-              : REFUSED_OTHER
-          : refusedKind === "clock"
-            ? START_CLOCK_MESSAGE
-            : REFUSED_OTHER;
+      : refusedDetailFor({
+          kind: refusedKind,
+          rereadDone: rereadFor === refusedOpId,
+          flagged: flaggedIds.size,
+          online: outboxState.online,
+          refusedRows: refused,
+          refusedSets: failedCount,
+        });
   const refusedText = refusedKind === null ? null : refusedDetail === null ? REFUSED_LEAD : `${REFUSED_LEAD} ${refusedDetail}`;
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy || refused > 0;
   // Spec 06.7 AC22: what Finish will do, said in both dialogs: no signal, or the sets that send first.

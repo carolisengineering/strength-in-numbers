@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -155,6 +155,17 @@ describe("17.12 AC6 — skip link and focus order", () => {
     expect(mainOf()).not.toHaveAttribute("tabindex");
   });
 
+  it("minor 694 — a click after Skip to content drops main's borrowed tabindex", async () => {
+    const user = userEvent.setup();
+    renderShell();
+    await user.tab();
+    await user.keyboard("{Enter}");
+    expect(mainOf()).toHaveFocus();
+    expect(mainOf()).toHaveAttribute("tabindex", "-1");
+    fireEvent.pointerDown(mainOf());
+    expect(mainOf()).not.toHaveAttribute("tabindex");
+  });
+
   it("17.12 AC6 — minor 645: Skip to content focuses the page's heading, named by the page, with no tabindex left after", async () => {
     const user = userEvent.setup();
     renderShell("/app/history", <HeadingScreen />);
@@ -279,6 +290,19 @@ describe("17.12 AC8 — the safe areas at desktop widths", () => {
   // indicator's inset would leave a gap above the keyboard, as a sheet's row drops it too.
   it("with a keyboard up, the bar drops the inset again", () => {
     expect(rule(mediaBlock(actionBarCss, DESKTOP), ':global(:root[data-keyboard="open"]) .bar')).toMatch(/padding-bottom:\s*var\(--space-3\)/);
+  });
+});
+
+describe("minor 650 — at 64rem the bar clearances include the safe area, except with the keyboard up", () => {
+  const keyboard = (selector: string) => `:global(:root[data-keyboard="open"]) ${selector}`;
+  it.each([
+    [".main [data-pane]:has([data-action-bar])", "--action-bar-clearance"],
+    [".main [data-pane]:has([data-session-bar])", "--session-bar-clearance"],
+  ])("%s adds the home indicator's inset; the keyboard-open form doesn't", (selector, clearance) => {
+    const wide = mediaBlock(shellCss, DESKTOP);
+    expect(rule(wide, selector)).toMatch(new RegExp(`scroll-padding-bottom:\\s*calc\\(var\\(${clearance}\\) \\+ env\\(safe-area-inset-bottom\\)\\)`));
+    expect(rule(wide, keyboard(selector))).toMatch(new RegExp(`scroll-padding-bottom:\\s*var\\(${clearance}\\);?\\s*$`));
+    expect(rule(wide, keyboard(selector))).not.toContain("safe-area");
   });
 });
 

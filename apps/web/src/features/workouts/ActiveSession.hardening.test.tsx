@@ -47,6 +47,7 @@ import { cleanupApp, deferred, makeQueryClient, prepareApp, renderApp } from "..
 import { deleteSetIn, finishButton, logButton, optionsButton } from "../../test/sessionHelpers";
 import { WORKOUT_KEYS } from "./queries";
 import { WorkoutsScreen } from "./WorkoutsScreen";
+import { FROM_HOME } from "./summaryEntry";
 
 const scrolled: Element[] = [];
 const scrollIntoView = vi.fn(function (this: Element) {
@@ -128,7 +129,7 @@ describe("06.4 AC1 — finish success does not depend on the parent's render tim
 
     await user.click(finishButton());
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-    await waitFor(() => expect(nav.calls).toEqual([[`/app/workouts/${id}`]]));
+    await waitFor(() => expect(nav.calls).toEqual([[`/app/workouts/${id}`, { state: FROM_HOME }]]));
     const reads = activeReads(fake);
 
     act(() => host.bump());
@@ -153,7 +154,7 @@ describe("06.4 AC1 — finish success does not depend on the parent's render tim
 
     await user.click(finishButton());
     await user.click(within(finishDialog()).getByRole("button", { name: "Finish" }));
-    await waitFor(() => expect(nav.calls).toEqual([[`/app/workouts/${id}`]]));
+    await waitFor(() => expect(nav.calls).toEqual([[`/app/workouts/${id}`, { state: FROM_HOME }]]));
     const reads = activeReads(fake);
 
     act(() => host.bump());
