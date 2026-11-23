@@ -1,9 +1,8 @@
 import { useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation } from "react-router";
 
 import { InlineNotice } from "../../ui/InlineNotice";
-import { usePane } from "../../ui/paneContext";
 import { Screen } from "../../ui/Screen";
 import { Spinner } from "../../ui/Spinner";
 import { ActiveSession } from "./ActiveSession";
@@ -30,12 +29,11 @@ export const ROUTINE_GONE_NOTICE = "That routine no longer exists";
 export const ROUTINE_NOT_APPLIED_NOTICE = "You already had a workout in progress — resumed it. The routine wasn't applied.";
 
 /**
- * Spec 10.0 AC23 / D16: the preview hands a one-time notice to this screen through router state. Spec 17.12 AC26: a
- * start from the list pane carries `resumed` (its own screen has unmounted by then), and `startEmpty` asks the list
- * pane's Start to begin once it has left an open routine (the editor's leave guard may stop that navigation first).
+ * Spec 10.0 AC23 / D16: the preview hands a one-time notice to this screen through router state. Spec 17.12 AC26:
+ * `startEmpty` asks the list pane's Start to begin once it has left an open routine (the editor's leave guard may stop that navigation first).
  */
 export interface WorkoutsLocationState {
-  readonly notice?: "routine-gone" | "routine-not-applied" | "resumed";
+  readonly notice?: "routine-gone" | "routine-not-applied";
   readonly startEmpty?: true;
   /** Minor 673: which Start tap made the `startEmpty` entry, so only that tap starts on arrival. */
   readonly startTap?: string;
@@ -46,7 +44,6 @@ type LocationNotice = NonNullable<WorkoutsLocationState["notice"]>;
 const LOCATION_NOTICES: Record<LocationNotice, string> = {
   "routine-gone": ROUTINE_GONE_NOTICE,
   "routine-not-applied": ROUTINE_NOT_APPLIED_NOTICE,
-  resumed: RESUMED_NOTICE,
 };
 
 function noticeFromLocation(state: unknown): string | null {
@@ -71,21 +68,16 @@ export function WorkoutsScreen() {
   const tapping = useFinishTap();
   const queryClient = useQueryClient();
   const location = useLocation();
-  const navigate = useNavigate();
-  const inList = usePane().slot === "list";
   // At desktop widths the routines layout shares these across the screen's moves between panes (code review #1).
   const { notice, setNotice, goneId, setGoneId } = useWorkoutsNotices(() => noticeFromLocation(location.state));
   // Spec 17.12 AC26: beside a routine this screen stays mounted across navigation, so a notice handed over later (the
-  // preview's "gone", a resumed start) arrives on a new location rather than at mount. Only a location that holds one
+  // preview's "gone") arrives on a new location rather than at mount. Only a location that holds one
   // sets it; any other navigation leaves the line as it is.
   const locationNotice = noticeFromLocation(location.state);
   useEffect(() => {
     if (locationNotice === null) return;
     setNotice(locationNotice);
     setGoneId(null);
-    // The list pane's "resumed" hand-off is read once and taken out of the entry, so a reload or a Back into it never
-    // says it again (final review M3). The phone's own notices keep today's behavior.
-    if (locationNotice === RESUMED_NOTICE) void navigate(location.pathname, { replace: true, state: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per location: the key is the event, not the text
   }, [location.key]);
   // `goneId` is the workout a write reported gone (§5.8). What to say about it is derived from what the refetch
@@ -167,12 +159,9 @@ export function WorkoutsScreen() {
         notice={shownNotice}
         onDismissNotice={dismissNotice}
         onStarted={(resumed) => {
-          // Spec 17.12 AC26: a started workout turns the panes off, and the session's screen is a new instance, so
-          // the list pane hands the notice over through the location rather than its own state.
-          if (inList) {
-            void navigate("/app/workouts", { replace: true, state: resumed ? { notice: "resumed" } : null });
-            return;
-          }
+          // Spec 17.12 AC26: a started workout turns the panes off by itself, and the session's screen is a new
+          // instance; at desktop widths these notices are the routines layout's, so it reads "resumed" there. Minor
+          // 666: nothing navigates, so a lifter who left before a slow start landed stays where they went.
           setGoneId(null);
           setNotice(resumed ? RESUMED_NOTICE : null);
         }}
