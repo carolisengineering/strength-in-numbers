@@ -518,14 +518,16 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
 
   /** Back to the queue with 06.2's backoff, never sooner than the server's Retry-After (Spec 05.2 AC14). */
   function retryLater(op: OutboxOp, attempts: number, error: unknown): void {
-    if (retryRequested) {
-      // Minor 618: Retry now was tapped while this op was sending; it goes again at once, as the tap asked.
+    const floor = error instanceof ApiError ? (error.retryAfterMs ?? 0) : 0;
+    // Minor 618: Retry now was tapped while this op was sending; it goes again at once, as the tap asked, unless the
+    // server's answer asked for a wait the lifter never saw (Spec 05.2 AC14).
+    if (retryRequested && floor === 0) {
       retryRequested = false;
       retryForced = true;
       patchOp(op.id, { status: "queued", nextAttemptAt: Date.now() });
       return;
     }
-    const floor = error instanceof ApiError ? (error.retryAfterMs ?? 0) : 0;
+    retryRequested = false;
     patchOp(op.id, { status: "queued", nextAttemptAt: Date.now() + Math.max(backoffMs(attempts, random), floor) });
   }
 

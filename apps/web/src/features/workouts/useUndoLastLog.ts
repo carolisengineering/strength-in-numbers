@@ -85,9 +85,10 @@ export function useUndoLastLog({ exercises, ops, idMap, rest, overlayOpen, selec
     setUndoing(null);
   }, []);
   // AC8: the hook owns the overlay rule, so a log that lands after a sheet opened can't leave its Undo under it (minor 430).
+  // An Undo's own line ("Set N undone") ends too, as it did before; `end` never clears a pending restore.
   useEffect(() => {
-    if (overlayOpen && held !== null) end();
-  }, [overlayOpen, held, end]);
+    if (overlayOpen && (held !== null || undoing !== null)) end();
+  }, [overlayOpen, held, undoing, end]);
   const restoreDone = useCallback((token: number) => setRestore((current) => (current?.token === token ? null : current)), []);
 
   // The tap reads this ref, not state, and clears it at once: a second tap before the commit finds nothing (AC14).

@@ -64,6 +64,17 @@ describe("minor 432 — useUndoLastLog on its own", () => {
     expect(result.current.restore?.set.id).toBe(first.id);
   });
 
+  it("final review: after an Undo, an overlay opening clears the undone line too, and keeps the prefill (AC8, Review Focus 2)", async () => {
+    const { result, rerender, props, first, event, tap } = setup();
+    act(() => result.current.offerFrom(event(first), EXERCISE, null));
+    act(() => result.current.undo(tap()));
+    await waitFor(() => expect(result.current.restore?.set.id).toBe(first.id));
+    expect(result.current.undoText).not.toBeNull();
+    rerender({ ...props, overlayOpen: true });
+    expect(result.current.undoText).toBeNull();
+    expect(result.current.restore?.set.id).toBe(first.id);
+  });
+
   it("minor 430 — an offer made while an overlay is open ends at once", () => {
     const { result, first, event } = setup({ overlayOpen: true });
     act(() => result.current.offerFrom(event(first), EXERCISE, null));

@@ -256,6 +256,20 @@ describe("minor 618 — Retry now during a hung send", () => {
     expect(h.createSet).toHaveBeenCalledTimes(3);
   });
 
+  it("final review: a Retry now tapped before the server answered 429 still waits out Retry-After (Spec 05.2 AC14)", async () => {
+    const h = hangingRest();
+    const outbox = make({ rest: h.rest });
+    outbox.start();
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
+    await vi.advanceTimersByTimeAsync(0);
+    outbox.retryNow();
+    h.pending[0]!.reject(new ApiError({ status: 429, type: "about:blank", title: "t", requestId: "r", retryAfterMs: 30_000 }));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.createSet).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+  });
+
   it("Review Focus 4: Retry now with nothing sending sends a queued op at once (unchanged)", async () => {
     const h = hangingRest();
     const outbox = make({ rest: h.rest, isOnline: () => false });
