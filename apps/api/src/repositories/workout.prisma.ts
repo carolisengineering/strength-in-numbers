@@ -260,7 +260,7 @@ async function finishedPatch(
       UPDATE "workout"
       SET title = ${nextTitle}, notes = ${nextNotes}, started_at = ${next.startedAt}, ended_at = ${next.endedAt},
           local_date = ${calendar.localDate}::date, tz_offset_minutes = ${calendar.tzOffsetMinutes}, updated_at = now()
-      WHERE id = ${current.id}::uuid
+      WHERE id = ${current.id}::uuid AND user_id = ${userId}::uuid
       RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
                 tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
     `;
@@ -520,7 +520,7 @@ export function createWorkoutRepository(
         const updated = await tx.$queryRaw<WorkoutDbRow[]>`
           UPDATE "workout" SET routine_id = ${routine.id}::uuid, routine_name_snapshot = ${routine.name},
                  routine_notes_snapshot = ${routine.notes}
-          WHERE id = ${id}::uuid
+          WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
                     tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
         `;
@@ -733,7 +733,7 @@ export function createWorkoutRepository(
           SET title = ${nextTitle}, notes = ${nextNotes}, started_at = ${next.startedAt}, ended_at = ${next.endedAt},
               local_date = ${calendar.localDate}::date, tz_offset_minutes = ${calendar.tzOffsetMinutes},
               planned_duration_s = ${next.plannedDurationS}, updated_at = now()
-          WHERE id = ${id}::uuid
+          WHERE id = ${id}::uuid AND user_id = ${actingUserId}::uuid
           RETURNING id, user_id, title, notes, started_at, ended_at, local_date,
                     tz_offset_minutes, client_generated_id, source, created_at, updated_at, routine_name_snapshot, planned_duration_s
         `;

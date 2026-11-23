@@ -31,8 +31,9 @@ export async function rlsTarget(client: RlsCatalogClient): Promise<{ database: s
 /**
  * Spec 21.1 D12 — the kill switch: every table or none, in one transaction, on the owner login. A command rather than a
  * migration, so it is instant and reversible, and `migrate deploy` never sees it. The locks are taken up front in the
- * API's write order with a 5 s timeout per lock (as in `0021`). That timeout alone doesn't bound 19 locks, so a statement
- * limit below the transaction's stops the wait by 12 s: busy tables fail the command instead of stalling every request
+ * fixed order of `RLS_LOCK_ORDER` (not the API's own, minor 438) with a 5 s timeout per lock (as in `0021`). That
+ * timeout alone doesn't bound 19 locks, so a statement limit below the transaction's stops the wait by 12 s: busy
+ * tables fail the command instead of stalling every request
  * during an incident. Nothing changes when it fails, and it can be run again. No `FORCE` in either direction (D6).
  */
 export async function setRls(owner: PrismaClient, on: boolean): Promise<void> {

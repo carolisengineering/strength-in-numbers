@@ -27,8 +27,10 @@ export const RLS_TABLES: readonly string[] = [
 ];
 
 /**
- * The order `0020`, `0021` and `db:rls` take their table locks in: the API's locking writes (routine before workout, each
- * parent before its children). Same tables as `RLS_TABLES`.
+ * The order `0020`, `0021` and `db:rls` take their table locks in: a fixed order, so two runs never wait on each other,
+ * with each parent before its children (routine before workout). It is not the API's whole lock order: the API takes the
+ * user row first (`resolveUser`), so a request can hold `"user"` while this waits behind it; `db:rls`'s lock timeout
+ * bounds that wait, and the command can be run again (minor 438). Same tables as `RLS_TABLES`.
  */
 export const RLS_LOCK_ORDER: readonly string[] = [
   "routine",

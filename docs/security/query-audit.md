@@ -16,7 +16,7 @@ Categories:
 
 ## Summary
 
-241 statements: 112 user-filtered, 54 anchored, 30 shared on purpose, 14 cross-user maintenance, 31 fragment.
+241 statements: 115 user-filtered, 51 anchored, 30 shared on purpose, 14 cross-user maintenance, 31 fragment.
 
 ### Statements that rely on an earlier check (anchored)
 
@@ -54,15 +54,12 @@ Categories:
 - `src/repositories/workout-section.prisma.ts#clearSectionRoundTime#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutForRecord#1`: deletes a round of the section lockSectionRow#1 tied to the locked workout (§6.7 #14)
 - `src/repositories/workout-section.prisma.ts#setSectionResult#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutForRecord#1`: sets the result of the section, tied to the locked workout (workout_id = anchor) (§6.7 #13)
 - `src/repositories/workout-section.prisma.ts#clearSectionResult#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutForRecord#1`: clears the result of the section, tied to the locked workout (workout_id = anchor) (§6.7 #13)
-- `src/repositories/workout.prisma.ts#finishedPatch#1` relies on `src/repositories/workout.prisma.ts#updateWorkout#1`: updates the finished workout's details, keyed by the workout locked FOR UPDATE … user_id
 - `src/repositories/workout.prisma.ts#countExercises#1` relies on `src/repositories/workout.prisma.ts#updateWorkout#1`: counts a workout's exercises under the caller's workout lock (finish, delete, or the structure lock) (§6.7 #7)
 - `src/repositories/workout.prisma.ts#countAndLastSection#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutStructure#3`: the exercise count and last section of the locked workout (§6.7 #7)
 - `src/repositories/workout.prisma.ts#insertFromRoutine#2` relies on `src/repositories/workout.prisma.ts#insertFromRoutine#1`: copies the routine's sections, under the routine FOR SHARE … user_id (§6.7 #11)
 - `src/repositories/workout.prisma.ts#insertFromRoutine#3` relies on `src/repositories/workout.prisma.ts#insertFromRoutine#1`: reads the routine's items, under the routine FOR SHARE … user_id (§6.7 #11)
 - `src/repositories/workout.prisma.ts#insertFromRoutine#5` relies on `src/repositories/workout.prisma.ts#insertFromRoutine#1`: inserts the copied exercises into the new workout (§6.7 #11)
 - `src/repositories/workout.prisma.ts#insertFromRoutine#6` relies on `src/repositories/workout.prisma.ts#insertFromRoutine#1`: copies the items' planned sets, under the routine FOR SHARE … user_id (§6.7 #11)
-- `src/repositories/workout.prisma.ts#insertFromRoutine#7` relies on `src/repositories/workout.prisma.ts#tryInsert#1`: stamps the routine snapshot on the workout this transaction just inserted for the user (§6.7 #11)
-- `src/repositories/workout.prisma.ts#updateWorkout#2` relies on `src/repositories/workout.prisma.ts#updateWorkout#1`: updates the workout locked FOR UPDATE … user_id
 - `src/repositories/workout.prisma.ts#addWorkoutExercise#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutStructure#3`: shifts positions in the locked workout (§6.7 #7)
 - `src/repositories/workout.prisma.ts#addWorkoutExercise#2` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutStructure#3`: inserts the exercise into the locked workout (§6.7 #7)
 - `src/repositories/workout.prisma.ts#updateWorkoutExercise#2` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutStructure#3`: locks the request's workout exercise, tied to the locked workout (workout_id = anchor) (§6.7 #8)
@@ -141,7 +138,7 @@ Categories:
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
 | `src/repositories/account-export.prisma.ts#snapshot#1` | query | user-filtered | ok | — | `7963b119631a` | Reads hevy_exercise_pair, exercise, hevy_section_rule, hevy_link |
-| `src/repositories/account-export.prisma.ts#snapshot#2` | query | user-filtered | ok | — | `dc3b4e5ace68` | Prisma user.findUniqueOrThrow |
+| `src/repositories/account-export.prisma.ts#snapshot#2` | query | user-filtered | ok | — | `650c3f88eaf7` | the user's own row by id, through USER_COLUMNS (minor 409) |
 | `src/repositories/account-export.prisma.ts#snapshot#3` | query | user-filtered | ok | — | `3b7cff4e4d00` | Reads exercise |
 | `src/repositories/account-export.prisma.ts#snapshot#4` | query | user-filtered | ok | — | `0245bc5106b2` | Reads routine_item, routine_section, routine |
 | `src/repositories/account-export.prisma.ts#snapshot#5` | query | user-filtered | ok | — | `ad30541bf656` | Reads workout, workout_section, workout_section_round, routine |
@@ -328,7 +325,7 @@ Categories:
 
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
-| `src/repositories/user.prisma.ts#USER_COLUMNS#1` | fragment | fragment | ok | callers: src/repositories/user.prisma.ts#findByAuthSub#1, src/repositories/user.prisma.ts#provision#2, src/repositories/user.prisma.ts#syncEmail#1, src/repositories/user.prisma.ts#updateProfile#1 | `ccaa4f73c7ad` | The user row's columns |
+| `src/repositories/user.prisma.ts#USER_COLUMNS#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#2, src/repositories/user.prisma.ts#findByAuthSub#1, src/repositories/user.prisma.ts#provision#2, src/repositories/user.prisma.ts#syncEmail#1, src/repositories/user.prisma.ts#updateProfile#1 | `ccaa4f73c7ad` | The user row's columns |
 | `src/repositories/user.prisma.ts#findByAuthSub#1` | query | user-filtered | ok | — | `73fe79d5eac4` | Reads user by the token's auth_sub |
 | `src/repositories/user.prisma.ts#provision#1` | query | user-filtered | ok | — | `56779fd882c0` | Inserts into user |
 | `src/repositories/user.prisma.ts#provision#2` | query | user-filtered | ok | — | `84cff2b3f403` | Re-reads user by the token's auth_sub |
@@ -387,7 +384,7 @@ Categories:
 | `src/repositories/workout.prisma.ts#workoutSectionsJson#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#5, src/repositories/workout.prisma.ts#loadSectionSnapshot#1 | `c36f43831ce5` | SQL piece composed into the callers listed |
 | `src/repositories/workout.prisma.ts#routineIsOneOffSql#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#5, src/repositories/workout.prisma.ts#loadSectionSnapshot#1 | `edf8850fe9fc` | SQL piece composed into the callers listed |
 | `src/repositories/workout.prisma.ts#WE_PLANNED_SETS#1` | fragment | fragment | ok | callers: src/repositories/account-export.prisma.ts#snapshot#6, src/repositories/workout.prisma.ts#loadExercises#1, src/repositories/workout.prisma.ts#updateWorkoutExercise#6 | `b16fa3e38f4d` | SQL piece composed into the callers listed |
-| `src/repositories/workout.prisma.ts#finishedPatch#1` | query | anchored | ok | src/repositories/workout.prisma.ts#updateWorkout#1 | `e026c0834424` | updates the finished workout's details, keyed by the workout locked FOR UPDATE … user_id |
+| `src/repositories/workout.prisma.ts#finishedPatch#1` | query | user-filtered | ok | — | `a4076e54d0db` | updates the finished workout's details, by id and user_id (minor 392) |
 | `src/repositories/workout.prisma.ts#loadExercises#1` | query | user-filtered | ok | — | `2b7aa90b02d4` | Reads workout_exercise; filtered on its own user_id (Spec 21.1) |
 | `src/repositories/workout.prisma.ts#loadSectionSnapshot#1` | query | user-filtered | ok | — | `548377d8a4a9` | Reads workout, workout_section, workout_section_round, routine |
 | `src/repositories/workout.prisma.ts#readWorkoutDetail#1` | query | user-filtered | ok | — | `f6f11fd550f1` | Reads workout |
@@ -400,11 +397,11 @@ Categories:
 | `src/repositories/workout.prisma.ts#insertFromRoutine#4` | fragment | fragment | ok | callers: src/repositories/workout.prisma.ts#insertFromRoutine#5 | `97b34c54d81b` | SQL piece composed into the callers listed |
 | `src/repositories/workout.prisma.ts#insertFromRoutine#5` | query | anchored | ok | src/repositories/workout.prisma.ts#insertFromRoutine#1 | `7df3528437b6` | inserts the copied exercises into the new workout (§6.7 #11) |
 | `src/repositories/workout.prisma.ts#insertFromRoutine#6` | query | anchored | ok | src/repositories/workout.prisma.ts#insertFromRoutine#1 | `d450311ec288` | copies the items' planned sets, under the routine FOR SHARE … user_id (§6.7 #11) |
-| `src/repositories/workout.prisma.ts#insertFromRoutine#7` | query | anchored | ok | src/repositories/workout.prisma.ts#tryInsert#1 | `b99b3f91c08e` | stamps the routine snapshot on the workout this transaction just inserted for the user (§6.7 #11) |
+| `src/repositories/workout.prisma.ts#insertFromRoutine#7` | query | user-filtered | ok | — | `6e804223ce8c` | stamps the routine snapshot on the workout this transaction just inserted, by id and user_id (minor 392) |
 | `src/repositories/workout.prisma.ts#findByClientGeneratedId#1` | query | user-filtered | ok | — | `6167fd753c80` | Reads workout |
 | `src/repositories/workout.prisma.ts#getActiveWorkout#1` | query | user-filtered | ok | — | `cbb672239342` | Reads workout |
 | `src/repositories/workout.prisma.ts#updateWorkout#1` | query | user-filtered | ok | — | `971726a2eda0` | Reads workout (FOR UPDATE) |
-| `src/repositories/workout.prisma.ts#updateWorkout#2` | query | anchored | ok | src/repositories/workout.prisma.ts#updateWorkout#1 | `41a9ceea11f3` | updates the workout locked FOR UPDATE … user_id |
+| `src/repositories/workout.prisma.ts#updateWorkout#2` | query | user-filtered | ok | — | `aaae9c1d8ee2` | updates the workout locked FOR UPDATE, by id and user_id (minor 392) |
 | `src/repositories/workout.prisma.ts#deleteWorkout#1` | query | user-filtered | ok | — | `f01d78b411df` | Reads workout (FOR UPDATE) |
 | `src/repositories/workout.prisma.ts#deleteWorkout#2` | query | user-filtered | ok | — | `137959eba37e` | Deletes from hevy_link |
 | `src/repositories/workout.prisma.ts#deleteWorkout#3` | query | user-filtered | ok | — | `8f4869d85ea0` | Deletes from workout |

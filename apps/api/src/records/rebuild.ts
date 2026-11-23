@@ -39,12 +39,12 @@ export async function rebuildRecords(
   opts: { userId?: string },
 ): Promise<RebuildSummary> {
   // Spec 21.1 §6.8: an operator command on the owner login. The user listing is cross-user, so it runs unscoped
-  // (`shared()`); each user's rebuild runs on `as(user)`, which on the owner login sends no setting.
+  // (`crossUserMaintenance()`, minor 404); each user's rebuild runs on `as(user)`, which on the owner login sends no setting.
   const scoped = toScoped(db);
   const userId = opts.userId ?? null;
   // Every user with a finished workout, plus every user who still has rows
   // (so a user whose last finished workout vanished gets cleaned up too).
-  const users = await scoped.shared().$queryRaw<{ user_id: string }[]>`
+  const users = await scoped.crossUserMaintenance().$queryRaw<{ user_id: string }[]>`
     SELECT DISTINCT u.user_id::text AS user_id FROM (
       SELECT user_id FROM "workout" WHERE ended_at IS NOT NULL
       UNION

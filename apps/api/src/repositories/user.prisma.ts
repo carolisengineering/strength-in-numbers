@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient, type User as PrismaUser } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { uuidv7 } from "uuidv7";
 import { toScoped, type UserScopedDb } from "../db/scoped.js";
 import type {
@@ -24,10 +24,11 @@ import type {
  * columns and mapping, because the scoped handle carries only raw statements.
  */
 
-const USER_COLUMNS = Prisma.sql`
+/** Exported for the account export's user read, so it maps with `fromRow` like every other read (minor 409). */
+export const USER_COLUMNS = Prisma.sql`
   id, auth_sub, email, email_verified, display_name, unit_preference, timezone, created_at, updated_at, deleted_at`;
 
-interface UserDbRow {
+export interface UserDbRow {
   id: string;
   auth_sub: string;
   email: string;
@@ -40,7 +41,7 @@ interface UserDbRow {
   deleted_at: Date | null;
 }
 
-function fromRow(row: UserDbRow): UserRecord {
+export function fromRow(row: UserDbRow): UserRecord {
   return {
     id: row.id,
     authSub: row.auth_sub,
@@ -52,22 +53,6 @@ function fromRow(row: UserDbRow): UserRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
-  };
-}
-
-/** The model-row mapping, kept for the account export's model read. */
-function toRecord(row: PrismaUser): UserRecord {
-  return {
-    id: row.id,
-    authSub: row.authSub,
-    email: row.email,
-    emailVerified: row.emailVerified,
-    displayName: row.displayName,
-    unitPreference: row.unitPreference as UnitPreference,
-    timezone: row.timezone,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    deletedAt: row.deletedAt,
   };
 }
 
@@ -141,4 +126,3 @@ export function createUserRepository(db: UserScopedDb | PrismaClient): UserRepos
 }
 
 // Spec 11: the account export reuses this row mapper.
-export { toRecord as toUserRecord };

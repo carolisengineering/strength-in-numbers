@@ -2,8 +2,8 @@
 import { uuidv7 } from "uuidv7";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createScopedDb } from "../../src/db/scoped.js";
-import { createUserRepository, toUserRecord } from "../../src/repositories/user.prisma.js";
-import type { UserRepository } from "../../src/repositories/user.js";
+import { createUserRepository } from "../../src/repositories/user.prisma.js";
+import type { UnitPreference, UserRecord, UserRepository } from "../../src/repositories/user.js";
 import { insertUser, shouldRunIntegration, startIntegrationDb, type IntegrationDb } from "./helpers.js";
 
 /**
@@ -25,7 +25,23 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC15 — users and provision
       .map((e) => [/set_config\('([a-z_.]+)'/.exec(e.query)![1]!, (JSON.parse(e.params) as string[])[0]!]);
   }
 
-  const modelRecord = async (id: string) => toUserRecord((await db.prisma.user.findUniqueOrThrow({ where: { id } })));
+  // The reference: a model read mapped field by field here, independent of the repository's own mapper (minor 409 removed
+  // the second mapper from src).
+  const modelRecord = async (id: string): Promise<UserRecord> => {
+    const row = await db.prisma.user.findUniqueOrThrow({ where: { id } });
+    return {
+      id: row.id,
+      authSub: row.authSub,
+      email: row.email,
+      emailVerified: row.emailVerified,
+      displayName: row.displayName,
+      unitPreference: row.unitPreference as UnitPreference,
+      timezone: row.timezone,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
+    };
+  };
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;

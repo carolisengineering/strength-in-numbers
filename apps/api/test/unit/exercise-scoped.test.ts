@@ -21,6 +21,9 @@ function recordingHandle(rowsFor: (sql: string) => unknown[] = () => []) {
   const handle: UserScopedDb = {
     scoped: true,
     shared: () => raw((sql) => shared.push(sql)),
+    crossUserMaintenance: () => {
+      throw new Error("the exercise repository never lists across users");
+    },
     forAuthSub: () => {
       throw new Error("the exercise repository never provisions");
     },
