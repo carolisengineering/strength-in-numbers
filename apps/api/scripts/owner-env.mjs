@@ -18,7 +18,8 @@ export const OWNER_URL_MISSING = "set OWNER_DATABASE_URL to the owner login; DAT
 /** Never includes the URL: a malformed one may hold the password. */
 export const OWNER_URL_NOT_STRICT =
   "OWNER_DATABASE_URL must carry sslmode=require&sslaccept=strict (sslmode=disable only on a local database): the Prisma CLI reads the raw URL, and without them the owner login would connect with no certificate check (runbook B1)";
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "db"]);
+/** The same set as `LOCAL_HOSTS` in `src/db/owner-url.ts` (minor 441); `owner-env.test.ts` pins them equal. */
+export const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "db"]);
 export const OWNER_URL_MALFORMED = "OWNER_DATABASE_URL is not a valid URL (percent-encode any / : @ in the password)";
 
 /**

@@ -15,10 +15,10 @@
  */
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { PrismaClient } from "@prisma/client";
 import { pino } from "pino";
-import { prismaFor, resolveDatabaseUrl } from "../db.js";
-import { ownerDatabaseUrl } from "../db/owner-url.js";
+import type { PrismaClient } from "@prisma/client";
+import { prismaFor } from "../db.js";
+import { resolveOwnerUrl } from "../db/owner-url.js";
 import { loadCatalog, seedCatalog, SeedError } from "./catalog.js";
 
 const DEFAULT_CATALOG_DIR = fileURLToPath(
@@ -28,20 +28,14 @@ const DEFAULT_CATALOG_DIR = fileURLToPath(
 export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<number> {
   const log = pino({ level: env.LOG_LEVEL ?? "info" });
   const dir = argv[0] ?? env.CATALOG_DIR ?? DEFAULT_CATALOG_DIR;
-  const owner = ownerDatabaseUrl(env);
+  const owner = resolveOwnerUrl(env);
   if (!owner.ok) {
-    log.error(owner.error);
+    // `fields`, never `{ err }`: a malformed URL's TypeError carries the raw string in an enumerable `input`.
+    if (owner.fields) log.error(owner.fields, owner.error);
+    else log.error(owner.error);
     return 1;
   }
-  let databaseUrl: string;
-  try {
-    databaseUrl = resolveDatabaseUrl(owner.url);
-  } catch (err) {
-    // Not `{ err }`: a malformed URL's TypeError carries the raw string (password included) in an enumerable `input`
-    // property that pino would print.
-    log.error({ error_class: (err as Error)?.constructor?.name ?? typeof err, reason: (err as Error)?.message }, "OWNER_DATABASE_URL rejected");
-    return 1;
-  }
+  const databaseUrl = owner.url;
 
   let prisma: PrismaClient | undefined;
   try {
@@ -56,6 +50,7 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<numb
       "catalog files validated",
     );
 
+    // #21: the one client factory. Resolving the already-resolved URL again changes nothing (each backfill is only-if-absent).
     prisma = prismaFor(databaseUrl);
     const summary = await seedCatalog(prisma, catalog, log);
     log.info(summary, "catalog seed complete");

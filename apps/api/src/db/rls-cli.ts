@@ -11,9 +11,7 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
-import { resolveDatabaseUrl } from "../db.js";
-import { redacted } from "./app-role-cli.js";
-import { ownerDatabaseUrl } from "./owner-url.js";
+import { isLocalHost, redacted, resolveOwnerUrl } from "./owner-url.js";
 import { rlsStatus, rlsTarget, setRls, type RlsTableStatus } from "./rls.js";
 import { RLS_TABLES } from "./rls-tables.js";
 
@@ -42,7 +40,6 @@ export function parseRlsArgs(argv: readonly string[]): { ok: true; command: RlsC
  * A run that acted on the wrong database must show it. Staging and production can both be `neondb` / `neondb_owner`, so a
  * remote target also shows the host's first label, Neon's endpoint id; the region and domain stay out of the output.
  */
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1", "db"]);
 
 function describeStatus(status: readonly RlsTableStatus[]): string {
   const width = Math.max(...status.map((s) => s.table.length)) + 2;
@@ -62,24 +59,13 @@ export async function main(
     io.err(`${parsed.error}\n`);
     return 1;
   }
-  const owner = ownerDatabaseUrl(env);
+  const owner = resolveOwnerUrl(env);
   if (!owner.ok) {
-    io.err(`${owner.error}\n`);
+    io.err(owner.detail === undefined ? `${owner.error}\n` : `${owner.error}: ${owner.detail}\n`);
     return 1;
   }
-
-  const secrets = [owner.url];
-  let url: string;
-  let where: string;
-  try {
-    url = resolveDatabaseUrl(owner.url);
-    const u = new URL(url);
-    where = LOCAL_HOSTS.has(u.hostname) ? "local host" : `remote host ${u.hostname.split(".")[0]}`;
-    secrets.push(url, u.password, decodeURIComponent(u.password), u.host, u.hostname);
-  } catch (err) {
-    io.err(`OWNER_DATABASE_URL rejected: ${redacted(err, secrets)}\n`);
-    return 1;
-  }
+  const { url, secrets } = owner;
+  const where = isLocalHost(owner.hostname) ? "local host" : `remote host ${owner.hostname.split(".")[0]}`;
 
   const owned = deps.makePrisma === undefined;
   let prisma: PrismaClient | undefined;

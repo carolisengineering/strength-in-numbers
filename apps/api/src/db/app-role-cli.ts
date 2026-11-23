@@ -12,11 +12,16 @@ import { realpathSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
-import { resolveDatabaseUrl } from "../db.js";
 import { APP_ROLE, appRoleProblems, setAppRoleLogin, type AppRoleReport } from "./app-role.js";
-import { ownerDatabaseUrl } from "./owner-url.js";
+import { isLocalHost, redacted, resolveOwnerUrl } from "./owner-url.js";
 
 export const MIN_PASSWORD_LENGTH = 12;
+
+/**
+ * Minor 414: the password `docker-compose.yml`, `.env.example`, `.env.owner.example` and `docs/manual-testing.md` give
+ * the local `sin_app`. It is public, so it is refused on any database but this machine's.
+ */
+export const LOCAL_APP_ROLE_PASSWORD = "sin_app_local";
 
 export interface AppRoleIo {
   prompt(question: string): Promise<string>;
@@ -57,15 +62,6 @@ function describeReport(r: AppRoleReport): string {
   );
 }
 
-/** An error's text with every secret replaced: the message of a failed connect or statement may quote either. */
-export function redacted(err: unknown, secrets: readonly string[]): string {
-  const name = (err as Error)?.constructor?.name ?? typeof err;
-  let message = err instanceof Error ? err.message : String(err);
-  // Longest first, so a whole URL goes before its password would break the match (scrubDatabaseUrl does the same).
-  for (const s of [...secrets].filter((x) => x.length > 0).sort((a, b) => b.length - a.length)) message = message.split(s).join("***");
-  return `${name}: ${message.split("\n").filter((l) => l.trim() !== "").slice(-3).join(" ")}`;
-}
-
 export async function main(
   argv: string[],
   env: NodeJS.ProcessEnv,
@@ -77,12 +73,11 @@ export async function main(
     io.err(`db:app-role takes no arguments (got ${args.length})\n`);
     return 1;
   }
-  const owner = ownerDatabaseUrl(env);
+  const owner = resolveOwnerUrl(env);
   if (!owner.ok) {
-    io.err(`${owner.error}\n`);
+    io.err(owner.detail === undefined ? `${owner.error}\n` : `${owner.error}: ${owner.detail}\n`);
     return 1;
   }
-  const ownerRaw = owner.url;
 
   let password = env.APP_ROLE_PASSWORD ?? "";
   if (password === "") {
@@ -96,17 +91,14 @@ export async function main(
     io.err(`the ${APP_ROLE} password must be at least ${MIN_PASSWORD_LENGTH} characters\n`);
     return 1;
   }
-
-  const secrets = [password, ownerRaw];
-  let url: string;
-  try {
-    url = resolveDatabaseUrl(ownerRaw);
-    const parsed = new URL(url);
-    secrets.push(url, parsed.password, decodeURIComponent(parsed.password), parsed.host, parsed.hostname);
-  } catch (err) {
-    io.err(`OWNER_DATABASE_URL rejected: ${redacted(err, [ownerRaw, password])}\n`);
+  // Minor 414: from the environment or the prompt alike; names neither the password nor the host.
+  if (password === LOCAL_APP_ROLE_PASSWORD && !isLocalHost(owner.hostname)) {
+    io.err("that is the repo's local password; use a generated one on a remote database (runbook: openssl rand -hex 24)\n");
     return 1;
   }
+
+  const secrets = [password, ...owner.secrets];
+  const url = owner.url;
 
   const owned = deps.makePrisma === undefined;
   let prisma: PrismaClient | undefined;
