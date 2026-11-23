@@ -166,6 +166,18 @@ export type TestableOutbox = Outbox & {
 const EMPTY: { ops: readonly OutboxOp[]; idMap: IdMap } = { ops: [], idMap: {} };
 
 /**
+ * Minor 633 (code review): an op that failed on a lost sign-in goes back to the queue on load and on Retry now. Nothing
+ * else would send it, and a finish of its workout waits behind it (`sendable`), so leaving it failed would strand the
+ * finish. Every other failure stays failed for the lifter to see (Spec 06.2 AC5).
+ */
+function requeueLost(op: OutboxOp, now: number): OutboxOp {
+  if (op.status !== "failed" || !lostSession(op.failure)) return op;
+  const requeued = { ...op, status: "queued" as const, attempted: true, nextAttemptAt: now };
+  delete requeued.failure;
+  return requeued as OutboxOp;
+}
+
+/**
  * The persisted queue of set writes (Spec 06.2 §6). React-free: the provider wires it to TanStack
  * Query; tests drive it with `memoryStorageAdapter()`, a stub REST client and fake timers.
  */
@@ -227,7 +239,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
   const ownOps = (parsed: NonNullable<ReturnType<typeof parseOutboxFile>>): { ops: readonly OutboxOp[]; idMap: IdMap } => ({
     ops: parsed.ops
       .filter((op) => op.userId === userId)
-      .map((op) => (op.status === "sending" ? { ...op, status: "queued" as const, attempted: true } : op)),
+      .map((op) => (op.status === "sending" ? { ...op, status: "queued" as const, attempted: true } : requeueLost(op, Date.now()))),
     idMap: parsed.idMap,
   });
 
@@ -745,7 +757,7 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       if (draining) retryRequested = true;
       clearTimer();
       const now = Date.now();
-      set({ ops: state.ops.map((o) => (o.status === "queued" ? { ...o, nextAttemptAt: now } : o)) });
+      set({ ops: state.ops.map((o) => (o.status === "queued" ? { ...o, nextAttemptAt: now } : requeueLost(o, now))) });
       void drain({ force: true });
     },
     start: () => {

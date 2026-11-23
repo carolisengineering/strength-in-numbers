@@ -228,6 +228,54 @@ describe("minor 633 — a lost sign-in never locks a waiting finish", () => {
     stop();
   });
 
+  /** A file left with a create that failed on a lost sign-in (status 401) and a queued finish behind it. */
+  function strandedFile() {
+    const storage = memoryStorageAdapter();
+    const seed = createOutbox({ storage, rest: fakeClient(), userId: "u1", isOnline: () => false });
+    seed.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: { clientGeneratedId: KEY, reps: 5, isComplete: true } });
+    seed.__setForTests(seed.getState().ops.map((o) => ({ ...o, status: "failed" as const, attempted: true, failure: { status: 401, type: "about:blank", requestId: "r" } })));
+    seed.enqueueFinish({ workoutId: "w", body: { endedAt: ENDED }, meta: META });
+    return storage;
+  }
+
+  function sender(storage: ReturnType<typeof memoryStorageAdapter>, isOnline = () => true) {
+    const detail = makeWorkoutDetail({ endedAt: ENDED });
+    const createSet = vi.fn(() => Promise.resolve(makeSet({ clientGeneratedId: KEY })));
+    const finish = vi.fn(() => Promise.resolve({ ...detail, newRecords: [] }));
+    const onFinishSynced = vi.fn();
+    const outbox = createOutbox({ storage, rest: fakeClient({ createSet, finish }), userId: "u1", isOnline, onFinishSynced });
+    return { outbox, createSet, finish, onFinishSynced };
+  }
+
+  it("code review: a stored op that failed on a lost sign-in goes back to the queue on load, so the waiting finish isn't stranded", async () => {
+    const t = sender(strandedFile());
+    expect(t.outbox.getState().ops.map((o) => o.status)).toEqual(["queued", "queued"]);
+    expect(t.outbox.getState().ops[0]!.failure).toBeUndefined();
+    const stop = t.outbox.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.createSet).toHaveBeenCalledOnce();
+    expect(t.onFinishSynced).toHaveBeenCalledOnce();
+    expect(t.outbox.getState().ops).toEqual([]);
+    stop();
+  });
+
+  it("code review: Retry now sends an op that failed on a lost sign-in again; other failures stay failed", async () => {
+    const t = sender(memoryStorageAdapter(), () => false);
+    const stop = t.outbox.start();
+    t.outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: { clientGeneratedId: KEY, reps: 5, isComplete: true } });
+    t.outbox.enqueueCreate({ workoutId: "w2", workoutExerciseId: "we2", body: { clientGeneratedId: "30000000-0000-4000-8000-000000000002", reps: 5, isComplete: true } });
+    const [lost, refused] = t.outbox.getState().ops;
+    t.outbox.__setForTests([
+      { ...lost!, status: "failed", failure: { status: 0, type: "session-expired", requestId: "r" } },
+      { ...refused!, status: "failed", failure: { status: 422, type: "about:blank", requestId: "r" } },
+    ]);
+    t.outbox.retryNow();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.createSet).toHaveBeenCalledOnce();
+    expect(t.outbox.getState().ops).toEqual([expect.objectContaining({ id: refused!.id, status: "failed" })]);
+    stop();
+  });
+
   it("failureOf names a session-expired failure", () => {
     expect(failureOf(sessionExpired()).type).toBe("session-expired");
     expect(failureOf(apiError(401)).type).toBe("about:blank");
