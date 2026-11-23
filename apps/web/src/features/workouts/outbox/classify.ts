@@ -51,7 +51,19 @@ export function isNetworkFailure(error: unknown): boolean {
   return error instanceof ApiError && error.isNetworkError;
 }
 
+/** The session-expired failure (status 0, known only by its title) gets its own `type`, so a stored op can tell it apart (minor 633). */
 export function failureOf(error: unknown): OpFailure {
-  if (error instanceof ApiError) return { status: error.status, type: error.type, requestId: error.requestId };
+  if (error instanceof ApiError) {
+    const type = error.status === 0 && error.title === SESSION_EXPIRED_TITLE ? "session-expired" : error.type;
+    return { status: error.status, type, requestId: error.requestId };
+  }
   return { status: 0, type: "unknown", requestId: null };
+}
+
+/**
+ * The op failed because the sign-in was lost (a double 401, or no token at all). The forced sign-out keeps the file,
+ * where the op is still `sending`, so the same lifter's next sign-in sends it; it never blocks a finish (minor 633).
+ */
+export function lostSession(failure: OpFailure | undefined): boolean {
+  return failure !== undefined && (failure.status === 401 || failure.type === "session-expired");
 }
