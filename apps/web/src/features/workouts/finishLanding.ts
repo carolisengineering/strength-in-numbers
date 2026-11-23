@@ -6,6 +6,7 @@ import { applyFinishedCaches } from "../records/cache";
 import { buildRecordLedger } from "../records/recordLedger";
 import type { DraftStores } from "./drafts/draftStore";
 import { emitWorkoutFinished } from "./finishEvents";
+import { finishedCopy } from "./outbox/finish";
 import type { LandedStore } from "./outbox/landedStore";
 import type { FinishOp } from "./outbox/ops";
 import type { FinishSyncResult } from "./outbox/outbox";
@@ -50,7 +51,8 @@ export function createFinishLanding({ queryClient, drafts, rest, waiting, landed
     // exercises). A copy seeded at the tap (the projection) may carry client set keys, so it is re-read afterwards.
     if (result.outcome === "landed") {
       const workout = withoutRecords(result.updated);
-      if (held) queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), { ...held, ...workout });
+      // Minor 628: the response has no `routineIsOneOff` or sets, so the copy we hold is normalized as the finish did.
+      if (held) queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), finishedCopy({ ...held, ...workout }, workout.endedAt ?? op.body.endedAt));
       if (held && active?.id !== id) void queryClient.invalidateQueries({ queryKey: WORKOUT_KEYS.detail(id), exact: true });
     } else {
       queryClient.setQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(id), result.detail);

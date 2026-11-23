@@ -37,7 +37,9 @@ export interface LandedStoreDeps {
 /**
  * Spec 06.7 AC27, §6.9, D12: the finishes that landed while their summary was not open, for the Workouts screen's
  * one-time "saved" line. React-free. A file that doesn't parse or belongs to another user is cleared and reads empty;
- * a storage failure is reported once (static tag) and the line is simply not shown — the workout is in the cloud.
+ * a storage failure is reported once (static tag); the line still works for this page load from memory, and after a
+ * reload it may be missing (a failed write) or show once more (a failed removal). Each change re-reads the file first,
+ * so another tab's entry is kept; after a failed write, this page load's entries stay in memory (minor 630).
  */
 export function createLandedStore({ storage, userId, report: reportDep }: LandedStoreDeps): LandedStore {
   const report = reportDep ?? ((error: unknown) => reportError(error, { source: "workout-storage" }));
@@ -57,13 +59,14 @@ export function createLandedStore({ storage, userId, report: reportDep }: Landed
     }
   };
 
-  function load(): LandedItem[] {
+  /** The stored entries, or `null` when storage can't be read. */
+  function read(): LandedItem[] | null {
     let raw: string | null;
     try {
       raw = storage.get(LANDED_KEY);
     } catch (error) {
       reportOnce(error);
-      return [];
+      return null;
     }
     if (raw === null) return [];
     let parsed: unknown;
@@ -81,29 +84,38 @@ export function createLandedStore({ storage, userId, report: reportDep }: Landed
     return file.data.items;
   }
 
-  let items: LandedItem[] = load();
+  let items: LandedItem[] = read() ?? [];
+  /** False once a write failed: from then on this page load's entries live in memory, and the file can't be trusted. */
+  let writable = true;
+  /**
+   * What a change starts from (minor 630): the file as it is now, so another tab's entry is kept; the entries in memory
+   * when it can't be read or a write already failed.
+   */
+  const current = (): LandedItem[] => (writable ? (read() ?? items) : items);
 
   function write(next: LandedItem[]): void {
     items = next;
-    if (next.length === 0) drop();
-    else {
-      try {
-        storage.set(LANDED_KEY, JSON.stringify({ v: 1, userId, items: next }));
-      } catch (error) {
-        reportOnce(error);
-      }
+    try {
+      if (next.length === 0) storage.remove(LANDED_KEY);
+      else storage.set(LANDED_KEY, JSON.stringify({ v: 1, userId, items: next }));
+    } catch (error) {
+      writable = false;
+      reportOnce(error);
     }
     for (const listener of [...listeners]) listener();
   }
 
   const without = (workoutId: string) => {
-    if (!items.some((i) => i.workoutId === workoutId)) return;
-    write(items.filter((i) => i.workoutId !== workoutId));
+    const now = current();
+    const has = (list: readonly LandedItem[]) => list.some((i) => i.workoutId === workoutId);
+    // In memory but no longer in the file (another tab removed it): still written, so this tab's line goes too.
+    if (!has(now) && !has(items)) return;
+    write(now.filter((i) => i.workoutId !== workoutId));
   };
 
   return {
     list: () => items,
-    add: (item) => write([item, ...items.filter((i) => i.workoutId !== item.workoutId)].slice(0, LANDED_MAX)),
+    add: (item) => write([item, ...current().filter((i) => i.workoutId !== item.workoutId)].slice(0, LANDED_MAX)),
     remove: without,
     clearWorkout: without,
     subscribe: (listener) => {

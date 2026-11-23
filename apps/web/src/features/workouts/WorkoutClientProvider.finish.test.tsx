@@ -11,6 +11,7 @@ import { makePersonalRecord, makeSet, makeWorkoutDetail } from "../../test/worko
 import { fakeClient } from "../../test/workoutHarness";
 import { RECORDS_KEYS } from "../records/queries";
 import { __resetFinishListeners, emitWorkoutFinished, onWorkoutFinished } from "./finishEvents";
+import { finishedCopy } from "./outbox/finish";
 import { createFinishLanding } from "./finishLanding";
 import type { FinishMeta, FinishOp } from "./outbox/ops";
 import { createOutbox } from "./outbox/outbox";
@@ -179,8 +180,25 @@ describe("06.7 AC14 — landing effects run in one place, once", () => {
     t.queryClient.setQueryData(WORKOUT_KEYS.detail(t.workout.id), seeded);
     t.land(opOf(t.workout), { outcome: "landed", updated: updatedOf(t.workout) });
     const state = t.queryClient.getQueryState(WORKOUT_KEYS.detail(t.workout.id))!;
-    expect(state.data).toMatchObject({ id: t.workout.id, endedAt: ENDED, exercises: seeded.exercises });
+    // The fixture's set times (makeSet's) fall before STARTED, so the finished copy pulls them in (minor 628).
+    expect(state.data).toMatchObject({ id: t.workout.id, endedAt: ENDED, exercises: finishedCopy(seeded, ENDED).exercises });
     expect(state.isInvalidated).toBe(true);
+  });
+
+  it("minor 628 — the landed detail built from the active copy is the finished copy: no one-off mark, set times inside the workout", () => {
+    const LATE = "2026-11-08T10:30:00.000Z";
+    const active = makeWorkoutDetail({
+      startedAt: STARTED,
+      routineName: "Class",
+      routineIsOneOff: true,
+      exercises: [{ modality: "weight_reps", name: "Bench", sets: [makeSet({ setNumber: 1 }), makeSet({ setNumber: 2, completedAt: LATE })] }],
+    });
+    const t = setup(active);
+    t.land(opOf(active), { outcome: "landed", updated: updatedOf(active) });
+    const detail = t.queryClient.getQueryData<WorkoutDetail>(WORKOUT_KEYS.detail(active.id))!;
+    expect(detail.routineIsOneOff).toBe(false);
+    expect(detail.endedAt).toBe(ENDED);
+    expect(detail.exercises[0]!.sets[1]!.completedAt).toBe(ENDED);
   });
 
   it("a double completion (a 409 replay after a lost reply) emits once; a 20.2 listener sees one event", () => {
