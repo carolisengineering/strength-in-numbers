@@ -92,6 +92,8 @@ export function ItemSheet({
   // Minor 521 / 10.2 AC16: a message shows from the Done that found it until the lifter edits that field.
   const shown = useClearOnEdit<keyof SheetMessages>(errors);
   const formId = useId();
+  // Minor 444: per sheet, so two mounted strips never share a radio group.
+  const unitName = useId();
   const [rowErrors, setRowErrors] = useState<ReadonlyMap<string, RowErrors>>(rowMessages);
   // Spec 17.11 AC12: a plan just entered from the quick line opens its first row; a stored plan opens closed.
   const [enteredFromQuick, setEnteredFromQuick] = useState(false);
@@ -209,7 +211,7 @@ export function ItemSheet({
                     setWeight(e.target.value);
                   }} />}
                 </Field>
-                <Segmented name="item-unit" legend="Weight unit" options={WEIGHT_UNIT_CHOICES} value={unit} onChange={setQuickUnit} />
+                <Segmented name={unitName} legend="Weight unit" options={WEIGHT_UNIT_CHOICES} value={unit} onChange={setQuickUnit} />
               </div>
             ) : null}
           </>

@@ -293,6 +293,19 @@ describe("17.12 AC8 — the safe areas at desktop widths", () => {
   });
 });
 
+describe("minor 650 — at 64rem the bar clearances include the safe area, except with the keyboard up", () => {
+  const keyboard = (selector: string) => `:global(:root[data-keyboard="open"]) ${selector}`;
+  it.each([
+    [".main [data-pane]:has([data-action-bar])", "--action-bar-clearance"],
+    [".main [data-pane]:has([data-session-bar])", "--session-bar-clearance"],
+  ])("%s adds the home indicator's inset; the keyboard-open form doesn't", (selector, clearance) => {
+    const wide = mediaBlock(shellCss, DESKTOP);
+    expect(rule(wide, selector)).toMatch(new RegExp(`scroll-padding-bottom:\\s*calc\\(var\\(${clearance}\\) \\+ env\\(safe-area-inset-bottom\\)\\)`));
+    expect(rule(wide, keyboard(selector))).toMatch(new RegExp(`scroll-padding-bottom:\\s*var\\(${clearance}\\);?\\s*$`));
+    expect(rule(wide, keyboard(selector))).not.toContain("safe-area");
+  });
+});
+
 describe("17.12 review focus 1 — a resize across 64rem keeps the page's state", () => {
   it("a half-typed field survives the switch both ways, as the same node", async () => {
     const user = userEvent.setup();

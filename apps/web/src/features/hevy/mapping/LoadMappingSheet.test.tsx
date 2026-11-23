@@ -215,6 +215,17 @@ describe("20.0 AC19, AC21, AC22 — final review fixes", () => {
     expect(loadOffNeedsChoice(3)).toBe("3 pairings above need a choice.");
   });
 
+  it("minor 561 — the needs-a-choice line is in a live region from the start", async () => {
+    const dialog = await openSheet();
+    await choose(dialog, csv(`exercise,T-ROW,,${ROW.id},,,`));
+    await within(dialog).findByText(needsRuleLine("Echo Bike (calories)", "Row Erg"));
+    const region = sheetRow().getByRole("status");
+    expect(region).toHaveTextContent(loadOffNeedsChoice(1));
+    await userEvent.click(within(dialog).getByRole("button", { name: COUNT_CALORIES }));
+    await waitFor(() => expect(region).toBeEmptyDOMElement());
+    expect(region).toBeInTheDocument();
+  });
+
   it("lists the id/title and export_as notices with their lines", async () => {
     const dialog = await openSheet();
     await choose(dialog, csv(`exercise,T-BENCH,Wrong Title,${BENCH.id},,,yes`, `exercise,T-SQUAT,,${BENCH.id},,,yes`));

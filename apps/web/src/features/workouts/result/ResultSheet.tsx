@@ -42,8 +42,6 @@ export interface ResultSheetProps {
   onSave(draft: ResultDraft): void;
 }
 
-/** Spec 17.10 AC13: the one hint the round fields share; Set Timer's rows and the round-ends group never both render. */
-const CLOCK_HINT_ID = "result-clock-hint";
 /** Finish time's own hint (`ClockField` names it `${id}-hint`). */
 const FINISH_HINT_ID = "result-finish-hint";
 
@@ -66,6 +64,10 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   const [focusTick, setFocusTick] = useState(0);
   const formRef = useRef<HTMLFormElement | null>(null);
   const formId = useId();
+  // Spec 17.10 AC13: the one hint the round fields share; Set Timer's rows and the round-ends group never both render.
+  // Minor 493: per sheet, so two mounted sheets never point at each other's hint.
+  const CLOCK_HINT_ID = useId();
+  const modeName = useId();
   const { timer } = section;
   const next = firstEmptyRow(draft);
   const total = liveTotal(timer, draft);
@@ -205,7 +207,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
           <>
             {timer.capSeconds !== null ? (
               <Segmented
-                name="result-mode"
+                name={modeName}
                 legend={RESULT_COPY.outcome}
                 hideLegend
                 options={MODE_OPTIONS}

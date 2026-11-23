@@ -289,4 +289,26 @@
     max-width: none;
     margin-inline: 0;
   }
+
+  /* Minor 650: here the bars pad the home indicator's inset themselves (ActionBar), so a field scrolled into view must
+     clear that too; with a keyboard up the bars drop the inset, and so do these. */
+  .main:has([data-action-bar]),
+  .main [data-pane]:has([data-action-bar]) {
+    scroll-padding-bottom: calc(var(--action-bar-clearance) + env(safe-area-inset-bottom));
+  }
+
+  .main:has([data-session-bar]),
+  .main [data-pane]:has([data-session-bar]) {
+    scroll-padding-bottom: calc(var(--session-bar-clearance) + env(safe-area-inset-bottom));
+  }
+
+  :global(:root[data-keyboard="open"]) .main:has([data-action-bar]),
+  :global(:root[data-keyboard="open"]) .main [data-pane]:has([data-action-bar]) {
+    scroll-padding-bottom: var(--action-bar-clearance);
+  }
+
+  :global(:root[data-keyboard="open"]) .main:has([data-session-bar]),
+  :global(:root[data-keyboard="open"]) .main [data-pane]:has([data-session-bar]) {
+    scroll-padding-bottom: var(--session-bar-clearance);
+  }
 }

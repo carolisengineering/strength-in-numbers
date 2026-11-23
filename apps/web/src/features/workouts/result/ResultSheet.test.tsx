@@ -5,6 +5,7 @@ import type { RoundTime, SectionResult, SectionTimer } from "@sin/core";
 import { sheetBody, sheetErrorRegion, sheetRow } from "../../../test/sheetHelpers";
 import { makeTimedSection } from "../../../test/workoutFixtures";
 import type { TimedSection } from "./resultDraft";
+import { CLOCK_HINT } from "../../sectionTimer/timerCopy";
 import { ResultSheet } from "./ResultSheet";
 import { sheetError } from "../../../ui/SheetActions";
 
@@ -96,7 +97,7 @@ describe("minor 331 — Next is in the round field's description", () => {
     const describedBy = (n: number) => dialog.getByLabelText(`Round ${n}`).getAttribute("aria-describedby")?.split(" ") ?? [];
     expect(describedBy(5).at(-1)).toBe("result-round-5-next");
     expect(document.getElementById("result-round-5-next")).toHaveTextContent("Next");
-    expect(describedBy(5)[0]).toBe("result-clock-hint");
+    expect(document.getElementById(describedBy(5)[0]!)).toHaveTextContent(CLOCK_HINT);
     await user.clear(dialog.getByLabelText("Round 3"));
     expect(describedBy(3).at(-1)).toBe("result-round-3-next");
     expect(describedBy(5)).not.toContain("result-round-5-next");
@@ -283,3 +284,19 @@ describe("minor 330 — the sheet refuses over the max", () => {
   });
 });
 
+
+describe("minor 493 — the clock hint id is unique", () => {
+  it("two Log result sheets at once give their round fields different clock hints", () => {
+    const one = section(SET5, [], null, "One");
+    const two = section(SET5, [], null, "Two");
+    render(
+      <>
+        <ResultSheet open section={one} busy={false} formError={null} onSave={vi.fn()} onCancel={vi.fn()} />
+        <ResultSheet open section={two} busy={false} formError={null} onSave={vi.fn()} onCancel={vi.fn()} />
+      </>,
+    );
+    const hints = screen.getAllByText(CLOCK_HINT).map((p) => p.id);
+    expect(hints).toHaveLength(2);
+    expect(hints[0]).not.toBe(hints[1]);
+  });
+});

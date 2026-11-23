@@ -4,7 +4,7 @@ import {
   type UnitPreference,
   type UpdateMeInput,
 } from "@sin/core";
-import { useMemo, useState, type FormEvent } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 
 import { ApiError } from "../../api/problem";
 import { useSession } from "../../auth/useSession";
@@ -77,6 +77,8 @@ export function ProfileScreen() {
 }
 
 function ProfileForm({ me }: { me: Me }) {
+  // Minor 444: per form, so two mounted unit strips never share a radio group.
+  const unitName = useId();
   const { logout } = useSession();
   const guard = useLogoutGuard(logout); // Spec 06.5 D6: composed here; useSession().logout stays the unguarded one
   const update = useUpdateMe();
@@ -157,7 +159,7 @@ function ProfileForm({ me }: { me: Me }) {
 
         {/* Spec 17.7 AC6, AC10: two fixed units, so a Segmented; its error is an alert the group names. */}
         <Segmented<UnitPreference>
-          name="unitPreference"
+          name={unitName}
           legend="Units"
           options={UNIT_OPTIONS}
           value={values.unitPreference}
