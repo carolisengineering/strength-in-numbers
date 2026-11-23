@@ -61,11 +61,11 @@ describe("06.7 AC21 — minor 642: the status line counts refused rows", () => {
   it("a set whose create and edit were both refused: the banner and the line both say one", async () => {
     seeded((w) => [createOp(w, "c1", KEY), updateOp(w, "u1", KEY), finishOp(w, "f-642", { status: 422, type: "validation-error", blockedBy: "c1" })]);
     renderApp("/app/workouts");
-    expect(await screen.findByRole("alert")).toHaveTextContent(`${REFUSED_LEAD} ${refusedBlocked(1)}`);
+    expect(await screen.findByRole("alert")).toHaveTextContent(`${REFUSED_LEAD} ${refusedBlocked(1, 1)}`);
     await waitFor(() => expect(statusLine()).toHaveTextContent(finishLocked(1)));
   });
 
-  it("Review Focus 4: two refused sets and a refused note read three things; the banner says two sets", async () => {
+  it("06.7 AC29 — minor 697: two refused sets and a refused note read three things in the banner and the line", async () => {
     seeded((w) => [
       createOp(w, "c1", KEY),
       updateOp(w, "u1", KEY),
@@ -74,7 +74,7 @@ describe("06.7 AC21 — minor 642: the status line counts refused rows", () => {
       finishOp(w, "f-642b", { status: 422, type: "validation-error", blockedBy: "c1" }),
     ]);
     renderApp("/app/workouts");
-    expect(await screen.findByRole("alert")).toHaveTextContent(refusedBlocked(2));
+    expect(await screen.findByRole("alert")).toHaveTextContent(`${REFUSED_LEAD} ${refusedBlocked(3, 2)}`);
     await waitFor(() => expect(statusLine()).toHaveTextContent(finishLocked(3)));
   });
 });

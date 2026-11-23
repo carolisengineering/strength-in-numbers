@@ -33,9 +33,9 @@ import { findIncompleteWorkingSets } from "./incomplete";
 import { isNetworkFailure } from "./outbox/classify";
 import { useOutbox, useOutboxState } from "./outbox/OutboxContext";
 import { failedRowCount, sectionOpsState, unsavedNotes, unsavedSets, unsavedTimerEntries } from "./outbox/ops";
-import { FINISH_OFFLINE_NOTE, REFUSED_LEAD, REFUSED_OTHER, finishLocked, finishUnsentNote, refusedBlocked, refusedIncomplete } from "./outbox/finishMessages";
+import { FINISH_OFFLINE_NOTE, REFUSED_LEAD, finishLocked, finishUnsentNote } from "./outbox/finishMessages";
+import { refusedDetailFor, type RefusedKind } from "./refusedDetail";
 import { useWaitingFinish } from "./useWaitingFinish";
-import { START_CLOCK_MESSAGE } from "./useBeginWorkout";
 import { RESULT_COPY } from "./result/resultCopy";
 import { ResultSheet } from "./result/ResultSheet";
 import { useResultActions } from "./result/useResultActions";
@@ -771,7 +771,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // Spec 06.7 AC29, §6.7: a refused finish op is the banner's memory; the workout is live again (AC19).
   const refusedFinish = useWaitingFinish(workout.id);
   const refusedOp = refusedFinish.failed ? refusedFinish.op : null;
-  const refusedKind: "blocked" | "incomplete" | "clock" | "other" | null =
+  const refusedKind: RefusedKind | null =
     refusedOp === null
       ? null
       : refusedOp.failure?.blockedBy !== undefined
@@ -807,20 +807,18 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     scrolledRefusals.add(refusedOpId);
     refusedRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [refusedOpId]);
+  // Rows, not ops: a create and its edit are one row (minor 642), and the banner says what the line says (minor 697).
   const refusedDetail =
     refusedKind === null
       ? null
-      : refusedKind === "blocked"
-        ? refusedBlocked(failedCount) // sets, not ops: a create and its edit are one row
-        : refusedKind === "incomplete"
-          ? rereadFor !== refusedOpId
-            ? null // minor 638: the lead alone until this op's re-read has flagged its sets (or found none)
-            : flaggedIds.size > 0
-              ? refusedIncomplete(flaggedIds.size)
-              : REFUSED_OTHER
-          : refusedKind === "clock"
-            ? START_CLOCK_MESSAGE
-            : REFUSED_OTHER;
+      : refusedDetailFor({
+          kind: refusedKind,
+          rereadDone: rereadFor === refusedOpId,
+          flagged: flaggedIds.size,
+          online: outboxState.online,
+          refusedRows: refused,
+          refusedSets: failedCount,
+        });
   const refusedText = refusedKind === null ? null : refusedDetail === null ? REFUSED_LEAD : `${REFUSED_LEAD} ${refusedDetail}`;
   const finishDisabled = totalSets === 0 || setWritePending || structureBusy || refused > 0;
   // Spec 06.7 AC22: what Finish will do, said in both dialogs: no signal, or the sets that send first.

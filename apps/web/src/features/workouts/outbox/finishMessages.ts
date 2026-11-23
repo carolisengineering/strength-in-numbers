@@ -38,10 +38,17 @@ export const landedLine = (lifts: number | null): string => {
   return lifts === 1 ? "Your workout saved: a new record" : `Your workout saved: new records on ${lifts} lifts`;
 };
 
-export const refusedBlocked = (n: number): string =>
-  n === 1
-    ? "1 set couldn't be saved. Fix or discard it, then tap Finish again."
-    : `${n} sets couldn't be saved. Fix or discard them, then tap Finish again.`;
+/** AC29: `rows` refused rows, the status line's count; "set(s)" when all `rows` are sets, else "thing(s)" (minor 697). */
+export const refusedBlocked = (rows: number, sets: number): string => {
+  if (rows === sets) {
+    return rows === 1
+      ? "1 set couldn't be saved. Fix or discard it, then tap Finish again."
+      : `${rows} sets couldn't be saved. Fix or discard them, then tap Finish again.`;
+  }
+  return rows === 1
+    ? "1 thing couldn't be saved. Fix or discard it, then tap Finish again."
+    : `${rows} things couldn't be saved. Fix or discard them, then tap Finish again.`;
+};
 
 export const refusedIncomplete = (n: number): string =>
   n === 1
