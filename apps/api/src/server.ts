@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   const logger = createLogger(config);
 
   const prisma = createPrisma(config);
-  wirePoolMetrics(getTelemetryHandle(), prisma, config.databaseUrl); // Spec 13.3: only when telemetry is on
+  const poolMetrics = wirePoolMetrics(getTelemetryHandle(), prisma, config.databaseUrl); // Spec 13.3: only when telemetry is on
   // Spec 21.1 AC25: before anything can listen, refuse a login that could bypass row-level security. No opt-out.
   try {
     logger.info(await assertLoginCannotBypassRls(prisma), "db_login_checked");
@@ -62,7 +62,8 @@ async function main(): Promise<void> {
     hevyImportRepository: createHevyImportRepository(db),
   });
 
-  const shutdown = createGracefulShutdown({ app, prisma, logger, telemetry: getTelemetryHandle() });
+  // Minor 358: the pool metrics stop before the pool closes, so a collection cut off by `$disconnect` isn't reported.
+  const shutdown = createGracefulShutdown({ app, prisma, logger, telemetry: getTelemetryHandle(), beforeDisconnect: () => poolMetrics?.stop() });
   process.on("SIGTERM", (s) => void shutdown(s));
   process.on("SIGINT", (s) => void shutdown(s));
 

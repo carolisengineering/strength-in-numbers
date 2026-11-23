@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import type { Config } from "./config.js";
-import type { PoolMetricsSource } from "./telemetry/db-pool.js";
+import type { PoolMetricsHandle, PoolMetricsSource } from "./telemetry/db-pool.js";
 import type { TelemetryHandle } from "./telemetry/sdk.js";
 
 import { resolveDatabaseUrl } from "./db/database-url.js";
@@ -43,8 +43,8 @@ export function poolMetricsSource(prisma: PrismaClient): PoolMetricsSource {
 }
 
 /** Registers the pool metrics when telemetry is on (a handle exists); with it off, touches nothing (AC1). */
-export function wirePoolMetrics(handle: TelemetryHandle | undefined, prisma: PrismaClient, databaseUrl: string): boolean {
-  if (!handle) return false;
-  handle.registerDbPool(poolMetricsSource(prisma), connectionLimitOf(resolveDatabaseUrl(databaseUrl)));
-  return true;
+/** The pool metrics' handle, stopped by shutdown before `$disconnect` (minor 358); `undefined` with telemetry off. */
+export function wirePoolMetrics(handle: TelemetryHandle | undefined, prisma: PrismaClient, databaseUrl: string): PoolMetricsHandle | undefined {
+  if (!handle) return undefined;
+  return handle.registerDbPool(poolMetricsSource(prisma), connectionLimitOf(resolveDatabaseUrl(databaseUrl)));
 }

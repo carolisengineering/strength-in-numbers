@@ -37,6 +37,8 @@ export interface GracefulShutdownDeps {
   drainTimeoutMs?: number;
   /** Max time to wait for the telemetry flush (default 5 s); a hang never blocks exit. */
   telemetryTimeoutMs?: number;
+  /** Runs once, right before `prisma.$disconnect()`: stops the pool metrics, so a collection cut off by it isn't reported (minor 358). */
+  beforeDisconnect?: () => void;
 }
 
 const DEFAULT_DRAIN_TIMEOUT_MS = 10_000;
@@ -114,6 +116,7 @@ export function createGracefulShutdown(
         return;
       }
 
+      deps.beforeDisconnect?.();
       await deps.prisma.$disconnect();
       await flush();
       deps.logger?.info({ signal }, "graceful shutdown complete");

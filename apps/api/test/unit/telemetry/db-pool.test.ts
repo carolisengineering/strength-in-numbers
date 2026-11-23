@@ -164,14 +164,15 @@ describe("AC8 — through the SDK's throttled reporter", () => {
     await stopTestTelemetry(h);
   });
 
-  it("two failing collections inside 5 minutes give one warn with signal metrics", async () => {
+  it("13.3 AC8 — minor 359: two failing collections inside 5 minutes give one warn, in the db_pool slot", async () => {
     h.handle.registerDbPool({ engineStarted: () => true, json: () => Promise.reject(new Error("engine gone")) }, 8);
     await metricPoints(h.reader, METRIC_NAMES.dbPoolConnections);
     t += 60_000;
     await metricPoints(h.reader, METRIC_NAMES.dbPoolConnections);
     const poolWarnings = h.warnings.filter((w) => String(w[1]).includes("engine gone"));
     expect(poolWarnings).toHaveLength(1);
-    expect(poolWarnings[0]![0]).toMatchObject({ signal: "metrics" });
+    expect(poolWarnings[0]![0]).toMatchObject({ signal: "db_pool" });
+    expect(String(poolWarnings[0]![1])).toMatch(/^DB pool metrics problem: collection failed: /);
   });
 });
 
@@ -206,5 +207,30 @@ describe("readPoolNumbers", () => {
     expect(readPoolNumbers("junk")).toBeUndefined();
     expect(readPoolNumbers({ counters: [], gauges: [] })).toBeUndefined();
     expect(readPoolNumbers({ counters: [], gauges: [], histograms: [] })).toEqual({});
+  });
+});
+
+describe("minor 358 — no collection after stop", () => {
+  it("after stop() a collection reads nothing and reports nothing", async () => {
+    const report = vi.fn();
+    const json = vi.fn(() => Promise.reject(new Error("engine gone")));
+    const handle = registerDbPoolMetrics(meter(), { engineStarted: () => true, json }, 8, report);
+    handle.stop();
+    await reader.collect();
+    expect(json).not.toHaveBeenCalled();
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it("a read that started before stop() and fails after it is not reported", async () => {
+    const report = vi.fn();
+    let fail: (err: Error) => void = () => undefined;
+    const json = vi.fn(() => new Promise<unknown>((_, reject) => (fail = reject)));
+    const handle = registerDbPoolMetrics(meter(), { engineStarted: () => true, json }, 8, report);
+    const collecting = reader.collect();
+    await vi.waitFor(() => expect(json).toHaveBeenCalledTimes(1));
+    handle.stop();
+    fail(new Error("the engine was disconnected"));
+    await collecting;
+    expect(report).not.toHaveBeenCalled();
   });
 });
