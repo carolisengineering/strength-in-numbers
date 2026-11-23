@@ -9,6 +9,7 @@ import { LandedLine } from "./LandedLine";
 import { landedLine } from "./messages";
 import { LandedStoreContext } from "./outbox/LandedStoreContext";
 import { createLandedStore, type LandedStore } from "./outbox/landedStore";
+import { FROM_HOME } from "./summaryEntry";
 import { useLandedLeave } from "./useLandedLeave";
 
 const ShowLine = createContext(true);
@@ -83,5 +84,14 @@ describe("06.7 AC27 — minors 636, 668: the saved line leaves on a route change
     // w-1 was drawn and is left; w-2 never was.
     await act(() => router.navigate("/app/history"));
     expect(store.list().map((i) => i.workoutId)).toEqual(["w-2"]);
+  });
+});
+
+describe("minor 696 (final review) — the saved line marks its summary as opened from Workouts", () => {
+  it("a click on the line carries the list mark, so a delete there goes Back", async () => {
+    const { router } = setup();
+    await act(async () => line()!.click());
+    expect(router.state.location.pathname).toBe("/app/workouts/w-1");
+    expect(router.state.location.state).toEqual(FROM_HOME);
   });
 });

@@ -1,9 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { Button } from "../../ui/Button";
+import { useLocation } from "react-router";
 import { TextLink } from "../../ui/TextLink";
 import { landedLine } from "./messages";
 import { useLandedStore } from "./outbox/LandedStoreContext";
 import type { LandedStore } from "./outbox/landedStore";
+import { summaryEntryState } from "./summaryEntry";
 import { markLandedShown } from "./useLandedLeave";
 import styles from "./WaitingFinishCard.module.css";
 
@@ -18,6 +20,7 @@ const noSubscribe = () => () => {};
  */
 export function LandedLine() {
   const store = useLandedStore();
+  const { pathname } = useLocation();
   const items = useSyncExternalStore(store ? store.subscribe : noSubscribe, store ? store.list : () => NONE);
   const item = items[0];
   const shownId = item?.workoutId ?? null;
@@ -25,7 +28,8 @@ export function LandedLine() {
   if (!item) return null;
   return (
     <div className={styles.landed}>
-      <TextLink to={`/app/workouts/${item.workoutId}`}>{landedLine(item.how === "landed" ? item.lifts : null)}</TextLink>
+      {/* Minor 696: opened from Workouts' own screen, so a delete there goes Back to it. */}
+      <TextLink to={`/app/workouts/${item.workoutId}`} state={summaryEntryState(pathname, "/app/workouts")}>{landedLine(item.how === "landed" ? item.lifts : null)}</TextLink>
       <Button variant="secondary" onClick={() => (store as LandedStore).remove(item.workoutId)}>
         Dismiss
       </Button>

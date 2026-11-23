@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
 import { InlineNotice } from "../../ui/InlineNotice";
 import { Screen } from "../../ui/Screen";
@@ -68,6 +68,7 @@ export function WorkoutsScreen() {
   const tapping = useFinishTap();
   const queryClient = useQueryClient();
   const location = useLocation();
+  const navigate = useNavigate();
   // At desktop widths the routines layout shares these across the screen's moves between panes (code review #1).
   const { notice, setNotice, goneId, setGoneId } = useWorkoutsNotices(() => noticeFromLocation(location.state));
   // Spec 17.12 AC26: beside a routine this screen stays mounted across navigation, so a notice handed over later (the
@@ -78,6 +79,11 @@ export function WorkoutsScreen() {
     if (locationNotice === null) return;
     setNotice(locationNotice);
     setGoneId(null);
+    // Read once, then taken out of the entry (keeping anything else it holds), so a Back into it — after a summary's
+    // delete goes Back (minor 696), or a plain Back — or a reload never says it again.
+    const rest: Record<string, unknown> = { ...(location.state as Record<string, unknown>) };
+    delete rest["notice"];
+    void navigate(`${location.pathname}${location.search}`, { replace: true, state: Object.keys(rest).length > 0 ? rest : null });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per location: the key is the event, not the text
   }, [location.key]);
   // `goneId` is the workout a write reported gone (§5.8). What to say about it is derived from what the refetch

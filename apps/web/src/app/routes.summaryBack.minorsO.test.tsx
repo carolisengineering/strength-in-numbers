@@ -13,6 +13,7 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
+import { ROUTINE_NOT_APPLIED_NOTICE } from "../features/workouts/WorkoutsScreen";
 import { finishButton } from "../test/sessionHelpers";
 import { makeSet, makeWorkoutDetail } from "../test/workoutFixtures";
 import { createWorkoutFake } from "../test/workoutFake";
@@ -80,5 +81,25 @@ describe("minor 696 — a delete from a summary opened from its list goes Back t
     expect(app.router.state.historyAction).toBe("REPLACE");
     await app.router.navigate(-1);
     await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/exercises"));
+  });
+});
+
+describe("minor 696 (final review) — Back after a delete never brings a preview's notice back", () => {
+  it("a resumed routine start (routine not applied) → Finish → Delete: Workouts shows no notice", async () => {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "X", sets: [makeSet({ setNumber: 1, weight: 60, reps: 8 })] }] }),
+    });
+    prepareApp({ auth, fake });
+    // The preview replaces its entry with this when the start resumes a live workout (RoutinePreview).
+    const app = renderApp("/app/workouts", { notice: "routine-not-applied" });
+    expect(await screen.findByText(ROUTINE_NOT_APPLIED_NOTICE)).toBeInTheDocument();
+    const id = fake.state.active!.id;
+    await app.user.click(finishButton());
+    await app.user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
+    await waitFor(() => expect(app.router.state.location.pathname).toBe(`/app/workouts/${id}`));
+    await deleteHere(app);
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/workouts"));
+    await screen.findByRole("button", { name: "Start empty workout" });
+    expect(screen.queryByText(ROUTINE_NOT_APPLIED_NOTICE)).toBeNull();
   });
 });
