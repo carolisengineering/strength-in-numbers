@@ -12,6 +12,8 @@ export interface UndoLastLogInput {
   ops: readonly OutboxOp[];
   idMap: IdMap;
   rest: RestStore | null;
+  /** A sheet, dialog or picker is open. While it is, any offer ends, one made under it included (Spec 17.5 AC8, minor 430). */
+  overlayOpen: boolean;
   select: (exerciseId: string) => void;
   /** Would making this exercise current collapse the card that holds focus? */
   focusLeavesWith: (exerciseId: string) => boolean;
@@ -44,7 +46,7 @@ interface Undoing {
  * has been seen and then left ends it. Undo is the same delete Delete set uses (D1), so the outbox's cancel-or-delete
  * rules apply and it works offline.
  */
-export function useUndoLastLog({ exercises, ops, idMap, rest, select, focusLeavesWith, revealPanel, onFailure, announce }: UndoLastLogInput): UndoLastLog {
+export function useUndoLastLog({ exercises, ops, idMap, rest, overlayOpen, select, focusLeavesWith, revealPanel, onFailure, announce }: UndoLastLogInput): UndoLastLog {
   const del = useDeleteSet();
   const [held, setHeld] = useState<{ offer: UndoOffer; seen: boolean } | null>(null);
   const [undoing, setUndoing] = useState<Undoing | null>(null);
@@ -70,6 +72,9 @@ export function useUndoLastLog({ exercises, ops, idMap, rest, select, focusLeave
 
   const offerFrom = useCallback<UndoLastLog["offerFrom"]>((event, exercise, restStartedAt) => {
     setUndoing(null);
+    // Minor 423: a restore still pending belongs to the Undo before this log. Never cleared in `end`: Options right
+    // after an Undo would cancel its prefill.
+    setRestore(null);
     setHeld({
       offer: { exerciseId: event.exerciseId, exerciseName: exercise.name, modality: exercise.modality, set: event.set, value: event.value, restStartedAt },
       seen: false,
@@ -79,6 +84,10 @@ export function useUndoLastLog({ exercises, ops, idMap, rest, select, focusLeave
     setHeld(null);
     setUndoing(null);
   }, []);
+  // AC8: the hook owns the overlay rule, so a log that lands after a sheet opened can't leave its Undo under it (minor 430).
+  useEffect(() => {
+    if (overlayOpen && held !== null) end();
+  }, [overlayOpen, held, end]);
   const restoreDone = useCallback((token: number) => setRestore((current) => (current?.token === token ? null : current)), []);
 
   // The tap reads this ref, not state, and clears it at once: a second tap before the commit finds nothing (AC14).
