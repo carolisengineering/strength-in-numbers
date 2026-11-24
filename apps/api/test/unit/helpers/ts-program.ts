@@ -29,8 +29,17 @@ export function srcFiles(): string[] {
   return out;
 }
 
-const parsedConfig = () =>
-  ts.getParsedCommandLineOfConfigFile(`${API_ROOT}tsconfig.json`, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => undefined })!;
+let parsedConfigMemo: ts.ParsedCommandLine | undefined;
+const parsedConfig = (): ts.ParsedCommandLine =>
+  (parsedConfigMemo ??= ts.getParsedCommandLineOfConfigFile(`${API_ROOT}tsconfig.json`, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => undefined })!);
+
+/**
+ * Issue 361: every file on disk is parsed once per test file, whatever the number of programs. A fixture test builds
+ * its own program, and each used to re-parse the standard library and the generated Prisma client (most of its time).
+ * A parsed file doesn't depend on the program that asked for it; overlay files are never kept, since two tests give
+ * the same fixture path different text.
+ */
+const parsedFiles = new Map<string, ts.SourceFile | undefined>();
 
 export function apiProgram(files: readonly string[], overlay: Readonly<Record<string, string>> = {}): ts.Program {
   const options = parsedConfig().options;
@@ -41,7 +50,9 @@ export function apiProgram(files: readonly string[], overlay: Readonly<Record<st
   host.readFile = (f) => extra.get(f) ?? readFile.call(host, f);
   host.getSourceFile = (f, lang, onError, create) => {
     const text = extra.get(f);
-    return text !== undefined ? ts.createSourceFile(f, text, lang, true) : getSourceFile.call(host, f, lang, onError, create);
+    if (text !== undefined) return ts.createSourceFile(f, text, lang, true);
+    if (!parsedFiles.has(f)) parsedFiles.set(f, getSourceFile.call(host, f, lang, onError, create));
+    return parsedFiles.get(f);
   };
   return ts.createProgram([...files, ...extra.keys()], options, host);
 }
