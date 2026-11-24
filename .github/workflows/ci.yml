@@ -9,13 +9,19 @@ on:
 permissions:
   contents: read
 
+# Issue 361: a new push to a pull request cancels that pull request's earlier run. A push to main is grouped
+# by its own SHA, so no main commit's run (and its publish and staging smoke) is ever canceled or left pending.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # pnpm store cache key base
   PNPM_VERSION: 9.15.4
 
 jobs:
   check:
-    name: lint · typecheck · unit · purity
+    name: lint · typecheck · purity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,7 +53,28 @@ jobs:
           # `prisma validate` resolves env("DATABASE_URL") from the datasource
           # block but makes no connection. A placeholder test value satisfies it.
           DATABASE_URL: postgresql://test:test@localhost:5432/test
-      - run: pnpm run test:unit
+
+  # Issue 361: the unit suites of every package but the web app. The web suite runs once, with coverage, in
+  # the `web` job; the root `pnpm run test:unit` would run it a second time here.
+  unit:
+    name: unit (core · loadtest · api)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sin/api exec prisma generate
+      # @sin/api imports @sin/core's built dist (Spec 03.0).
+      - run: pnpm --filter @sin/core run build
+      - run: pnpm --filter @sin/core run test:unit
+      - run: pnpm --filter @sin/loadtest run test:unit
+      - run: pnpm --filter @sin/api run test:unit
 
   web:
     name: web (@sin/web — typecheck · test · build)
@@ -129,7 +156,7 @@ jobs:
   # baked in (/healthz reports it). Builds from the same Dockerfile as `docker`; never on a pull request.
   publish:
     name: publish API image (Artifact Registry)
-    needs: [check, web, integration, docker]
+    needs: [check, unit, web, integration, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -178,7 +205,7 @@ jobs:
 
   smoke:
     name: post-deploy smoke (staging)
-    needs: [check, web, integration, docker]
+    needs: [check, unit, web, integration, docker]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
