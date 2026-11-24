@@ -91,7 +91,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # @sin/web imports @sin/core by package name (MeSchema in useMe.ts); its
       # built `dist` must exist before typecheck / test / vite build — same as
-      # the `check` job does for @sin/api (Spec 04.0 §7 / AC16).
+      # the `unit` job does for @sin/api (Spec 04.0 §7 / AC16).
       - run: pnpm --filter @sin/core run build
       - run: pnpm --filter @sin/web run typecheck
       # Coverage variant so the Spec 04.0 §10 gates (`src/api/**` +

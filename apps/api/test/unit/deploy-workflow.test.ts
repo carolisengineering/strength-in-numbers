@@ -178,6 +178,15 @@ describe("issue 361 — CI job layout", () => {
     for (const pkg of ["@sin/core", "@sin/loadtest", "@sin/api"]) expect(run).toContain(`pnpm --filter ${pkg} run test:unit`);
     expect(run.some((r) => /@sin\/web/.test(r) || /^pnpm run test:unit/.test(r) || /pnpm -r/.test(r))).toBe(false);
   });
+  it("unit generates the Prisma client and builds core before any test runs", () => {
+    const run = runs("unit");
+    const firstTest = run.findIndex((r) => /test:unit/.test(r));
+    const generate = run.indexOf("pnpm --filter @sin/api exec prisma generate");
+    const build = run.indexOf("pnpm --filter @sin/core run build");
+    expect(generate).toBeGreaterThanOrEqual(0);
+    expect(build).toBeGreaterThanOrEqual(0);
+    expect(Math.max(generate, build)).toBeLessThan(firstTest);
+  });
   it("the web suite runs in exactly one job", () => {
     const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => /@sin\/web run test|pnpm run test:unit|pnpm -r test/.test(s.run ?? "")));
     expect(jobs.map(([id]) => id)).toEqual(["web"]);
