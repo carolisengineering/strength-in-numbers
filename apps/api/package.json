@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
-    "test:integration": "vitest run test/integration",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
     "migrate:dev": "node --env-file-if-exists=.env.owner scripts/owner-env.mjs prisma migrate dev",

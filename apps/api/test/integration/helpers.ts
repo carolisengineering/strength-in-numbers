@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import {
   PostgreSqlContainer,
@@ -28,8 +29,18 @@ export function shouldRunIntegration(): boolean {
   return process.env.RUN_INTEGRATION === "1";
 }
 
+/**
+ * Issue 361 — the environment variable holding the shared server's superuser URL (its `postgres` database). The
+ * integration global setup sets it (`global-setup.ts`); it is unset under the `bench:*` scripts and the default
+ * Vitest config, where every helper starts its own container as before.
+ */
+export const SHARED_PG_ENV = "SIN_IT_SHARED_PG_URL";
+/** The migrated database on the shared server that each file's database is copied from. */
+export const TEMPLATE_DB = "sin_template";
+
 export interface IntegrationDb {
-  container: StartedPostgreSqlContainer;
+  /** The file's own container; absent when its database lives on the shared server. */
+  container?: StartedPostgreSqlContainer;
   prisma: PrismaClient;
   url: string;
   stop: () => Promise<void>;
@@ -107,9 +118,8 @@ export async function startMigratedDb(): Promise<IntegrationDb> {
   return db;
 }
 
-export async function startIntegrationDb(): Promise<AppIntegrationDb> {
-  const db = await startMigratedDb();
-  await setAppRoleLogin(db.prisma, TEST_APP_PASSWORD);
+/** The restricted login's client and URL for a migrated database whose `sin_app` can log in. */
+function withAppClient(db: IntegrationDb): AppIntegrationDb {
   const u = new URL(db.url);
   u.username = "sin_app";
   u.password = TEST_APP_PASSWORD;
@@ -124,6 +134,53 @@ export async function startIntegrationDb(): Promise<AppIntegrationDb> {
       await db.stop();
     },
   };
+}
+
+/**
+ * A migrated database with both logins, in a container of its own (database `sin_test`). For a file that reads or
+ * changes the whole server: roles, `pg_stat_activity`, server settings, or the database's name (issue 361).
+ */
+export async function startPrivateIntegrationDb(): Promise<AppIntegrationDb> {
+  const db = await startMigratedDb();
+  await setAppRoleLogin(db.prisma, TEST_APP_PASSWORD);
+  return withAppClient(db);
+}
+
+/**
+ * A migrated database with both logins. Under the integration suite it is a fresh copy of the migrated template on
+ * the run's shared server (issue 361): the file has the database to itself, but the server (its roles, its
+ * `pg_stat_activity`) is shared, and the database's name is random. A file that needs the whole server calls
+ * `startPrivateIntegrationDb`. Anywhere else (the `bench:*` scripts) it is a container of its own.
+ */
+export async function startIntegrationDb(): Promise<AppIntegrationDb> {
+  const sharedUrl = process.env[SHARED_PG_ENV];
+  if (sharedUrl === undefined) return startPrivateIntegrationDb();
+
+  const name = `sin_it_${randomBytes(6).toString("hex")}`;
+  const admin = new PrismaClient({ datasourceUrl: sharedUrl });
+  try {
+    await admin.$executeRawUnsafe(`CREATE DATABASE "${name}" TEMPLATE "${TEMPLATE_DB}"`);
+  } finally {
+    await admin.$disconnect();
+  }
+  const u = new URL(sharedUrl);
+  u.pathname = `/${name}`;
+  const url = u.toString();
+  const prisma = new PrismaClient({ datasourceUrl: url, log: [{ emit: "event", level: "query" }] });
+  return withAppClient({
+    prisma,
+    url,
+    stop: async () => {
+      await prisma.$disconnect();
+      const dropper = new PrismaClient({ datasourceUrl: sharedUrl });
+      try {
+        // FORCE: a test's own app server may still hold a connection when its file ends.
+        await dropper.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      } finally {
+        await dropper.$disconnect();
+      }
+    },
+  });
 }
 
 /**
