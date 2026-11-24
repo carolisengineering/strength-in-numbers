@@ -85,15 +85,16 @@ jobs:
         run: pnpm --filter @sin/loadtest run test:unit
       - run: pnpm --filter @sin/api run test:unit --shard=${{ matrix.shard }}/2
 
-  # Issue 361: the web suite in twelve shards, without coverage, for a fast answer on a pull request. A failure
-  # in one shard doesn't cancel the others. The coverage gates are the `web-coverage` job's.
+  # Issue 361: the web suite in sixteen shards. A failure in one shard doesn't cancel the others. Each shard
+  # collects coverage with the 90% gates off (SIN_WEB_SHARD, read by apps/web/vitest.config.ts: a shard sees a
+  # fraction of the suite) and hands its report to `web-coverage`, which applies the gates to all of them.
   web:
-    name: web tests (${{ matrix.shard }}/12)
+    name: web tests (${{ matrix.shard }}/16)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -108,13 +109,25 @@ jobs:
       # built `dist` must exist before typecheck / test / vite build — same as
       # the `unit` job does for @sin/api (Spec 04.0 §7 / AC16).
       - run: pnpm --filter @sin/core run build
-      - run: pnpm --filter @sin/web run test:unit --shard=${{ matrix.shard }}/12
+      - run: pnpm --filter @sin/web run test:shard --shard=${{ matrix.shard }}/16
+        env:
+          SIN_WEB_SHARD: "1"
+      # The shard's test results and coverage (no secrets: the repo and its tests are public). The folder's name
+      # starts with a dot, so hidden files are included; a shard that wrote nothing fails here.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-blob-${{ matrix.shard }}
+          path: apps/web/.vitest-reports/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
-  # The whole web suite again, in one run with coverage, so the Spec 04.0 §10 gates (the folders held at 90%
-  # lines in apps/web/vitest.config.ts) fail the job. One run, not shards: coverage from separate shards can't
-  # be added up while most .tsx files are recorded as a single line (deferred minor 729). This is the slow job.
+  # The Spec 04.0 §10 gates (the folders held at 90% lines in apps/web/vitest.config.ts). Runs no tests: it merges
+  # the sixteen shard reports, applies the gates to the whole, then checks that every test file on disk is in the
+  # merge, so a lost shard report can't pass the gates on a smaller suite. Skipped when a shard fails.
   web-coverage:
     name: web coverage (the 90% gates)
+    needs: [web]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -130,7 +143,13 @@ jobs:
       # built `dist` must exist before typecheck / test / vite build — same as
       # the `unit` job does for @sin/api (Spec 04.0 §7 / AC16).
       - run: pnpm --filter @sin/core run build
-      - run: pnpm --filter @sin/web run test:coverage
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: web-blob-*
+          path: apps/web/.vitest-reports
+          merge-multiple: true
+      - run: pnpm --filter @sin/web run test:merge
+      - run: node apps/web/scripts/assert-merged-tests.mjs
 
   # Typecheck, the production build and the checks on it. Lint for apps/web is covered by the root
   # `pnpm run lint` in the `check` job.
