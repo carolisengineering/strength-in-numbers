@@ -43,8 +43,10 @@ async function deleteFrom(path: string, wide: boolean) {
   // Opened from the list: /app/history, then /app/history/:id pushed on top of it.
   await app.router.navigate(path);
   // At desktop widths the list row also says "Newer push", so wait for the summary's own menu, not the text.
-  await app.user.click(await screen.findByRole("button", { name: "Workout menu" }));
-  await app.user.click(await screen.findByRole("button", { name: "Delete workout" }));
+  // Minor 730: this file's first test pays for the app's first render; on a slow CI runner under coverage the
+  // menu's items arrived after Testing Library's default 1 s, so both waits get the suite's usual 5 s.
+  await app.user.click(await screen.findByRole("button", { name: "Workout menu" }, { timeout: 5000 }));
+  await app.user.click(await screen.findByRole("button", { name: "Delete workout" }, { timeout: 5000 }));
   await app.user.click(within(screen.getByRole("dialog", { name: "Delete this workout?" })).getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
   return app;
