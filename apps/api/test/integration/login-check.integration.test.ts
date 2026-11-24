@@ -2,7 +2,7 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertLoginCannotBypassRls, DatabaseLoginRejectedError, DatabaseMisconfiguredError, UnsafeDatabaseLoginError } from "../../src/db/login-check.js";
-import { shouldRunIntegration, startIntegrationDb, startMigratedDb, TEST_APP_PASSWORD, type AppIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startPrivateIntegrationDb, startMigratedDb, TEST_APP_PASSWORD, type AppIntegrationDb, type IntegrationDb } from "./helpers.js";
 
 /** Spec 21.1 AC24 — the boot check against real roles: the four unsafe cases, row_security off, and a clean sin_app. */
 describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC24 — the boot check on real roles", () => {
@@ -29,7 +29,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC24 — the boot check on r
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startPrivateIntegrationDb();
     for (const sql of [
       `CREATE ROLE t_bypass LOGIN PASSWORD '${PASSWORD}' BYPASSRLS`,
       `CREATE ROLE t_owner LOGIN PASSWORD '${PASSWORD}'`,

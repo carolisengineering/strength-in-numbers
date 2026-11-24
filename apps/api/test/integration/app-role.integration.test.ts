@@ -2,11 +2,11 @@
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { main } from "../../src/db/app-role-cli.js";
-import { shouldRunIntegration, startIntegrationDb, TEST_APP_PASSWORD, type AppIntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startPrivateIntegrationDb, TEST_APP_PASSWORD, type AppIntegrationDb } from "./helpers.js";
 
 /**
  * Spec 21.1 AC29 — `db:app-role` gives `sin_app` its login and password, prints the role's flags and memberships, never
- * prints the password, and is idempotent. AC30 — `startIntegrationDb()` exposes `db.app` on `sin_app`.
+ * prints the password, and is idempotent. AC30 — `startPrivateIntegrationDb()` exposes `db.app` on `sin_app`.
  * Review Focus 1 (Postgres 16's creator grant) and 3 (a password with quotes, `$$` and backslashes).
  */
 describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC29 — db:app-role (real Postgres)", () => {
@@ -39,14 +39,14 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC29 — db:app-role (real P
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startPrivateIntegrationDb();
   }, 180_000);
 
   afterAll(async () => {
     await db?.stop();
   });
 
-  it("AC30 — startIntegrationDb exposes db.app, a client on sin_app", async () => {
+  it("AC30 — startPrivateIntegrationDb exposes db.app, a client on sin_app", async () => {
     expect((await db.app.$queryRaw<{ u: string }[]>`SELECT current_user AS u`)[0]!.u).toBe("sin_app");
     expect(new URL(db.appUrl).username).toBe("sin_app");
     expect(decodeURIComponent(new URL(db.appUrl).password)).toBe(TEST_APP_PASSWORD);

@@ -14,7 +14,7 @@ import { createHevyImportRepository } from "../../src/repositories/hevy-import.p
 import { HevyIdInUseError } from "../../src/errors/app-error.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { appRepositories, insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
+import { appRepositories, insertExercise, insertUser, shouldRunIntegration, startPrivateIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { importWorkoutFixture, insertLink, seedPairs } from "./hevy-import-helpers.js";
 import { logWorkout } from "./records-helpers.js";
 import { seedEveryTable, type SeededUser } from "./rls-seed.js";
@@ -63,7 +63,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC35 — the risky paths as 
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startPrivateIntegrationDb();
     a = await seedEveryTable(db, await insertUser(db));
     b = await seedEveryTable(db, await insertUser(db));
     globalExercise = await insertExercise(db, { name: "Bench Press", modality: "weight_reps" });

@@ -17,7 +17,7 @@ import { rebuildRecords } from "../../src/records/rebuild.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startPrivateIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, insertUser, logWorkout, TRUNCATE_ALL, type SetSpec } from "./records-helpers.js";
 
 const day = (d: number) => new Date(Date.UTC(2026, 9, d, 10));
@@ -30,7 +30,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase A — the exercise typ
   let db: AppIntegrationDb;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startPrivateIntegrationDb();
   }, 180_000);
   afterAll(async () => {
     await db?.stop();

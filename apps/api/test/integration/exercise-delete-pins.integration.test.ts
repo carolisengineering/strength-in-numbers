@@ -5,7 +5,7 @@ import { buildApp } from "../../src/app.js";
 import { checkDatabaseReady } from "../../src/db.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startPrivateIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { insertExercise, logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
 
 const A = { authorization: "Bearer a" };
@@ -22,7 +22,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 03.4 Phase B — the delete pins 
   let app: FastifyInstance;
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startPrivateIntegrationDb();
     app = await buildApp({
       config: testConfig(),
       logger: false,

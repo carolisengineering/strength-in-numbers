@@ -206,6 +206,13 @@ describe("issue 361 — CI job layout", () => {
     expect(once.map((s) => s.if)).toEqual(["matrix.shard == 1", "matrix.shard == 1"]);
     expect(job.steps.find((s) => /@sin\/api run test:unit/.test(s.run ?? ""))!.if).toBeUndefined();
   });
+  it("integration is three shards that all report, each running its share of the suite", () => {
+    const job = ci().jobs.integration! as Job & { strategy?: unknown };
+    expect(job.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2, 3] } });
+    const test = job.steps.find((s) => /test:integration/.test(s.run ?? ""))!;
+    expect(test.run).toBe("pnpm --filter @sin/api run test:integration --shard=${{ matrix.shard }}/3");
+    expect(test.env).toEqual({ RUN_INTEGRATION: "1" });
+  });
   it("the web suite runs in exactly one job", () => {
     const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => RUNS_WEB_TESTS.test(s.run ?? "")));
     expect(jobs.map(([id]) => id)).toEqual(["web"]);

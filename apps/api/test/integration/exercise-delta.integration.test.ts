@@ -3,7 +3,7 @@ import { uuidv7 } from "uuidv7";
 import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import { parseSyncToken } from "../../src/repositories/sync-token.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertExercise, insertUser } from "./helpers.js";
+import { shouldRunIntegration, startPrivateIntegrationDb, type IntegrationDb, insertExercise, insertUser } from "./helpers.js";
 
 /**
  * Spec 03.3 §6.3 / §10 AC4 (repository half) — the `since` delta by sync token:
@@ -23,7 +23,7 @@ describe.skipIf(!shouldRunIntegration())(
 
     beforeAll(async () => {
       if (!shouldRunIntegration()) return;
-      db = await startIntegrationDb();
+      db = await startPrivateIntegrationDb();
       repo = createExerciseRepository(db.prisma);
     }, 180_000);
 
