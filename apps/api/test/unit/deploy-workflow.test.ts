@@ -223,11 +223,11 @@ describe("issue 361 — CI job layout", () => {
     const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => RUNS_WEB_TESTS.test(s.run ?? "")));
     expect(jobs.map(([id]) => id)).toEqual(["web", "web-coverage"]);
   });
-  it("web is eight shards that all report, each running its share of the suite without coverage", () => {
+  it("web is twelve shards that all report, each running its share of the suite without coverage", () => {
     const job = ci().jobs.web! as Job & { strategy?: unknown };
-    expect(job.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2, 3, 4, 5, 6, 7, 8] } });
+    expect(job.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] } });
     const tests = job.steps.filter((s) => RUNS_TESTS.test(s.run ?? ""));
-    expect(tests.map((s) => s.run)).toEqual(["pnpm --filter @sin/web run test:unit --shard=${{ matrix.shard }}/8"]);
+    expect(tests.map((s) => s.run)).toEqual(["pnpm --filter @sin/web run test:unit --shard=${{ matrix.shard }}/12"]);
     expect(coreBuildComesFirst("web")).toBe(true);
   });
   it("web-coverage runs the whole suite in one run, so the 90% gates see all of it", () => {

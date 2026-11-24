@@ -85,15 +85,15 @@ jobs:
         run: pnpm --filter @sin/loadtest run test:unit
       - run: pnpm --filter @sin/api run test:unit --shard=${{ matrix.shard }}/2
 
-  # Issue 361: the web suite in eight shards, without coverage, for a fast answer on a pull request. A failure
+  # Issue 361: the web suite in twelve shards, without coverage, for a fast answer on a pull request. A failure
   # in one shard doesn't cancel the others. The coverage gates are the `web-coverage` job's.
   web:
-    name: web tests (${{ matrix.shard }}/8)
+    name: web tests (${{ matrix.shard }}/12)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -108,7 +108,7 @@ jobs:
       # built `dist` must exist before typecheck / test / vite build — same as
       # the `unit` job does for @sin/api (Spec 04.0 §7 / AC16).
       - run: pnpm --filter @sin/core run build
-      - run: pnpm --filter @sin/web run test:unit --shard=${{ matrix.shard }}/8
+      - run: pnpm --filter @sin/web run test:unit --shard=${{ matrix.shard }}/12
 
   # The whole web suite again, in one run with coverage, so the Spec 04.0 §10 gates (the folders held at 90%
   # lines in apps/web/vitest.config.ts) fail the job. One run, not shards: coverage from separate shards can't
