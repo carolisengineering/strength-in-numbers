@@ -13,7 +13,7 @@ const prod = () => parse(read(".github/workflows/deploy-prod.yml")) as Workflow;
 const text = (s: Step) => `${s.name ?? ""}\n${s.run ?? ""}\n${s.uses ?? ""}\n${JSON.stringify(s.with ?? {})}`;
 const indexOf = (steps: Step[], pred: (s: Step) => boolean) => steps.findIndex(pred);
 /** Issue 361: every job a pull request waits for; `publish` and the staging smoke wait for all of them. */
-const CI_CHECK_JOBS = ["check", "unit", "web", "web-coverage", "web-build", "integration", "docker"];
+const CI_CHECK_JOBS = ["check", "unit", "api-coverage", "web", "web-coverage", "web-build", "integration", "docker"];
 
 describe("15 AC10 — publish on merge", () => {
   it("needs every check job, runs only on a push to main, with an OIDC token", () => {
@@ -205,6 +205,35 @@ describe("issue 361 — CI job layout", () => {
     const once = job.steps.filter((s) => /@sin\/(core|loadtest) run test:unit/.test(s.run ?? ""));
     expect(once.map((s) => s.if)).toEqual(["matrix.shard == 1", "matrix.shard == 1"]);
     expect(job.steps.find((s) => /@sin\/api run test:unit/.test(s.run ?? ""))!.if).toBeUndefined();
+  });
+  it("api-coverage runs the whole API unit suite once with coverage, so the 90% gates see all of it (minor 727)", () => {
+    const job = ci().jobs["api-coverage"]! as Job & { strategy?: unknown; "continue-on-error"?: unknown };
+    // One run, not shards: Vitest applies the gates to what one run saw.
+    expect(job.strategy).toBeUndefined();
+    expect(job.if).toBeUndefined();
+    expect(job["continue-on-error"]).toBeUndefined();
+    for (const step of job.steps as (Step & { "continue-on-error"?: unknown })[]) {
+      expect(step.if).toBeUndefined();
+      expect(step["continue-on-error"]).toBeUndefined();
+    }
+    const run = runs("api-coverage");
+    expect(run.filter((r) => RUNS_TESTS.test(r))).toEqual(["pnpm --filter @sin/api run test:coverage"]);
+    const test = run.indexOf("pnpm --filter @sin/api run test:coverage");
+    const generate = run.indexOf("pnpm --filter @sin/api exec prisma generate");
+    const build = run.indexOf("pnpm --filter @sin/core run build");
+    expect(Math.min(generate, build)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(generate, build)).toBeLessThan(test);
+  });
+  it("the API coverage script runs the unit suite with coverage, and the config holds the four gates at 90% (minor 727)", () => {
+    const scripts = (JSON.parse(read("apps/api/package.json")) as { scripts: Record<string, string> }).scripts;
+    expect(scripts["test:coverage"]).toBe("vitest run test/unit --coverage");
+    const config = read("apps/api/vitest.config.ts");
+    for (const gated of ["src/auth/**/*.ts", "src/plugins/auth.ts", "src/repositories/user.ts", "src/plugins/rate-limit.ts"]) {
+      expect(config).toContain(`"${gated}": { lines: 90, functions: 90 },`);
+    }
+    // A switch that turned the gates off would have to show up here.
+    expect(config.match(/\bthresholds\b/g)).toHaveLength(1);
+    expect(config).toContain("thresholds: {");
   });
   it("integration is six shards that all report, each running its share of the suite", () => {
     const job = ci().jobs.integration! as Job & { strategy?: unknown };
