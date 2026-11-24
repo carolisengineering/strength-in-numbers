@@ -13,6 +13,8 @@ export default defineConfig({
   test: {
     ...base.test,
     include: ["test/integration/**/*.test.ts"],
+    // The shared-db test fails if a worker under this config can't see the shared server's address.
+    env: { ...base.test?.env, SIN_IT_EXPECT_SHARED_PG: "1" },
     globalSetup: ["./test/integration/global-setup.ts"],
   },
 });

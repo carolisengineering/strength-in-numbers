@@ -35,6 +35,8 @@ export function shouldRunIntegration(): boolean {
  * Vitest config, where every helper starts its own container as before.
  */
 export const SHARED_PG_ENV = "SIN_IT_SHARED_PG_URL";
+/** Set to "1" by the integration config: a worker under it must find `SHARED_PG_ENV` (the shared-db test checks). */
+export const EXPECT_SHARED_PG_ENV = "SIN_IT_EXPECT_SHARED_PG";
 /** The migrated database on the shared server that each file's database is copied from. */
 export const TEMPLATE_DB = "sin_template";
 
@@ -130,8 +132,11 @@ function withAppClient(db: IntegrationDb): AppIntegrationDb {
     app,
     appUrl,
     stop: async () => {
-      await app.$disconnect();
-      await db.stop();
+      try {
+        await app.$disconnect();
+      } finally {
+        await db.stop();
+      }
     },
   };
 }
@@ -171,13 +176,16 @@ export async function startIntegrationDb(): Promise<AppIntegrationDb> {
     prisma,
     url,
     stop: async () => {
-      await prisma.$disconnect();
       const dropper = new PrismaClient({ datasourceUrl: sharedUrl });
       try {
-        // FORCE: a test's own app server may still hold a connection when its file ends.
-        await dropper.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+        await prisma.$disconnect();
       } finally {
-        await dropper.$disconnect();
+        try {
+          // FORCE: a test's own app server may still hold a connection when its file ends.
+          await dropper.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+        } finally {
+          await dropper.$disconnect();
+        }
       }
     },
   });

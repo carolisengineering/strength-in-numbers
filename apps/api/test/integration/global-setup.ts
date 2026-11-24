@@ -18,8 +18,9 @@ export default async function setup(): Promise<() => Promise<void>> {
 
   const container = await new PostgreSqlContainer(POSTGRES_IMAGE)
     .withDatabase("postgres")
-    // Every worker holds a superuser and an app pool per file; the default 100 connections isn't enough for all of them.
-    .withCommand(["postgres", "-c", "max_connections=500"])
+    // Every worker's file holds a superuser pool and an app pool (Prisma: 2 × cores + 1 each), and all of them now
+    // meet on this one server: the default 100 connections isn't enough, and a many-core laptop can pass 500.
+    .withCommand(["postgres", "-c", "max_connections=1000"])
     .start();
   const adminUrl = container.getConnectionUri();
   const admin = new PrismaClient({ datasourceUrl: adminUrl });
@@ -42,8 +43,8 @@ export default async function setup(): Promise<() => Promise<void>> {
     // A template can only be copied while nothing is connected to it; refusing connections keeps it that way.
     await admin.$executeRawUnsafe(`ALTER DATABASE "${TEMPLATE_DB}" WITH ALLOW_CONNECTIONS false`);
   } catch (err) {
-    await admin.$disconnect();
-    await container.stop();
+    // Both, whatever either does: a failed disconnect must not leave the container running or hide `err`.
+    await Promise.allSettled([admin.$disconnect(), container.stop()]);
     throw err;
   }
   await admin.$disconnect();

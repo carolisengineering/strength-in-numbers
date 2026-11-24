@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type AppIntegrationDb, insertUser, shouldRunIntegration, startIntegrationDb, startPrivateIntegrationDb } from "./helpers.js";
+import { type AppIntegrationDb, EXPECT_SHARED_PG_ENV, SHARED_PG_ENV, insertUser, shouldRunIntegration, startIntegrationDb, startPrivateIntegrationDb } from "./helpers.js";
 
 const migrationsDir = fileURLToPath(new URL("../../prisma/migrations/", import.meta.url));
 const migrationCount = readdirSync(migrationsDir).filter((name) => statSync(`${migrationsDir}${name}`).isDirectory()).length;
@@ -10,18 +10,27 @@ const where = (url: string) => {
   return { server: `${u.hostname}:${u.port}`, database: u.pathname.slice(1) };
 };
 
-describe.skipIf(!shouldRunIntegration())("issue 361 — a database per file on the shared server", () => {
+/** The integration config promises a shared server; the default config (`pnpm test`) has none, and every file is private. */
+const expectsShared = process.env[EXPECT_SHARED_PG_ENV] === "1";
+const hasShared = process.env[SHARED_PG_ENV] !== undefined;
+
+describe.skipIf(!shouldRunIntegration() || !expectsShared)("issue 361 — the integration config's shared server", () => {
+  it("reaches this worker, so no file falls back to a private container unnoticed", () => {
+    expect(process.env[SHARED_PG_ENV]).toMatch(/^postgres(?:ql)?:\/\//);
+  });
+});
+
+describe.skipIf(!shouldRunIntegration() || !hasShared)("issue 361 — a database per file on the shared server", () => {
   let a: AppIntegrationDb;
   let b: AppIntegrationDb;
 
   beforeAll(async () => {
-    if (!shouldRunIntegration()) return;
+    if (!shouldRunIntegration() || !hasShared) return;
     a = await startIntegrationDb();
     b = await startIntegrationDb();
   });
   afterAll(async () => {
-    await a?.stop();
-    await b?.stop();
+    await Promise.allSettled([a?.stop(), b?.stop()]);
   });
 
   it("two calls give two databases on one server", () => {
@@ -67,5 +76,6 @@ describe.skipIf(!shouldRunIntegration())("issue 361 — a database per file on t
     } finally {
       await p.stop();
     }
-  });
+    // A container start plus every migration, inside the test body: the hooks elsewhere allow the same.
+  }, 180_000);
 });

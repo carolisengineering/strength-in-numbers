@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "../helpers.js";
+import { shouldRunIntegration, startPrivateIntegrationDb, type AppIntegrationDb } from "../helpers.js";
 import { makeCrossUserApp, type WorldActor } from "./app.js";
 import { buildWorld, type World } from "./world.js";
 import { snapshot } from "./snapshot.js";
@@ -56,7 +56,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route sui
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startPrivateIntegrationDb();
     world = await buildWorld(db);
     ({ app, as } = await makeCrossUserApp(db, {
       hevyUsers: [world.a.userId],
