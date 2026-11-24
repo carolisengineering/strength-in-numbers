@@ -11,7 +11,7 @@ import { main } from "../../src/db/rls-cli.js";
 import { RLS_LOCK_ORDER, RLS_TABLES, quoteIdent } from "../../src/db/rls-tables.js";
 import { GENEROUS_LIMITS, TEST_ENV, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
-import { appRepositories, insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, type AppIntegrationDb } from "./helpers.js";
+import { appRepositories, insertExercise, insertUser, shouldRunIntegration, startPrivateIntegrationDb, type AppIntegrationDb } from "./helpers.js";
 import { logWorkout } from "./records-helpers.js";
 
 const noTls = (url: string) => `${url}${url.includes("?") ? "&" : "?"}sslmode=disable`;
@@ -75,7 +75,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC39 — the kill switch (re
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startPrivateIntegrationDb();
   }, 180_000);
 
   afterEach(async () => {

@@ -11,7 +11,7 @@ import {
   seedCatalog,
   type SeedLogger,
 } from "../../src/seed/catalog.js";
-import { shouldRunIntegration, startIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
+import { shouldRunIntegration, startPrivateIntegrationDb, type IntegrationDb, insertUser } from "./helpers.js";
 
 /**
  * Spec 03.3 §10 AC2 — every write path stamps `change_xid` through the trigger,
@@ -63,7 +63,7 @@ describe.skipIf(!shouldRunIntegration())(
 
     beforeAll(async () => {
       if (!shouldRunIntegration()) return;
-      db = await startIntegrationDb();
+      db = await startPrivateIntegrationDb();
       repo = createExerciseRepository(db.prisma);
     }, 180_000);
 

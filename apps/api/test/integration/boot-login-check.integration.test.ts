@@ -4,7 +4,7 @@ import { connect, createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TEST_ENV } from "../helpers/build-test-app.js";
-import { shouldRunIntegration, startIntegrationDb, startMigratedDb, TEST_APP_PASSWORD, type AppIntegrationDb, type IntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startPrivateIntegrationDb, startMigratedDb, TEST_APP_PASSWORD, type AppIntegrationDb, type IntegrationDb } from "./helpers.js";
 
 /**
  * Spec 21.1 AC25, AC31 — the real entry point, spawned: on an unsafe login it exits 1 with the one-line reason and
@@ -70,7 +70,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC25 — the boot check runs
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startPrivateIntegrationDb();
   }, 180_000);
 
   afterAll(async () => {

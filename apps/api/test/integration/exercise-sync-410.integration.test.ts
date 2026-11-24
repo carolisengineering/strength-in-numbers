@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildTestApp } from "../helpers/build-test-app.js";
-import { shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
+import { shouldRunIntegration, startPrivateIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 
 /**
  * Spec 03.3 §10 AC8 (410 half) — a `since` ahead of the current snapshot's
@@ -14,7 +14,7 @@ describe.skipIf(!shouldRunIntegration())(
 
     beforeAll(async () => {
       if (!shouldRunIntegration()) return;
-      db = await startIntegrationDb();
+      db = await startPrivateIntegrationDb();
     }, 180_000);
 
     afterAll(async () => {

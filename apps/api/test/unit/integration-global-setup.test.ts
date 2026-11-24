@@ -29,6 +29,12 @@ describe("issue 361 — the integration global setup", () => {
     expect(read("vitest.integration.config.ts")).toMatch(/globalSetup:\s*\["\.\/test\/integration\/global-setup\.ts"\]/);
   });
 
+  it("the integration config runs the integration files only, with the base config's timeouts", async () => {
+    const config = (await import("../../vitest.integration.config.js")).default as { test: { include: string[]; hookTimeout: number } };
+    expect(config.test.include).toEqual(["test/integration/**/*.test.ts"]);
+    expect(config.test.hookTimeout).toBe(120_000);
+  });
+
   it("test:integration uses the integration config; test:unit and test don't", () => {
     const scripts = (JSON.parse(read("package.json")) as { scripts: Record<string, string> }).scripts;
     expect(scripts["test:integration"]).toBe("vitest run --config vitest.integration.config.ts");

@@ -5,7 +5,7 @@ import type { ExerciseRepository } from "../../src/repositories/exercise.js";
 import { createExerciseRepository } from "../../src/repositories/exercise.prisma.js";
 import {
   shouldRunIntegration,
-  startIntegrationDb,
+  startPrivateIntegrationDb,
   type IntegrationDb,
 } from "./helpers.js";
 
@@ -28,7 +28,7 @@ describe.skipIf(!shouldRunIntegration())(
 
     beforeAll(async () => {
       if (!shouldRunIntegration()) return;
-      db = await startIntegrationDb();
+      db = await startPrivateIntegrationDb();
       other = new PrismaClient({ datasourceUrl: db.url });
       repo = createExerciseRepository(db.prisma);
     }, 180_000);

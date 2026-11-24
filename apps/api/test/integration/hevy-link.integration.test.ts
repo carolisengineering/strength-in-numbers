@@ -9,7 +9,7 @@ import { hevyFingerprint } from "../../src/hevy/fingerprint.js";
 import { GENEROUS_LIMITS, testConfig } from "../helpers/build-test-app.js";
 import { authContext, fakeVerifier } from "../helpers/fakes.js";
 import { legacyHevyFingerprintSourceV1 } from "../helpers/legacy-fingerprint-source.js";
-import { insertExercise, insertUser, shouldRunIntegration, startIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
+import { insertExercise, insertUser, shouldRunIntegration, startPrivateIntegrationDb, appRepositories, type AppIntegrationDb } from "./helpers.js";
 import { logWorkout, TRUNCATE_ALL } from "./records-helpers.js";
 import { addTimedSection, recordRounds, setResult } from "./section-helpers.js";
 
@@ -28,7 +28,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 19.0 Phase B — Hevy links (real
 
   beforeAll(async () => {
     if (!shouldRunIntegration()) return;
-    db = await startIntegrationDb();
+    db = await startPrivateIntegrationDb();
     const logger: FastifyBaseLogger = pino({ level: "info" }, { write: (s: string) => lines.push(JSON.parse(s)) });
     app = await buildApp({
       config: { ...testConfig(), hevyEnabledUserIds: Object.freeze(new Set([A_ID, B_ID])) },
