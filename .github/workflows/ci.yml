@@ -106,8 +106,8 @@ jobs:
       - run: pnpm --filter @sin/core run build
       - run: pnpm --filter @sin/api run test:coverage
 
-  # Issue 361: the web suite in eight shards (with the other jobs that makes twenty, the number GitHub runs at
-  # once; more shards wait for a free runner). A failure in one shard doesn't cancel the others. Each shard
+  # Issue 361: the web suite in eight shards. GitHub runs twenty jobs at once and a pull request starts
+  # twenty-one (the short `infra` job frees a runner within seconds); more shards would wait for a free runner. A failure in one shard doesn't cancel the others. Each shard
   # collects coverage with the 90% gates off (SIN_WEB_SHARD, read by apps/web/vitest.config.ts: a shard sees a
   # fraction of the suite) and hands its report to `web-coverage`, which applies the gates to all of them.
   web:
