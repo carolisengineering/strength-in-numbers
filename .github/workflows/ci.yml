@@ -35,7 +35,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @sin/api exec prisma generate
       # @sin/api consumes @sin/core's built dist (Spec 03.0 — first real
-      # consumer), so build it before lint/typecheck/unit, not after. Spec 02 §2
+      # consumer), so build it before lint/typecheck, not after (the `unit` job
+      # builds it again for the tests). Spec 02 §2
       # AC1 also relies on this proving the library builds + its exports resolve.
       - run: pnpm --filter @sin/core run build
       - run: pnpm run lint

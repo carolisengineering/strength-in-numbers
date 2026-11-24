@@ -155,6 +155,17 @@ describe("Minor 80 — deploy-prod generates no Prisma client", () => {
 });
 
 describe("issue 361 — CI job layout", () => {
+  /** A step that runs a test suite, in any spelling: a package's `test…` script, a recursive run, or Vitest itself. */
+  const RUNS_TESTS = /\bvitest\b|pnpm (?:-r|--recursive)\b.*\btest|pnpm (?:run )?test\b|--filter \S+ (?:run )?test/;
+  /** A step that runs the web suite: the web package's own script, or a run of every package. */
+  const RUNS_WEB_TESTS = /pnpm (?:-r|--recursive)\b.*\btest|pnpm (?:run )?test\b|--filter @sin\/web (?:run )?test|@sin\/web\b.*\bvitest/;
+  it.each(["pnpm test", "pnpm run test:unit", "pnpm -r run test:unit", "pnpm --recursive test", "pnpm --filter @sin/web test:unit", "pnpm --filter @sin/web run test:coverage", "pnpm test:unit", "pnpm --filter @sin/web exec vitest run"])(
+    "%s counts as running the web suite",
+    (run) => expect(RUNS_WEB_TESTS.test(run) && RUNS_TESTS.test(run)).toBe(true),
+  );
+  it.each(["pnpm run lint", "pnpm run typecheck", "pnpm --filter @sin/core run build", "pnpm --filter @sin/api exec prisma validate"])("%s is not a test run", (run) =>
+    expect(RUNS_TESTS.test(run) || RUNS_WEB_TESTS.test(run)).toBe(false),
+  );
   const runs = (job: string) => ci().jobs[job]!.steps.map((s) => s.run ?? "");
   it("publish and the staging smoke wait for every check job", () => {
     expect(ci().jobs.publish!.needs).toEqual(CI_CHECK_JOBS);
@@ -162,7 +173,7 @@ describe("issue 361 — CI job layout", () => {
   });
   it("check holds the static checks, in order, and runs no tests", () => {
     const steps = ci().jobs.check!.steps;
-    expect(steps.some((s) => /test:unit|vitest/.test(s.run ?? ""))).toBe(false);
+    expect(steps.some((s) => RUNS_TESTS.test(s.run ?? ""))).toBe(false);
     const order = [
       indexOf(steps, (s) => s.run === "pnpm run lint"),
       indexOf(steps, (s) => s.run === "pnpm run typecheck"),
@@ -176,7 +187,7 @@ describe("issue 361 — CI job layout", () => {
   it("unit runs the core, loadtest and API unit tests, and nothing from the web app", () => {
     const run = runs("unit");
     for (const pkg of ["@sin/core", "@sin/loadtest", "@sin/api"]) expect(run).toContain(`pnpm --filter ${pkg} run test:unit`);
-    expect(run.some((r) => /@sin\/web/.test(r) || /^pnpm run test:unit/.test(r) || /pnpm -r/.test(r))).toBe(false);
+    expect(run.some((r) => /@sin\/web/.test(r) || RUNS_WEB_TESTS.test(r))).toBe(false);
   });
   it("unit generates the Prisma client and builds core before any test runs", () => {
     const run = runs("unit");
@@ -188,7 +199,7 @@ describe("issue 361 — CI job layout", () => {
     expect(Math.max(generate, build)).toBeLessThan(firstTest);
   });
   it("the web suite runs in exactly one job", () => {
-    const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => /@sin\/web run test|pnpm run test:unit|pnpm -r test/.test(s.run ?? "")));
+    const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => RUNS_WEB_TESTS.test(s.run ?? "")));
     expect(jobs.map(([id]) => id)).toEqual(["web"]);
   });
   it("a new push cancels that pull request's run; each main commit keeps its own", () => {

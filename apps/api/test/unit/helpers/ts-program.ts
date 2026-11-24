@@ -37,9 +37,10 @@ const parsedConfig = (): ts.ParsedCommandLine =>
  * Issue 361: every file on disk is parsed once per test file, whatever the number of programs. A fixture test builds
  * its own program, and each used to re-parse the standard library and the generated Prisma client (most of its time).
  * A parsed file doesn't depend on the program that asked for it; overlay files are never kept, since two tests give
- * the same fixture path different text.
+ * the same fixture path different text. No program here is built from an older one (`oldProgram`); one that was
+ * would have to honor the host's `shouldCreateNewSourceFile` argument, which this cache ignores.
  */
-const parsedFiles = new Map<string, ts.SourceFile | undefined>();
+const parsedFiles = new Map<string, ts.SourceFile>();
 
 export function apiProgram(files: readonly string[], overlay: Readonly<Record<string, string>> = {}): ts.Program {
   const options = parsedConfig().options;
@@ -51,8 +52,12 @@ export function apiProgram(files: readonly string[], overlay: Readonly<Record<st
   host.getSourceFile = (f, lang, onError, create) => {
     const text = extra.get(f);
     if (text !== undefined) return ts.createSourceFile(f, text, lang, true);
-    if (!parsedFiles.has(f)) parsedFiles.set(f, getSourceFile.call(host, f, lang, onError, create));
-    return parsedFiles.get(f);
+    const kept = parsedFiles.get(f);
+    if (kept) return kept;
+    // A file that couldn't be read isn't kept: the next program asks again and reports it again.
+    const parsed = getSourceFile.call(host, f, lang, onError, create);
+    if (parsed) parsedFiles.set(f, parsed);
+    return parsed;
   };
   return ts.createProgram([...files, ...extra.keys()], options, host);
 }
