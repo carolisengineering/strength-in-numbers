@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
+    "test:coverage": "vitest run test/unit --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",

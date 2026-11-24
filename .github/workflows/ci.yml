@@ -85,6 +85,27 @@ jobs:
         run: pnpm --filter @sin/loadtest run test:unit
       - run: pnpm --filter @sin/api run test:unit --shard=${{ matrix.shard }}/2
 
+  # Minor 727: the API's coverage gates (apps/api/vitest.config.ts holds the auth code, the user repository and
+  # the rate limiter at 90% lines and functions; Spec 01 criterion 19, Spec 05.2 §10). The API unit suite once
+  # more, in one run with coverage: Vitest applies the gates to what one run saw, so not in the `unit` shards.
+  api-coverage:
+    name: api coverage (the 90% gates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sin/api exec prisma generate
+      # @sin/api imports @sin/core's built dist (Spec 03.0).
+      - run: pnpm --filter @sin/core run build
+      - run: pnpm --filter @sin/api run test:coverage
+
   # Issue 361: the web suite in eight shards (with the other jobs that makes twenty, the number GitHub runs at
   # once; more shards wait for a free runner). A failure in one shard doesn't cancel the others. Each shard
   # collects coverage with the 90% gates off (SIN_WEB_SHARD, read by apps/web/vitest.config.ts: a shard sees a
@@ -238,7 +259,7 @@ jobs:
   # baked in (/healthz reports it). Builds from the same Dockerfile as `docker`; never on a pull request.
   publish:
     name: publish API image (Artifact Registry)
-    needs: [check, unit, web, web-coverage, web-build, integration, docker]
+    needs: [check, unit, api-coverage, web, web-coverage, web-build, integration, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -287,7 +308,7 @@ jobs:
 
   smoke:
     name: post-deploy smoke (staging)
-    needs: [check, unit, web, web-coverage, web-build, integration, docker]
+    needs: [check, unit, api-coverage, web, web-coverage, web-build, integration, docker]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
