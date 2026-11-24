@@ -312,7 +312,7 @@ Infra spec with a few unit-testable pieces. Order of attack: the pure functions 
 | 19 | CI-pipeline | the build steps' output; `assert-build-output.mjs`; the `onrender.com` grep step; the live site loads and signs in |
 | 20 | CI-pipeline + unit | green `deploy-prod` run; smoke unit tests for `EXPECT_COMMIT` and the preflight check over a fake server (match, mismatch, wrong `Access-Control-Allow-Origin`) |
 | 21 | CI-pipeline | the rollback rehearsal of AC31 |
-| 22 | unit + CI-pipeline | `assert-firebase-json.test.ts` (fixtures: matching, a missing header, a changed directive, a wrong `connect-src`, a relaxation) and the `web` job step |
+| 22 | unit + CI-pipeline | `assert-firebase-json.test.ts` (fixtures: matching, a missing header, a changed directive, a wrong `connect-src`, a relaxation) and the `web-build` job step |
 | 23 | CI-pipeline | the web smoke's Firebase mode in the release run; unit tests of its checks over a fake server |
 | 24 | unit | `prod-origins.test.ts` over `infra/`, `firebase.json`, the runbook table |
 | 25 | unit | `config.test.ts` (accept / reject / default) and the unmodified `rate-limit-*` suites |

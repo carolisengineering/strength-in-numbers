@@ -213,6 +213,12 @@ describe("issue 361 — CI job layout", () => {
     expect(test.run).toBe("pnpm --filter @sin/api run test:integration --shard=${{ matrix.shard }}/6");
     expect(test.env).toEqual({ RUN_INTEGRATION: "1" });
   });
+  /** The web app imports @sin/core's built dist, so the build is a step before the job's first test step. */
+  const coreBuildComesFirst = (job: string): boolean => {
+    const run = runs(job);
+    const build = run.indexOf("pnpm --filter @sin/core run build");
+    return build >= 0 && build < run.findIndex((r) => RUNS_TESTS.test(r));
+  };
   it("the web suite runs in two jobs only: the shards for a fast answer, and the coverage job for the gates", () => {
     const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => RUNS_WEB_TESTS.test(s.run ?? "")));
     expect(jobs.map(([id]) => id)).toEqual(["web", "web-coverage"]);
@@ -222,16 +228,26 @@ describe("issue 361 — CI job layout", () => {
     expect(job.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2, 3, 4, 5, 6, 7, 8] } });
     const tests = job.steps.filter((s) => RUNS_TESTS.test(s.run ?? ""));
     expect(tests.map((s) => s.run)).toEqual(["pnpm --filter @sin/web run test:unit --shard=${{ matrix.shard }}/8"]);
-    expect(runs("web")).toContain("pnpm --filter @sin/core run build");
+    expect(coreBuildComesFirst("web")).toBe(true);
   });
   it("web-coverage runs the whole suite in one run, so the 90% gates see all of it", () => {
     const tests = ci().jobs["web-coverage"]!.steps.filter((s) => RUNS_TESTS.test(s.run ?? ""));
     expect(tests.map((s) => s.run)).toEqual(["pnpm --filter @sin/web run test:coverage"]);
     expect((ci().jobs["web-coverage"] as Job & { strategy?: unknown }).strategy).toBeUndefined();
-    expect(runs("web-coverage")).toContain("pnpm --filter @sin/core run build");
+    expect(coreBuildComesFirst("web-coverage")).toBe(true);
+  });
+  it.each(["web", "web-coverage", "web-build"])("%s can't be skipped or allowed to fail, as a job or step by step", (id) => {
+    const job = ci().jobs[id]! as Job & { "continue-on-error"?: unknown };
+    expect(job.if).toBeUndefined();
+    expect(job["continue-on-error"]).toBeUndefined();
+    for (const step of job.steps as (Step & { "continue-on-error"?: unknown })[]) {
+      expect(step.if).toBeUndefined();
+      expect(step["continue-on-error"]).toBeUndefined();
+    }
   });
   it("web-build typechecks, builds and checks the build, and runs no tests", () => {
     const run = runs("web-build");
+    expect((ci().jobs["web-build"] as Job & { strategy?: unknown }).strategy).toBeUndefined();
     expect(run.some((r) => RUNS_TESTS.test(r))).toBe(false);
     const order = [
       "pnpm --filter @sin/core run build",

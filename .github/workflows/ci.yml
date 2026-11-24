@@ -55,8 +55,8 @@ jobs:
           # block but makes no connection. A placeholder test value satisfies it.
           DATABASE_URL: postgresql://test:test@localhost:5432/test
 
-  # Issue 361: the unit suites of every package but the web app. The web suite runs once, with coverage, in
-  # the `web` jobs; the root `pnpm run test:unit` would run it once more here.
+  # Issue 361: the unit suites of every package but the web app. The web suite has jobs of its own (`web` in
+  # shards for a fast answer, `web-coverage` for the gates); the root `pnpm run test:unit` would run it once more here.
   unit:
     name: unit (core · loadtest · api, ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
