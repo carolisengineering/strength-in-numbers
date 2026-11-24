@@ -4,7 +4,10 @@ export default defineConfig({
   test: {
     // Unit suite runs with no external deps; integration suite (test/integration)
     // needs a Docker daemon for Testcontainers Postgres. CI runs them as
-    // separate steps via the `test:unit` / `test:integration` scripts.
+    // separate jobs via the `test:unit` / `test:integration` scripts; the
+    // integration script uses `vitest.integration.config.ts`, whose global setup
+    // starts the suite's shared Postgres (issue 361). Under this config an
+    // integration file starts a container of its own.
     include: ["test/**/*.test.ts"],
     environment: "node",
     hookTimeout: 120_000,
