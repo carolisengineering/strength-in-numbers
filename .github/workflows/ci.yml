@@ -85,16 +85,17 @@ jobs:
         run: pnpm --filter @sin/loadtest run test:unit
       - run: pnpm --filter @sin/api run test:unit --shard=${{ matrix.shard }}/2
 
-  # Issue 361: the web suite in sixteen shards. A failure in one shard doesn't cancel the others. Each shard
+  # Issue 361: the web suite in eight shards (with the other jobs that makes twenty, the number GitHub runs at
+  # once; more shards wait for a free runner). A failure in one shard doesn't cancel the others. Each shard
   # collects coverage with the 90% gates off (SIN_WEB_SHARD, read by apps/web/vitest.config.ts: a shard sees a
   # fraction of the suite) and hands its report to `web-coverage`, which applies the gates to all of them.
   web:
-    name: web tests (${{ matrix.shard }}/16)
+    name: web tests (${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -109,21 +110,23 @@ jobs:
       # built `dist` must exist before typecheck / test / vite build — same as
       # the `unit` job does for @sin/api (Spec 04.0 §7 / AC16).
       - run: pnpm --filter @sin/core run build
-      - run: pnpm --filter @sin/web run test:shard --shard=${{ matrix.shard }}/16
+      - run: pnpm --filter @sin/web run test:shard --shard=${{ matrix.shard }}/8
         env:
           SIN_WEB_SHARD: "1"
       # The shard's test results and coverage (no secrets: the repo and its tests are public). The folder's name
       # starts with a dot, so hidden files are included; a shard that wrote nothing fails here.
+      # A re-run of the whole run uploads the report again under the same name.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-blob-${{ matrix.shard }}
           path: apps/web/.vitest-reports/
           include-hidden-files: true
           if-no-files-found: error
+          overwrite: true
           retention-days: 1
 
   # The Spec 04.0 §10 gates (the folders held at 90% lines in apps/web/vitest.config.ts). Runs no tests: it merges
-  # the sixteen shard reports, applies the gates to the whole, then checks that every test file on disk is in the
+  # the shard reports, applies the gates to the whole, then checks that every test file on disk is in the
   # merge, so a lost shard report can't pass the gates on a smaller suite. Skipped when a shard fails.
   web-coverage:
     name: web coverage (the 90% gates)

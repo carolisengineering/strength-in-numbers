@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:shard": "vitest run --coverage --reporter=default --reporter=blob",
+    "test:shard": "vitest run --coverage --coverage.reporter=text-summary --reporter=default --reporter=blob",
     "test:merge": "vitest run --merge-reports --coverage --reporter=default --reporter=json --outputFile.json=./.vitest-merged.json",
     "test:watch": "vitest",
     "e2e": "playwright test",

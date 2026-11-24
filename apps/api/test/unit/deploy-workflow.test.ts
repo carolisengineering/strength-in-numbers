@@ -219,13 +219,13 @@ describe("issue 361 — CI job layout", () => {
     const build = run.indexOf("pnpm --filter @sin/core run build");
     return build >= 0 && build < run.findIndex((r) => RUNS_TESTS.test(r));
   };
-  const WEB_SHARDS = 16;
+  const WEB_SHARDS = 8;
   const BLOB_DIR = "apps/web/.vitest-reports";
   it("the web suite's steps are in two jobs only: the shards run it, the coverage job merges their reports", () => {
     const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => RUNS_WEB_TESTS.test(s.run ?? "")));
     expect(jobs.map(([id]) => id)).toEqual(["web", "web-coverage"]);
   });
-  it("web is sixteen shards that all report, each running its share of the suite with coverage and no gates", () => {
+  it("web is eight shards that all report, each running its share of the suite with coverage and no gates", () => {
     const job = ci().jobs.web! as Job & { strategy?: unknown };
     expect(job.strategy).toEqual({ "fail-fast": false, matrix: { shard: Array.from({ length: WEB_SHARDS }, (_, i) => i + 1) } });
     const tests = job.steps.filter((s) => RUNS_TESTS.test(s.run ?? ""));
@@ -244,6 +244,8 @@ describe("issue 361 — CI job layout", () => {
       path: `${BLOB_DIR}/`,
       "include-hidden-files": true,
       "if-no-files-found": "error",
+      // A re-run of the whole run uploads each shard's report again under the same name.
+      overwrite: true,
       "retention-days": 1,
     });
   });
@@ -261,13 +263,20 @@ describe("issue 361 — CI job layout", () => {
     expect(merge).toBeLessThan(count);
     // The gates are on here: nothing in this job may set the shard switch.
     expect(JSON.stringify(job)).not.toContain("SIN_WEB_SHARD");
+    expect(JSON.stringify((ci() as Workflow & { env?: unknown }).env ?? {})).not.toContain("SIN_WEB_SHARD");
     expect(coreBuildComesFirst("web-coverage")).toBe(true);
   });
   it("the web scripts: a shard writes a blob report with coverage; the merge reads them, with coverage, and writes the list the count reads", () => {
     const scripts = (JSON.parse(read("apps/web/package.json")) as { scripts: Record<string, string> }).scripts;
-    expect(scripts["test:shard"]).toBe("vitest run --coverage --reporter=default --reporter=blob");
+    expect(scripts["test:shard"]).toBe("vitest run --coverage --coverage.reporter=text-summary --reporter=default --reporter=blob");
     expect(scripts["test:merge"]).toBe("vitest run --merge-reports --coverage --reporter=default --reporter=json --outputFile.json=./.vitest-merged.json");
     expect(scripts["test:coverage"]).toBe("vitest run --coverage");
+  });
+  it("the web Vitest config takes its coverage provider and its gates from coverage-gates.ts, and from nowhere else", () => {
+    const config = read("apps/web/vitest.config.ts");
+    expect(config).toContain('import { COVERAGE_PROVIDER, coverageGates } from "./coverage-gates";');
+    expect(config.match(/\bprovider:.*$/gm)).toEqual(["provider: COVERAGE_PROVIDER,"]);
+    expect(config.match(/\bthresholds\b.*$/gm)).toEqual(["thresholds: coverageGates(process.env),"]);
   });
   it.each(["web", "web-coverage", "web-build"])("%s can't be skipped or allowed to fail, as a job or step by step", (id) => {
     const job = ci().jobs[id]! as Job & { "continue-on-error"?: unknown };
