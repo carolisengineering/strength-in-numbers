@@ -13,7 +13,7 @@ const prod = () => parse(read(".github/workflows/deploy-prod.yml")) as Workflow;
 const text = (s: Step) => `${s.name ?? ""}\n${s.run ?? ""}\n${s.uses ?? ""}\n${JSON.stringify(s.with ?? {})}`;
 const indexOf = (steps: Step[], pred: (s: Step) => boolean) => steps.findIndex(pred);
 /** Issue 361: every job a pull request waits for; `publish` and the staging smoke wait for all of them. */
-const CI_CHECK_JOBS = ["check", "unit", "web", "integration", "docker"];
+const CI_CHECK_JOBS = ["check", "unit", "web", "web-coverage", "web-build", "integration", "docker"];
 
 describe("15 AC10 — publish on merge", () => {
   it("needs every check job, runs only on a push to main, with an OIDC token", () => {
@@ -213,9 +213,37 @@ describe("issue 361 — CI job layout", () => {
     expect(test.run).toBe("pnpm --filter @sin/api run test:integration --shard=${{ matrix.shard }}/6");
     expect(test.env).toEqual({ RUN_INTEGRATION: "1" });
   });
-  it("the web suite runs in exactly one job", () => {
+  it("the web suite runs in two jobs only: the shards for a fast answer, and the coverage job for the gates", () => {
     const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => RUNS_WEB_TESTS.test(s.run ?? "")));
-    expect(jobs.map(([id]) => id)).toEqual(["web"]);
+    expect(jobs.map(([id]) => id)).toEqual(["web", "web-coverage"]);
+  });
+  it("web is eight shards that all report, each running its share of the suite without coverage", () => {
+    const job = ci().jobs.web! as Job & { strategy?: unknown };
+    expect(job.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2, 3, 4, 5, 6, 7, 8] } });
+    const tests = job.steps.filter((s) => RUNS_TESTS.test(s.run ?? ""));
+    expect(tests.map((s) => s.run)).toEqual(["pnpm --filter @sin/web run test:unit --shard=${{ matrix.shard }}/8"]);
+    expect(runs("web")).toContain("pnpm --filter @sin/core run build");
+  });
+  it("web-coverage runs the whole suite in one run, so the 90% gates see all of it", () => {
+    const tests = ci().jobs["web-coverage"]!.steps.filter((s) => RUNS_TESTS.test(s.run ?? ""));
+    expect(tests.map((s) => s.run)).toEqual(["pnpm --filter @sin/web run test:coverage"]);
+    expect((ci().jobs["web-coverage"] as Job & { strategy?: unknown }).strategy).toBeUndefined();
+    expect(runs("web-coverage")).toContain("pnpm --filter @sin/core run build");
+  });
+  it("web-build typechecks, builds and checks the build, and runs no tests", () => {
+    const run = runs("web-build");
+    expect(run.some((r) => RUNS_TESTS.test(r))).toBe(false);
+    const order = [
+      "pnpm --filter @sin/core run build",
+      "pnpm --filter @sin/web run typecheck",
+      "pnpm --filter @sin/web run build",
+      "node apps/web/scripts/assert-build-output.mjs",
+      "node apps/web/scripts/assert-render-yaml.mjs",
+      "node apps/web/scripts/assert-firebase-json.mjs",
+      "node apps/web/scripts/assert-css-tokens.mjs",
+    ].map((command) => run.indexOf(command));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
   it("a new push cancels that pull request's run; each main commit keeps its own", () => {
     expect(ci().concurrency).toEqual({

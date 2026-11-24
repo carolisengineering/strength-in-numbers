@@ -56,7 +56,7 @@ jobs:
           DATABASE_URL: postgresql://test:test@localhost:5432/test
 
   # Issue 361: the unit suites of every package but the web app. The web suite runs once, with coverage, in
-  # the `web` job; the root `pnpm run test:unit` would run it a second time here.
+  # the `web` jobs; the root `pnpm run test:unit` would run it once more here.
   unit:
     name: unit (core · loadtest · api, ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
@@ -85,8 +85,57 @@ jobs:
         run: pnpm --filter @sin/loadtest run test:unit
       - run: pnpm --filter @sin/api run test:unit --shard=${{ matrix.shard }}/2
 
+  # Issue 361: the web suite in eight shards, without coverage, for a fast answer on a pull request. A failure
+  # in one shard doesn't cancel the others. The coverage gates are the `web-coverage` job's.
   web:
-    name: web (@sin/web — typecheck · test · build)
+    name: web tests (${{ matrix.shard }}/8)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # @sin/web imports @sin/core by package name (MeSchema in useMe.ts); its
+      # built `dist` must exist before typecheck / test / vite build — same as
+      # the `unit` job does for @sin/api (Spec 04.0 §7 / AC16).
+      - run: pnpm --filter @sin/core run build
+      - run: pnpm --filter @sin/web run test:unit --shard=${{ matrix.shard }}/8
+
+  # The whole web suite again, in one run with coverage, so the Spec 04.0 §10 gates (the folders held at 90%
+  # lines in apps/web/vitest.config.ts) fail the job. One run, not shards: coverage from separate shards can't
+  # be added up while most .tsx files are recorded as a single line (deferred minor 729). This is the slow job.
+  web-coverage:
+    name: web coverage (the 90% gates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # @sin/web imports @sin/core by package name (MeSchema in useMe.ts); its
+      # built `dist` must exist before typecheck / test / vite build — same as
+      # the `unit` job does for @sin/api (Spec 04.0 §7 / AC16).
+      - run: pnpm --filter @sin/core run build
+      - run: pnpm --filter @sin/web run test:coverage
+
+  # Typecheck, the production build and the checks on it. Lint for apps/web is covered by the root
+  # `pnpm run lint` in the `check` job.
+  web-build:
+    name: web build (typecheck · build · headers · tokens)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,10 +152,6 @@ jobs:
       # the `unit` job does for @sin/api (Spec 04.0 §7 / AC16).
       - run: pnpm --filter @sin/core run build
       - run: pnpm --filter @sin/web run typecheck
-      # Coverage variant so the Spec 04.0 §10 gates (`src/api/**` +
-      # `src/auth/**` >= 90% lines) actually fail the job. Lint for apps/web is
-      # covered by the root `pnpm run lint` in the `check` job.
-      - run: pnpm --filter @sin/web run test:coverage
       - run: pnpm --filter @sin/web run build
       # AC1 — the built dist is CSP-clean and @sin/core resolved into the bundle.
       - run: node apps/web/scripts/assert-build-output.mjs
@@ -171,7 +216,7 @@ jobs:
   # baked in (/healthz reports it). Builds from the same Dockerfile as `docker`; never on a pull request.
   publish:
     name: publish API image (Artifact Registry)
-    needs: [check, unit, web, integration, docker]
+    needs: [check, unit, web, web-coverage, web-build, integration, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -220,7 +265,7 @@ jobs:
 
   smoke:
     name: post-deploy smoke (staging)
-    needs: [check, unit, web, integration, docker]
+    needs: [check, unit, web, web-coverage, web-build, integration, docker]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
