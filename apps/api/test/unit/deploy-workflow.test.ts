@@ -12,11 +12,13 @@ const ci = () => parse(read(".github/workflows/ci.yml")) as Workflow;
 const prod = () => parse(read(".github/workflows/deploy-prod.yml")) as Workflow;
 const text = (s: Step) => `${s.name ?? ""}\n${s.run ?? ""}\n${s.uses ?? ""}\n${JSON.stringify(s.with ?? {})}`;
 const indexOf = (steps: Step[], pred: (s: Step) => boolean) => steps.findIndex(pred);
+/** Issue 361: every job a pull request waits for; `publish` and the staging smoke wait for all of them. */
+const CI_CHECK_JOBS = ["check", "unit", "web", "integration", "docker"];
 
 describe("15 AC10 — publish on merge", () => {
-  it("needs the four checks, runs only on a push to main, with an OIDC token", () => {
+  it("needs every check job, runs only on a push to main, with an OIDC token", () => {
     const job = ci().jobs.publish!;
-    expect(job.needs).toEqual(["check", "web", "integration", "docker"]);
+    expect(job.needs).toEqual(CI_CHECK_JOBS);
     expect(job.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(job.permissions).toEqual({ contents: "read", "id-token": "write" });
   });
@@ -149,5 +151,69 @@ describe("Minor 80 — deploy-prod generates no Prisma client", () => {
     expect(steps.some((s) => /placeholder/.test(String(s.env?.["DATABASE_URL"] ?? "")))).toBe(false);
     const install = indexOf(steps, (s) => /pnpm install --frozen-lockfile/.test(s.run ?? ""));
     expect(steps[install + 1]!.name).toBe("No unapplied migrations");
+  });
+});
+
+describe("issue 361 — CI job layout", () => {
+  /** A step that runs a test suite, in any spelling: a package's `test…` script, a recursive run, or Vitest itself. */
+  const RUNS_TESTS = /\bvitest\b|pnpm (?:-r|--recursive)\b.*\btest|pnpm (?:run )?test\b|--filter \S+ (?:run )?test/;
+  /** A step that runs the web suite: the web package's own script, or a run of every package. */
+  const RUNS_WEB_TESTS = /pnpm (?:-r|--recursive)\b.*\btest|pnpm (?:run )?test\b|--filter @sin\/web (?:run )?test|@sin\/web\b.*\bvitest/;
+  it.each(["pnpm test", "pnpm run test:unit", "pnpm -r run test:unit", "pnpm --recursive test", "pnpm --filter @sin/web test:unit", "pnpm --filter @sin/web run test:coverage", "pnpm test:unit", "pnpm --filter @sin/web exec vitest run"])(
+    "%s counts as running the web suite",
+    (run) => expect(RUNS_WEB_TESTS.test(run) && RUNS_TESTS.test(run)).toBe(true),
+  );
+  it.each(["pnpm run lint", "pnpm run typecheck", "pnpm --filter @sin/core run build", "pnpm --filter @sin/api exec prisma validate"])("%s is not a test run", (run) =>
+    expect(RUNS_TESTS.test(run) || RUNS_WEB_TESTS.test(run)).toBe(false),
+  );
+  const runs = (job: string) => ci().jobs[job]!.steps.map((s) => s.run ?? "");
+  it("publish and the staging smoke wait for every check job", () => {
+    expect(ci().jobs.publish!.needs).toEqual(CI_CHECK_JOBS);
+    expect(ci().jobs.smoke!.needs).toEqual(CI_CHECK_JOBS);
+  });
+  it("check holds the static checks, in order, and runs no tests", () => {
+    const steps = ci().jobs.check!.steps;
+    expect(steps.some((s) => RUNS_TESTS.test(s.run ?? ""))).toBe(false);
+    const order = [
+      indexOf(steps, (s) => s.run === "pnpm run lint"),
+      indexOf(steps, (s) => s.run === "pnpm run typecheck"),
+      indexOf(steps, (s) => s.run === "pnpm run core:purity"),
+      indexOf(steps, (s) => s.name === "openapi drift check"),
+      indexOf(steps, (s) => s.name === "prisma validate (schema only — never connects)"),
+    ];
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+  it("unit runs the core, loadtest and API unit tests, and nothing from the web app", () => {
+    const run = runs("unit");
+    for (const pkg of ["@sin/core", "@sin/loadtest"]) expect(run).toContain(`pnpm --filter ${pkg} run test:unit`);
+    expect(run).toContain("pnpm --filter @sin/api run test:unit --shard=${{ matrix.shard }}/2");
+    expect(run.some((r) => /@sin\/web/.test(r) || RUNS_WEB_TESTS.test(r))).toBe(false);
+  });
+  it("unit generates the Prisma client and builds core before any test runs", () => {
+    const run = runs("unit");
+    const firstTest = run.findIndex((r) => /test:unit/.test(r));
+    const generate = run.indexOf("pnpm --filter @sin/api exec prisma generate");
+    const build = run.indexOf("pnpm --filter @sin/core run build");
+    expect(generate).toBeGreaterThanOrEqual(0);
+    expect(build).toBeGreaterThanOrEqual(0);
+    expect(Math.max(generate, build)).toBeLessThan(firstTest);
+  });
+  it("unit is two shards that both report: the API suite is split, core and loadtest run in the first only", () => {
+    const job = ci().jobs.unit! as Job & { strategy?: unknown };
+    expect(job.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2] } });
+    const once = job.steps.filter((s) => /@sin\/(core|loadtest) run test:unit/.test(s.run ?? ""));
+    expect(once.map((s) => s.if)).toEqual(["matrix.shard == 1", "matrix.shard == 1"]);
+    expect(job.steps.find((s) => /@sin\/api run test:unit/.test(s.run ?? ""))!.if).toBeUndefined();
+  });
+  it("the web suite runs in exactly one job", () => {
+    const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => RUNS_WEB_TESTS.test(s.run ?? "")));
+    expect(jobs.map(([id]) => id)).toEqual(["web"]);
+  });
+  it("a new push cancels that pull request's run; each main commit keeps its own", () => {
+    expect(ci().concurrency).toEqual({
+      group: "ci-${{ github.event.pull_request.number || github.sha }}",
+      "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+    });
   });
 });
