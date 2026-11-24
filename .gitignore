@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+.vitest-reports/
+.vitest-merged.json
 *.tsbuildinfo
 .env
 .env.*

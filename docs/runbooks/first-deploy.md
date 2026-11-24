@@ -923,7 +923,7 @@ maps these onto the env vars `scripts/smoke.ts` expects (`SMOKE_BASE_URL`,
 Push to `main` (or hit **Manual Deploy → Deploy latest commit** on the Render
 service). On a push to `main`:
 
-1. CI `check` / `unit` / `web` / `integration` / `docker` jobs run.
+1. CI `check` / `unit` / `web` / `web-coverage` / `web-build` / `integration` / `docker` jobs run.
 2. Render builds the image, starts the service, gates the rollout on
    `GET /healthz` → 200. **Migrations are not run here** — you applied `0001` by
    hand in B4. (On a later spec that adds a migration, run B4's command **before
@@ -932,7 +932,7 @@ service). On a push to `main`:
    it will `500` until the migration lands. Additive migrations are safe for the
    still-running old image, so migrating first costs nothing.)
 3. CI `smoke` job (`if: github.ref == 'refs/heads/main'`, `needs: [check,
-   unit, web, integration, docker]`) runs `scripts/smoke.ts` against `STAGING_BASE_URL`.
+   unit, web, web-coverage, web-build, integration, docker]`) runs `scripts/smoke.ts` against `STAGING_BASE_URL`.
    First run may sit in the `/healthz` poll for ~1 min while the free web
    instance cold-starts — expected.
 

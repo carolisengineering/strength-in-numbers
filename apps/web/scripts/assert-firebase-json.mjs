@@ -1,6 +1,6 @@
 /**
  * Spec 15 AC22 — `apps/web/firebase.json` sends what `render.yaml`'s si-web-staging block sends, with the
- * production API origin (from `infra/prod.tfvars`) in place of staging's. Run by the CI `web` job.
+ * production API origin (from `infra/prod.tfvars`) in place of staging's. Run by the CI `web-build` job.
  *
  *   node apps/web/scripts/assert-firebase-json.mjs
  */
