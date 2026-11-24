@@ -186,7 +186,8 @@ describe("issue 361 — CI job layout", () => {
   });
   it("unit runs the core, loadtest and API unit tests, and nothing from the web app", () => {
     const run = runs("unit");
-    for (const pkg of ["@sin/core", "@sin/loadtest", "@sin/api"]) expect(run).toContain(`pnpm --filter ${pkg} run test:unit`);
+    for (const pkg of ["@sin/core", "@sin/loadtest"]) expect(run).toContain(`pnpm --filter ${pkg} run test:unit`);
+    expect(run).toContain("pnpm --filter @sin/api run test:unit --shard=${{ matrix.shard }}/2");
     expect(run.some((r) => /@sin\/web/.test(r) || RUNS_WEB_TESTS.test(r))).toBe(false);
   });
   it("unit generates the Prisma client and builds core before any test runs", () => {
@@ -197,6 +198,13 @@ describe("issue 361 — CI job layout", () => {
     expect(generate).toBeGreaterThanOrEqual(0);
     expect(build).toBeGreaterThanOrEqual(0);
     expect(Math.max(generate, build)).toBeLessThan(firstTest);
+  });
+  it("unit is two shards that both report: the API suite is split, core and loadtest run in the first only", () => {
+    const job = ci().jobs.unit! as Job & { strategy?: unknown };
+    expect(job.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2] } });
+    const once = job.steps.filter((s) => /@sin\/(core|loadtest) run test:unit/.test(s.run ?? ""));
+    expect(once.map((s) => s.if)).toEqual(["matrix.shard == 1", "matrix.shard == 1"]);
+    expect(job.steps.find((s) => /@sin\/api run test:unit/.test(s.run ?? ""))!.if).toBeUndefined();
   });
   it("the web suite runs in exactly one job", () => {
     const jobs = Object.entries(ci().jobs).filter(([, job]) => job.steps.some((s) => RUNS_WEB_TESTS.test(s.run ?? "")));

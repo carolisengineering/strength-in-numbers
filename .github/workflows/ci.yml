@@ -58,8 +58,14 @@ jobs:
   # Issue 361: the unit suites of every package but the web app. The web suite runs once, with coverage, in
   # the `web` job; the root `pnpm run test:unit` would run it a second time here.
   unit:
-    name: unit (core · loadtest · api)
+    name: unit (core · loadtest · api, ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
+    # Two shards, so the job stays under two minutes: the API suite is split between them, and the two small
+    # suites run in the first. A failure in one shard doesn't cancel the other.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -73,9 +79,11 @@ jobs:
       - run: pnpm --filter @sin/api exec prisma generate
       # @sin/api imports @sin/core's built dist (Spec 03.0).
       - run: pnpm --filter @sin/core run build
-      - run: pnpm --filter @sin/core run test:unit
-      - run: pnpm --filter @sin/loadtest run test:unit
-      - run: pnpm --filter @sin/api run test:unit
+      - if: matrix.shard == 1
+        run: pnpm --filter @sin/core run test:unit
+      - if: matrix.shard == 1
+        run: pnpm --filter @sin/loadtest run test:unit
+      - run: pnpm --filter @sin/api run test:unit --shard=${{ matrix.shard }}/2
 
   web:
     name: web (@sin/web — typecheck · test · build)
