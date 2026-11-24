@@ -12,6 +12,15 @@ const BEARER = { authorization: "Bearer test-token", "content-type": "applicatio
 const STARTED_AT = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 const BASE_KEYS = new Set(["level", "time", "pid", "hostname", "msg", "reqId", "client_ip"]);
 const fieldsOf = (line: Record<string, unknown>) => Object.keys(line).filter((k) => !BASE_KEYS.has(k)).sort();
+/**
+ * The log lines as text, without what changes from run to run: the time, the process id, the host, the request id and
+ * timing, and every UUID. A leak check that searched the raw lines for a number failed whenever one of those happened
+ * to hold it (a process id of 613, an id with an `8461` group).
+ */
+const RUN_KEYS = new Set(["time", "pid", "hostname", "reqId", "responseTime"]);
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const stableText = (lines: Record<string, unknown>[]): string =>
+  JSON.stringify(lines, (key, value: unknown) => (RUN_KEYS.has(key) ? undefined : typeof value === "string" ? value.replace(UUID, "<id>") : value));
 
 /** CORS_METHODS at the branch base: Phase B adds no method (PUT and DELETE are already listed). */
 const CORS_METHODS_BEFORE = ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"];
@@ -143,7 +152,13 @@ describe("09.5 AC33 — result log lines", () => {
     expect(set.map((l) => l.changed)).toEqual([true, false]);
     const cleared = lines.filter((l) => l.msg === "workout_section_result_cleared");
     expect(cleared.map(fieldsOf)).toEqual([["removed", "section_id", "user_id", "workout_id"]]);
-    expect(JSON.stringify(lines)).not.toMatch(/\b613\b|\b8461\b/);
+    expect(stableText(lines)).not.toMatch(/\b613\b|\b8461\b/);
+  });
+  it("the leak check ignores a run's own numbers and still sees a logged value", () => {
+    const noise = { time: 613, pid: 613, hostname: "h", reqId: "0193a1b2-8461-7000-8461-000000000613", responseTime: 8461, url: "/v1/workouts/0193a1b2-8461-7000-8461-000000000613" };
+    expect(stableText([noise])).not.toMatch(/\b613\b|\b8461\b/);
+    expect(stableText([{ ...noise, rounds: 613 }])).toMatch(/\b613\b/);
+    expect(stableText([{ ...noise, msg: "reps 8461" }])).toMatch(/\b8461\b/);
   });
 });
 
