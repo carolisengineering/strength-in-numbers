@@ -132,4 +132,27 @@ describe("17.2 AC32 / 07.6 AC17 — the web never re-derives recordCount", () =>
     expect(uses.every((u) => /^recordCount\s*>\s*0/.test(u))).toBe(true); // otherwise only compared to zero
     expect(src).not.toMatch(/recordCount\s*[-+*/]/);
   });
+
+  it("the copy helpers print the count without arithmetic (minor 676)", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    /** The body of `export function name(…) {…}` in a file, comments stripped; "" when it isn't there. */
+    const bodyOf = (file: string, name: string): string => {
+      const code = readFileSync(join(here, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+      const start = code.indexOf(`export function ${name}(`);
+      if (start < 0) return "";
+      // The brace that ends the signature's line (a return type such as `{ visible: string }` comes before it).
+      const open = code.indexOf("{\n", start);
+      let depth = 0;
+      for (let i = open; i < code.length; i += 1) {
+        if (code[i] === "{") depth += 1;
+        else if (code[i] === "}" && --depth === 0) return code.slice(open, i + 1);
+      }
+      return "";
+    };
+    for (const [file, name] of [["historyCopy.ts", "historyBadgeText"], ["../records/recordLedger.ts", "liftCountText"]] as const) {
+      const body = bodyOf(file, name);
+      expect(body, `${file} ${name}`).not.toBe("");
+      expect(body, `${file} ${name}`).not.toMatch(/\bn\s*[-+*/%]|[-+*/%]\s*n\b|Math\./);
+    }
+  });
 });

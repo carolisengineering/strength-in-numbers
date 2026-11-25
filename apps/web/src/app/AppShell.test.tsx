@@ -140,7 +140,7 @@ describe("AC2 — thumb-zone shell (Spec 04.1 §2)", () => {
       expect(rule(shellCss, ".main")).toMatch(/grid-row:\s*2;/);
     });
 
-    it("the header still shows when no keyboard is up", async () => {
+    it("renders the header (a render smoke test: jsdom applies no module CSS; the harness's 01k check covers keyboard-down)", async () => {
       auth.state.isAuthenticated = true;
       renderAt(["/app"]);
       await screen.findByTestId("app-shell");

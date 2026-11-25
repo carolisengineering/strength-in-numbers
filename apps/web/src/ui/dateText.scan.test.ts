@@ -12,6 +12,13 @@ const offenders = (pattern: RegExp) =>
     .map(([path]) => path)
     .sort();
 
+/**
+ * A date built outside ui/dateText.ts (minor 529): any `Intl.DateTimeFormat(` but a zone-only
+ * `Intl.DateTimeFormat().resolvedOptions(`, `toLocaleDateString` / `toLocaleTimeString`, a bare `toLocaleString(` (its
+ * `("en-US")` form formats the Hevy screens' numbers, not dates), and a hand-written month table.
+ */
+const DATE_BUILDERS = /Intl\.DateTimeFormat\((?!\)\.resolvedOptions\()|toLocale(?:Date|Time)String|toLocaleString\((?!\s*["']en-US["'])|["']Jan["']\s*,\s*["']Feb["']/;
+
 describe("17.13 AC1 — one module", () => {
   it("found the sources it is meant to scan", () => {
     expect(Object.keys(sources).length).toBeGreaterThan(200);
@@ -28,10 +35,15 @@ describe("17.13 AC1 — one module", () => {
   });
 
   it("dates are built only in ui/dateText.ts and the Hevy import's month-year helper", () => {
-    // The lookahead leaves zone-only reads such as `Intl.DateTimeFormat().resolvedOptions()` alone.
-    expect(offenders(/Intl\.DateTimeFormat\((?!\))|toLocale(Date|Time)String/)).toEqual([
+    expect(offenders(DATE_BUILDERS)).toEqual([
       "../features/hevy/import/RunStep.tsx",
       "./dateText.ts",
     ]);
+  });
+
+  it("minor 529: the pattern catches an empty-argument format, toLocaleString and a hand-written month table", () => {
+    for (const sample of ["new Intl.DateTimeFormat().format(d)", "d.toLocaleString()", 'const M = ["Jan", "Feb"]']) {
+      expect(sample, sample).toMatch(DATE_BUILDERS);
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { chooseSegmentValue } from "../../../test/controls";
+import { chooseSegmentValue, segmentChoice } from "../../../test/controls";
 import { onlineManager } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -100,6 +100,28 @@ describe("10.7 AC16 — confirm before clearing (edit)", () => {
     await waitFor(() => expect(announcement()).toHaveTextContent("Timer saved"));
     expect(screen.queryByRole("dialog", { name: "Change Other's timer?" })).toBeNull();
     expect(sectionPatches(fake)).toStrictEqual([{ timer: { format: "amrap", capSeconds: 720 } }]);
+  });
+});
+
+describe("10.7 AC18 — a stale edit screen (minor 325)", () => {
+  it("409 keeps the sheet and what was typed, re-reads the detail, and the next Save asks first", async () => {
+    const { user, fake, workout } = await openEdit({ sections: [{ name: "Main", timer: SET5 }], exercises: [ex("Thruster", 0)] });
+    await user.click(screen.getByRole("button", { name: "Edit section Main" }));
+    const dialog = sheet("Edit section");
+    await user.type(dialog.getByLabelText("Name"), " set");
+    await chooseSegmentValue(user, "Timer", "amrap", dialog);
+    await user.type(dialog.getByLabelText("Time limit"), "1200");
+    // Another device logs round times after this screen loaded.
+    const stored = fake.state.finished.get(workout.id)!;
+    fake.state.finished.set(workout.id, { ...stored, sections: stored.sections.map((s) => ({ ...s, roundTimes: TWO_ROUNDS })) });
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(await dialog.findByText("Times were logged for this section. Check them and try again.")).toBeInTheDocument();
+    expect(dialog.getByLabelText("Name")).toHaveValue("Main set");
+    expect(segmentChoice("Timer", dialog)).toBe("amrap");
+    expect(sectionPatches(fake)).toEqual([{ name: "Main set", timer: { format: "amrap", capSeconds: 720 } }]);
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("dialog", { name: "Change Main's timer?" })).toBeInTheDocument();
+    expect(observability.reportError).not.toHaveBeenCalled();
   });
 });
 

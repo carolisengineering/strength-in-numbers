@@ -208,11 +208,17 @@ describe("Spec 08.0 — history and records endpoints", () => {
       ],
     });
 
+  const LIFT_A = "40000000-0000-4000-8000-0000000000a1";
+  const LIFT_B = "40000000-0000-4000-8000-0000000000a2";
   it("GET /workouts pages finished workouts newest first with an opaque next", async () => {
     const ids = Array.from({ length: 3 }, (_, i) => `30000000-0000-4000-8000-00000000000${i + 1}`);
     const fake = createWorkoutFake({
       finished: [done(ids[0]!, "2026-10-01T10:00:00.000Z"), done(ids[1]!, "2026-10-03T10:00:00.000Z"), done(ids[2]!, "2026-10-02T10:00:00.000Z")],
-      records: [makePersonalRecord({ workoutId: ids[1] }), makePersonalRecord({ workoutId: ids[1], recordType: "best_est_1rm" })],
+      // Minor 678: two lifts, named, so recordCount 2 doesn't rest on each record minting its own exercise id.
+      records: [
+        makePersonalRecord({ workoutId: ids[1], exerciseId: LIFT_A, sourceExerciseId: LIFT_A }),
+        makePersonalRecord({ workoutId: ids[1], recordType: "best_est_1rm", exerciseId: LIFT_B, sourceExerciseId: LIFT_B, exerciseName: "Squat" }),
+      ],
     });
     server.use(...fake.handlers);
 

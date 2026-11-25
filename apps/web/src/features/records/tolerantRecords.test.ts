@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The outbox reports through these; the 07.5 offline-finish case drives a real outbox (minor 681).
+vi.mock("../../observability/track", () => ({ track: vi.fn() }));
+vi.mock("../../observability/reportError", () => ({ reportError: vi.fn() }));
+
 import { WorkoutSchema } from "@sin/core";
 import { createApiClient } from "../../api";
+import { memoryStorageAdapter } from "../../storage/storage";
 import { makePersonalRecord, makeWorkoutDetail } from "../../test/workoutFixtures";
+import { createOutbox } from "../workouts/outbox/outbox";
 import { createWorkoutClient } from "../workouts/workoutClient";
 import { createRecordsClient } from "./recordsClient";
 import {
@@ -27,7 +34,9 @@ function parsingApi(payload: unknown) {
     const schema = rest.find((r): r is { parse: (x: unknown) => unknown } => typeof (r as { parse?: unknown })?.parse === "function");
     return schema!.parse(payload);
   };
-  return { get: parse, post: parse, patch: parse, delete: parse } as never;
+  // `request` (a call with the outbox's deadline signal) carries its schema in the init.
+  const request = async (_path: string, init: { schema?: { parse: (x: unknown) => unknown } }) => init.schema!.parse(payload);
+  return { get: parse, post: parse, patch: parse, delete: parse, request } as never;
 }
 
 afterEach(() => {
@@ -62,7 +71,7 @@ describe("07.5 AC1 — unknown record types are dropped from record lists", () =
     expect(records).toEqual([known, known2]);
   });
 
-  it("the workout client's finish, finishOrQueue and updateWorkout (Change Time) resolve with the unknown record gone", async () => {
+  it("the plain client's finish, finishOrQueue and updateWorkout (Change Time) resolve with the unknown record gone", async () => {
     const detail = makeWorkoutDetail();
     const known = makePersonalRecord({ workoutId: detail.id });
     const { body } = updatedWorkoutBody([unknownTypeRecord(detail.id), known]);
@@ -72,6 +81,25 @@ describe("07.5 AC1 — unknown record types are dropped from record lists", () =
     const meta = { startedAt: detail.startedAt, exerciseCount: 1, setCount: 1, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false };
     expect(await client.finishOrQueue(detail.id, { endedAt: "2026-10-02T11:00:00.000Z" }, meta)).toEqual({ status: "landed" });
     expect((await client.updateWorkout(detail.id, { startedAt: "2026-10-02T10:00:00.000Z" })).newRecords).toEqual([known]);
+  });
+
+  it("07.5 offline finish: the outbox's finish keeps an unknown record type out and lands the rest (minor 681)", async () => {
+    const detail = makeWorkoutDetail();
+    const known = makePersonalRecord({ workoutId: detail.id });
+    const { body } = updatedWorkoutBody([known, unknownTypeRecord(detail.id)]);
+    const onFinishSynced = vi.fn();
+    const outbox = createOutbox({
+      storage: memoryStorageAdapter(),
+      rest: createWorkoutClient(parsingApi(body)),
+      userId: "u1",
+      isOnline: () => true,
+      onFinishSynced,
+    });
+    outbox.start();
+    const meta = { startedAt: detail.startedAt, exerciseCount: 1, setCount: 1, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false };
+    outbox.enqueueFinish({ workoutId: detail.id, body: { endedAt: "2026-10-02T11:00:00.000Z" }, meta });
+    await vi.waitFor(() => expect(onFinishSynced).toHaveBeenCalled());
+    expect(onFinishSynced.mock.calls[0]![1]).toMatchObject({ outcome: "landed", updated: { newRecords: [known] } });
   });
 
   it("a production build parses the finish without falling back to the raw body", async () => {

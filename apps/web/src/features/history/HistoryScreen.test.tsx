@@ -192,21 +192,28 @@ describe("17.0 AC7 — the record badge is a brass trophy icon, not an emoji", (
   });
 });
 
+/** Minor 678: each record names its lift, so a count of lifts can't hold only because every record mints its own. */
+const LIFT_A = { exerciseId: "40000000-0000-4000-8000-0000000000a1", sourceExerciseId: "40000000-0000-4000-8000-0000000000a1", exerciseName: "Bench Press" };
+const LIFT_B = { exerciseId: "40000000-0000-4000-8000-0000000000a2", sourceExerciseId: "40000000-0000-4000-8000-0000000000a2", exerciseName: "Squat" };
+
 describe("08.0 AC12 — the record badge", () => {
   it("0 → no badge; 1 → 'Records on 1 lift'; 2 → 'Records on 2 lifts' (Spec 07.6)", async () => {
-    const ws = finishedWorkouts(3);
+    const ws = finishedWorkouts(4);
     setup(ws, {
       records: [
-        makePersonalRecord({ workoutId: ws[1]!.id }),
-        makePersonalRecord({ workoutId: ws[2]!.id }),
-        makePersonalRecord({ workoutId: ws[2]!.id, recordType: "best_est_1rm" }),
+        makePersonalRecord({ workoutId: ws[1]!.id, ...LIFT_A }),
+        makePersonalRecord({ workoutId: ws[2]!.id, ...LIFT_A }),
+        makePersonalRecord({ workoutId: ws[2]!.id, recordType: "best_est_1rm", ...LIFT_B }),
+        // Minor 678: two records on one lift count once.
+        makePersonalRecord({ workoutId: ws[3]!.id, ...LIFT_A }),
+        makePersonalRecord({ workoutId: ws[3]!.id, recordType: "best_est_1rm", ...LIFT_A }),
       ],
     });
     await screen.findByRole("list", { name: "Finished workouts" });
 
     expect(screen.getByRole("img", { name: "Records on 2 lifts" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Records on 1 lift" })).toBeInTheDocument();
-    expect(screen.getAllByRole("img", { name: /^Records on / })).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: "Records on 1 lift" })).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: /^Records on / })).toHaveLength(3);
   });
 });
 
@@ -455,9 +462,9 @@ describe("17.2 AC31 / AC33 — the badge is a trophy with a count, only when the
     const ws = finishedWorkouts(3);
     setup(ws, {
       records: [
-        makePersonalRecord({ workoutId: ws[1]!.id }),
-        makePersonalRecord({ workoutId: ws[2]!.id }),
-        makePersonalRecord({ workoutId: ws[2]!.id, recordType: "best_est_1rm" }),
+        makePersonalRecord({ workoutId: ws[1]!.id, ...LIFT_A }),
+        makePersonalRecord({ workoutId: ws[2]!.id, ...LIFT_A }),
+        makePersonalRecord({ workoutId: ws[2]!.id, recordType: "best_est_1rm", ...LIFT_B }),
       ],
     });
     await screen.findByRole("list", { name: "Finished workouts" });

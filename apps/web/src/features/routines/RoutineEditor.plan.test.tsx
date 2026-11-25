@@ -202,8 +202,10 @@ describe("10.2 AC8 / AC16 — a 422 on a plan row shows beside that row", () => 
     expect(await screen.findByText(/Enter a weight like 62\.5/)).toBeInTheDocument();
     expect(screen.queryByText("server words")).toBeNull();
     await user.click(screen.getByRole("button", { name: /^Bench Press/ }));
-    await openRow(user, 2, await screen.findByRole("dialog"));
-    expect(within(await screen.findByRole("dialog")).getByLabelText("Set 2 weight")).toHaveAccessibleDescription(/Enter a weight like 62\.5/);
+    // Minor 517: the flagged row starts open (the test doesn't open it).
+    const dialog = await screen.findByRole("dialog");
+    expect(summaryButton(2, dialog)).toHaveAttribute("aria-expanded", "true");
+    expect(within(dialog).getByLabelText("Set 2 weight")).toHaveAccessibleDescription(/Enter a weight like 62\.5/);
   });
 });
 

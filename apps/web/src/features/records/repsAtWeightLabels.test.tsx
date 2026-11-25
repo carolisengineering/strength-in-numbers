@@ -35,6 +35,12 @@ describe("07.5 AC35 — a weight that doesn't read back exactly gets 2 decimals 
     expect(recordRowLabel(reps(20.4), "lb")).toBe(`Most reps at 44.97${NBSP}lb`);
     expect(recordRowLabel(reps(20), "lb")).toBe(`Most reps at 44.09${NBSP}lb`);
   });
+  it("D12's accepted case: 102.058 kg and 102.06 kg both read 225 lb (minor 691)", () => {
+    // 102.06 kg is 225.004 lb: it doesn't read back from 225, so it gets 0.01 lb, which still rounds to 225. D12 accepts
+    // two weights a few grams apart sharing a label.
+    expect(recordRowLabel(reps(102.058), "lb")).toBe(`Most reps at 225${NBSP}lb`);
+    expect(recordRowLabel(reps(102.06), "lb")).toBe(recordRowLabel(reps(102.058), "lb"));
+  });
   it("a kg account never changes a label", () => {
     expect([reps(20.412), reps(20.4)].map((r) => recordRowLabel(r, "kg"))).toEqual([`Most reps at 20.412${NBSP}kg`, `Most reps at 20.4${NBSP}kg`]);
   });

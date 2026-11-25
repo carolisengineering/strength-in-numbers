@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Modality } from "@sin/core";
 import { makeSet } from "../../test/workoutFixtures";
 import { withLocale } from "../../test/locale";
+import { momentText } from "../../ui/dateText";
 import { formatLocalDate, formatSet, formatSetParts, formatStartedAt, formatStartedTime } from "./format";
 
 describe("AC8 — formatSet and its durations", () => {
@@ -78,6 +79,25 @@ describe("18.0 AC34 — the today form of formatStartedAt", () => {
     withLocale("ar-EG", () => {
       expect(formatStartedAt(iso, { ...london, today: new Date("2026-10-16T20:00:00Z") })).toBe(formatStartedTime(iso, london));
     });
+  });
+  it("ar-EG, a different day reads as the full moment in Arabic digits (minor 531)", () => {
+    const iso = "2026-10-16T17:00:00Z";
+    withLocale("ar-EG", () => {
+      const text = formatStartedAt(iso, { ...london, today: new Date("2026-10-18T20:00:00Z") });
+      expect(text).toBe(momentText(new Date(iso), london));
+      expect(text).toMatch(/[٠-٩]/);
+    });
+  });
+  it("the same-day test keys on en-CA whatever the locale (minor 531)", () => {
+    const spy = vi.spyOn(Intl, "DateTimeFormat");
+    try {
+      // A zone no other test uses, so the key formatter is built here rather than read from the cache.
+      const kolkata = { timeZone: "Asia/Kolkata" };
+      withLocale("ar-EG", () => formatStartedAt("2026-10-16T17:00:00Z", { ...kolkata, today: new Date("2026-10-16T18:00:00Z") }));
+      expect(spy).toHaveBeenCalledWith("en-CA", expect.objectContaining({ year: "numeric", month: "2-digit", day: "2-digit" }));
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

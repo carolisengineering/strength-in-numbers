@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -269,8 +266,23 @@ describe("17.10 AC14, AC7, AC3 — the Change Time sheet uses the action row", (
 });
 
 describe("minor 573 — the form error is stored when the failure happens", () => {
-  it("the sheet keeps its SheetError in state, never derived in a useMemo", () => {
-    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ChangeTimeSheet.tsx"), "utf8");
-    expect(source).not.toMatch(/useMemo\(\s*\(\)\s*=>\s*\(errors\.form/);
+  it("a re-render that changes nothing keeps the shown failure (no empty commit) (minor 709)", async () => {
+    const w = liveWorkout();
+    const client = fakeClient({ updateWorkout: vi.fn<WorkoutClient["updateWorkout"]>().mockRejectedValueOnce(problem(500)) });
+    const callbacks = { onClose: vi.fn(), onSaved: vi.fn(), onVanished: vi.fn() };
+    const { rerender } = render(<Host workout={w} client={client} {...callbacks} />, { wrapper: wrapperWith(makeQueryClient(), fakeClient()) });
+    fireEvent.change(day(), { target: { value: "2026-10-16" } });
+    await userEvent.setup().click(save());
+    const region = sheetErrorRegion();
+    expect(region).toHaveTextContent(EDIT_COPY.changeTimeFailed);
+    // A failure object made per render would empty the region for a commit and fill it again (useShownFailure).
+    const observer = new MutationObserver(() => {});
+    observer.observe(region, { childList: true, subtree: true, characterData: true });
+    act(() => rerender(<Host workout={{ ...w }} client={client} {...callbacks} />));
+    // The same node: a remounted region would leave the observer watching a detached copy that still holds the text.
+    expect(sheetErrorRegion()).toBe(region);
+    expect(observer.takeRecords()).toEqual([]);
+    observer.disconnect();
+    expect(region).toHaveTextContent(EDIT_COPY.changeTimeFailed);
   });
 });
