@@ -228,10 +228,36 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
     visit(sf);
   });
 
+  // Minor 399: a module-level `export const ownedSectionRound: Owned = ownedWorkoutSection` is a second name for the
+  // same fragment. `namesOf(target)` is the target's name and every alias of it (aliases of aliases included), so a
+  // caller of the alias is listed under the target's row; the alias gets no row of its own.
+  const aliasTarget = new Map<string, string>();
+  for (const { sf } of parsed) {
+    for (const statement of sf.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const d of statement.declarationList.declarations) {
+        if (ts.isIdentifier(d.name) && d.initializer && ts.isIdentifier(d.initializer)) aliasTarget.set(d.name.text, d.initializer.text);
+      }
+    }
+  }
+  const namesOf = (target: string): string[] => {
+    const names = [target];
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const [alias, to] of aliasTarget) {
+        if (names.includes(to) && !names.includes(alias)) {
+          names.push(alias);
+          grew = true;
+        }
+      }
+    }
+    return names;
+  };
+
   // Second pass: a call of a fragment-building function (`plannedSetsJson(…)`) outside every statement composes SQL
   // that would otherwise reach a query only as a name; it is a fragment row of its own, so its arguments are
   // fingerprinted (final review #2: decorrelating `WE_PLANNED_SETS` must fail the check).
-  const builders = new Set(pending.filter((p) => p.name && !p.name.local).map((p) => p.name!.name));
+  const builders = new Set(pending.filter((p) => p.name && !p.name.local).flatMap((p) => namesOf(p.name!.name)));
   const inside = (file: string, pos: number) => covered.some((c) => c.file === file && pos >= c.pos && pos < c.end);
   parsed.forEach(({ file, sf }, fileIndex) => {
     const visit = (node: ts.Node): void => {
@@ -275,9 +301,10 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
   // Fragment callers: every other statement whose text names the fragment (a local one only within its function).
   pending.forEach((p, i) => {
     if (!p.name) return;
-    const re = new RegExp(`(?<![\\w$])${p.name.name.replace(/[$]/g, "\\$")}(?![\\w$])`);
+    const names = p.name.local ? [p.name.name] : namesOf(p.name.name);
+    const res = names.map((name) => new RegExp(`(?<![\\w$])${name.replace(/[$]/g, "\\$")}(?![\\w$])`));
     rows[i]!.callers = rows
-      .filter((r, j) => j !== i && re.test(r.text) && (!p.name!.local || (r.file === p.file && r.fn === p.fn)))
+      .filter((r, j) => j !== i && res.some((re) => re.test(r.text)) && (!p.name!.local || (r.file === p.file && r.fn === p.fn)))
       .map((r) => r.key);
   });
   return rows;
@@ -358,6 +385,29 @@ export function reconcile(existing: readonly AuditRow[], extracted: readonly Ext
   });
 }
 
+/**
+ * Minor 390 — the ties the check reads. Each of these anchored statements is keyed by an id from the request, so the
+ * anchor's lock proves nothing about it unless its own text ties it to the locked workout. Removing the tie changes
+ * the fingerprint, but a reviewer could approve the row again; `sanityIssues` refuses that. Key → the text the
+ * statement must hold. Only these rows are checked (the audit's header says so); a tie elsewhere is the reviewer's.
+ */
+export const TIES: Readonly<Record<string, string>> = {
+  "src/repositories/set-entry.prisma.ts#createSet#3": "AND workout_id = ${",
+  "src/repositories/workout.prisma.ts#updateWorkoutExercise#2": "AND workout_id = ${",
+  "src/repositories/workout.prisma.ts#deleteWorkoutExercise#2": "AND workout_id = ${",
+  "src/repositories/workout-section.prisma.ts#removeWorkoutSection#1": "AND workout_id = ${",
+  "src/repositories/workout-section.prisma.ts#lockSectionRow#1": "AND workout_id = ${",
+};
+
+/** Minor 391: an anchored row's anchors. The Anchor column holds one key, or several separated by commas. */
+export function anchorsOf(row: Pick<AuditRow, "anchor">): string[] {
+  return row.anchor
+    .replace(/`/g, "")
+    .split(",")
+    .map((a) => a.trim())
+    .filter((a) => a !== "");
+}
+
 const CATEGORY_ORDER: string[] = ["user-filtered", "anchored", "shared on purpose", "cross-user maintenance", "fragment", "uncategorized"];
 
 const INTRO = `# Query audit (Spec 21.0)
@@ -368,10 +418,14 @@ extracts the statements from the TypeScript syntax tree, and a unit test fails w
 without its row changing here. After any SQL change run \`${WRITE_COMMAND}\`, then set the category of every row it marks
 \`needs review\` (the test refuses that status).
 
+What the check can't see. The fingerprint covers each statement's text and every \`\${…}\` in it by name; a fragment chosen outside the template (\`const g = c ? Prisma.sql… : Prisma.empty\`) changes the statement without changing its fingerprint, so review the variable's definition too. An anchored statement keyed by an id from the request must also tie itself to the locked row (\`AND workout_id = \${…}\`); the check reads that tie only for the rows listed in \`TIES\` (\`apps/api/scripts/lib/query-extract.ts\`): ${Object.keys(TIES)
+  .map((k) => `\`${k}\``)
+  .join(", ")}. For every other anchored row the tie is the reviewer's to read.
+
 Categories:
 
 - **user-filtered**: the statement itself carries a user predicate (\`user_id = $acting\`, \`owner_user_id IS NULL OR owner_user_id = $acting\`, \`id = $acting\` on \`"user"\`, an \`ownership.ts\` helper, or an \`INSERT\` that writes the acting user's id).
-- **anchored**: keyed by an id with no user predicate, but tied to an *anchor*: a user-filtered locking statement on the root row earlier in the same transaction (named in the Anchor column).
+- **anchored**: keyed by an id with no user predicate, but tied to an *anchor*: a user-filtered locking statement on the root row earlier in the same transaction (named in the Anchor column; a statement used on several paths names each path's anchor, separated by commas).
 - **shared on purpose**: reference data (\`muscle_group\`, \`equipment\`, the catalog's \`owner_user_id IS NULL\` rows), Postgres's own catalogs (\`pg_*\`), or no table at all.
 - **cross-user maintenance**: the operator scripts that act on many users (\`account/purge.ts\`, \`records/rebuild.ts\`, \`seed/catalog.ts\`).
 - **fragment**: a piece composed into other statements, classified through the callers listed beside it.
@@ -391,7 +445,9 @@ export function writeAudit(existing: readonly AuditRow[], extracted: readonly Ex
   out.push(`${rows.length} statements: ${categories.map((c) => `${counts.get(c)} ${c}`).join(", ")}.${review > 0 ? ` **${review} need review.**` : ""}`, "");
   out.push("### Statements that rely on an earlier check (anchored)", "");
   if (anchored.length === 0) out.push("None.");
-  for (const r of anchored) out.push(`- \`${r.key}\` relies on \`${r.anchor}\`${r.description ? `: ${r.description}` : ""}`);
+  for (const r of anchored) {
+    out.push(`- \`${r.key}\` relies on ${anchorsOf(r).map((a) => `\`${a}\``).join(", ") || "`—`"}${r.description ? `: ${r.description}` : ""}`);
+  }
   out.push("");
 
   const files = [...new Set(rows.map((r) => fileOf(r.key)))];
@@ -490,7 +546,8 @@ function tablesOf(text: string): { tables: string[]; delegates: string[] } {
  * - user-filtered: a user predicate in the statement's own text (or a call of a user-filtered fragment);
  * - shared on purpose: only reference data or the catalog's shared rows, its fragments' tables included;
  * - cross-user maintenance: only in the three operator scripts;
- * - anchored: the anchor exists, is user-filtered, and locks or inserts the root row;
+ * - anchored: each anchor it names exists, is user-filtered, and locks or inserts the root row (minor 391), and a row
+ *   listed in `TIES` still holds its tie (minor 390; skipped when none of the tie's file was extracted, as in a fixture);
  * - fragment: lists its callers, each classified, and a fragment over owned tables only has callers that are
  *   user-filtered, anchored, maintenance or fragments themselves (§6.7 #17).
  */
@@ -518,10 +575,13 @@ export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extr
         if (!/^src\/(account\/purge|records\/rebuild|seed\/catalog)\.ts#/.test(r.key)) issues.push(`${r.key}: cross-user maintenance outside the operator scripts`);
         break;
       case "anchored": {
-        const anchor = byKey.get(r.anchor.replace(/`/g, ""));
-        const anchorText = anchor ? (textOf.get(anchor.key) ?? "") : "";
-        if (!anchor || anchor.category !== "user-filtered" || !/FOR (UPDATE|SHARE)\b|^INSERT\b/i.test(anchorText)) {
-          issues.push(`${r.key}: its anchor ${r.anchor} is missing, not user-filtered, or neither locks nor inserts`);
+        const names = anchorsOf(r);
+        for (const name of names.length > 0 ? names : [r.anchor]) {
+          const anchor = byKey.get(name);
+          const anchorText = anchor ? (textOf.get(anchor.key) ?? "") : "";
+          if (!anchor || anchor.category !== "user-filtered" || !/FOR (UPDATE|SHARE)\b|^INSERT\b/i.test(anchorText)) {
+            issues.push(`${r.key}: its anchor ${name} is missing, not user-filtered, or neither locks nor inserts`);
+          }
         }
         break;
       }
@@ -537,6 +597,12 @@ export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extr
         break;
       }
     }
+  }
+  const extractedFiles = new Set(extracted.map((s) => s.file));
+  for (const [key, tie] of Object.entries(TIES)) {
+    if (!extractedFiles.has(key.slice(0, key.indexOf("#")))) continue;
+    if (byKey.get(key)?.category !== "anchored") issues.push(`${key}: listed in TIES, but it is not an anchored row`);
+    else if (!(textOf.get(key) ?? "").includes(tie)) issues.push(`${key}: its tie ("${tie}") is gone`);
   }
   return issues;
 }
