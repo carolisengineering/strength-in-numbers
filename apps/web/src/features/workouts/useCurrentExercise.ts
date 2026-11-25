@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { chooseCurrent, lastLoggedId, type CurrentRow } from "./currentExercise";
 
@@ -10,6 +10,12 @@ export interface CurrentExercise {
   selectWhenAdded(id: string): void;
   /** Auto-advance: moves only if `loggedId` is still current, so a late response never pulls the lifter back (AC14). */
   advanceFrom(loggedId: string, nextId: string): void;
+  /**
+   * Minors 710, 713: how many choices `select` and `selectWhenAdded` have made, counted the moment they're called (so
+   * a gate set in the same tick sees it). `advanceFrom` and the fallback never count: a reveal is dropped only when
+   * the lifter chose since it was set.
+   */
+  choiceNow(): number;
 }
 
 interface Chosen {
@@ -34,11 +40,19 @@ export function useCurrentExercise(rows: readonly CurrentRow[]): CurrentExercise
     setChosen({ id: chosen.id, awaiting: false });
   }
 
-  const select = useCallback((id: string) => setChosen({ id, awaiting: false }), []);
-  const selectWhenAdded = useCallback((id: string) => setChosen({ id, awaiting: true }), []);
+  const choices = useRef(0);
+  const select = useCallback((id: string) => {
+    choices.current += 1;
+    setChosen({ id, awaiting: false });
+  }, []);
+  const selectWhenAdded = useCallback((id: string) => {
+    choices.current += 1;
+    setChosen({ id, awaiting: true });
+  }, []);
   const advanceFrom = useCallback(
     (loggedId: string, nextId: string) => setChosen((c) => (c.id === loggedId ? { id: nextId, awaiting: false } : c)),
     [],
   );
-  return { currentId, select, selectWhenAdded, advanceFrom };
+  const choiceNow = useCallback(() => choices.current, []);
+  return { currentId, select, selectWhenAdded, advanceFrom, choiceNow };
 }

@@ -269,8 +269,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     if (logged) undo.offerFrom(event, { name: logged.exerciseNameSnapshot, modality: logged.modalitySnapshot }, restFor ? (rest?.get()?.startedAt ?? null) : null);
     if (!advance || currentIdRef.current !== exerciseId) return;
     const next = advanceAfterLog({ rows: freshRows, loggedId: exerciseId, wasExtra });
-    // Minor 417: the gate names the panel it reveals, so a tap on another card before the row lands drops it.
-    setRevealGate({ kind: "count", sets: fresh.exercises.reduce((n, e) => n + e.sets.length, 0), id: next });
+    // Minor 417: a tap on another card before the row lands drops the gate. Minor 710: only a tap does (the lifter's
+    // choice count), so an advance that can't happen yet (an added exercise still loading) still reveals.
+    setRevealGate({ kind: "count", sets: fresh.exercises.reduce((n, e) => n + e.sets.length, 0), choice: current.choiceNow() });
     if (next === exerciseId) return;
     // Logged by Enter: focus sat in the panel that unmounts now, so hand it to the new card's heading. Logged from the
     // bar: the bar's button keeps it (AC29).
@@ -302,8 +303,9 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   // Declared after the heading's reveal, so on an advance the panel goes second. Whatever has focus then goes last, so a
   // panel taller than the room left never hides it (AC13); the bar's button is skipped, because scrolling to a sticky
   // element drags the list to its place in the flow.
-  // Minor 417: a log's gate is dropped, with no scroll, once current is no longer the exercise it was for.
-  const revealNow = revealGate === null ? "wait" : revealStep(revealGate, { totalSets, exercises, currentId: current.currentId });
+  // Minor 417: a gate is dropped, with no scroll, once the lifter has chosen another card since it was set (minors 710,
+  // 713: a log's and an Undo's alike, and only a choice).
+  const revealNow = revealGate === null ? "wait" : revealStep(revealGate, { totalSets, exercises, choice: current.choiceNow() });
   useEffect(() => {
     if (revealNow === "wait") return;
     setRevealGate(null);
@@ -446,8 +448,15 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     couple: timedGrouping.couple,
   });
 
+  // Minor 711: a card's sheets report open and closed, counted here, so they hold the offer off for as long as they're
+  // open, not only when they open. Floored at 0, so a stray close can't stick it. The Workout menu isn't counted: it is an
+  // inline disclosure that covers nothing and often stays open after a Finish → Cancel, so it only ends the offer when it
+  // opens (final review), and its dialogs are counted on their own.
+  const [openOverlays, setOpenOverlays] = useState(0);
+  const onOverlayChange = useCallback((open: boolean) => setOpenOverlays((n) => Math.max(0, n + (open ? 1 : -1))), []);
   // Spec 17.5 AC8: anything that takes the screen over ends the offer, one made while it is open included (minor 430).
-  const overlayOpen = pickerOpen || finishOpen || endEarlyOpen || discardOpen || changeTimeOpen || removing !== null || resultActions.sheet !== null || sectionActions.sheet !== null;
+  const overlayOpen =
+    pickerOpen || finishOpen || endEarlyOpen || discardOpen || changeTimeOpen || removing !== null || resultActions.sheet !== null || sectionActions.sheet !== null || openOverlays > 0;
   // Spec 17.5: the latest log's Undo, in the bar's status line.
   const undo = useUndoLastLog({
     exercises,
@@ -460,11 +469,11 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
       const leaving = current.currentId;
       return leaving !== null && leaving !== id && (headingRefs.current.get(leaving)?.closest("article")?.contains(document.activeElement) ?? false);
     },
-    revealPanel: (set) => setRevealGate({ kind: "gone", set }),
+    // Minor 713: Undo selects its card first, so the count read here already includes that choice.
+    revealPanel: (set) => setRevealGate({ kind: "gone", set, choice: current.choiceNow() }),
     onFailure: (error) => void handleFailure("delete-set", error),
     announce: setAnnouncement,
   });
-  const { end: endUndo } = undo;
 
   /** Resolve a failed exercise-structure write per §5.8. */
   async function handleFailure(op: Operation, error: unknown, retry?: () => void, options: { refetched?: boolean } = {}) {
@@ -734,7 +743,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               failedRowRef={setFailedRowRef}
               headingRef={headingRefFor(exercise.id)}
               onLogged={onLogged}
-              onSheetOpen={endUndo}
+              onOverlayChange={onOverlayChange}
               {...(undo.restore?.exerciseId === exercise.id ? { restore: undo.restore, onRestoreDone: undo.restoreDone } : {})}
               sections={workout.sections}
               linked={bracket !== "none"}
@@ -887,7 +896,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         }
         endItem={endItem}
         onDiscard={() => setDiscardOpen(true)}
-        onOpen={endUndo}
+        onOpen={undo.end}
       />
 
       {refusedText !== null && refusedOp !== null ? (

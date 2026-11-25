@@ -1,10 +1,11 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { ROUTINE_SECTIONS_MAX, canLinkRule, type Exercise, type SessionOp, type SessionPatch, type SessionSlot, type WorkoutDetail, type WorkoutExerciseDetail } from "@sin/core";
 
 import { track } from "../../../observability/track";
 import { useWaitingFinish } from "../useWaitingFinish";
+import { isFromSummary } from "../summaryEntry";
 import { NotFound } from "../../../screens/NotFound";
 import { ActionBar, ActionBarHint } from "../../../ui/ActionBar";
 import { BackLink } from "../../../ui/BackLink";
@@ -167,6 +168,7 @@ function EditBody({
   onLeaving: (leaving: boolean) => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const writing = useIsEditWritePending();
   // Each announcement gets a fresh node (the count is its key), so the same text twice is spoken twice (AC44).
@@ -640,7 +642,12 @@ function EditBody({
         <LastSetDialog open={lastSetOpen} busy={deleteWorkout.isPending} workoutId={workoutId} onKeep={keepIt} onDelete={() => void deleteWholeWorkout(true)} />
 
         <ActionBar data-testid="edit-bar">
-          <Button disabled={writing || structureBusy} onClick={() => void navigate(`/app/${section}/${workoutId}`, { replace: true })}>
+          <Button
+            disabled={writing || structureBusy}
+            // Minor 715: opened from the summary's Edit, Done goes Back to that summary, which keeps its own `fromHome`;
+            // opened any other way (a direct link), it replaces this entry with the summary, as before.
+            onClick={() => void (isFromSummary(location.state) ? navigate(-1) : navigate(`/app/${section}/${workoutId}`, { replace: true }))}
+          >
             Done
           </Button>
           {writing || structureBusy ? <ActionBarHint>{EDIT_COPY.saving}</ActionBarHint> : null}

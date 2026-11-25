@@ -237,6 +237,54 @@ describe("minor 655 — a History page emptied by a delete resets the list", () 
     expect(qc.getQueryData(HISTORY_KEYS.list)).toBeUndefined();
   });
 
+  it("minor 693: page 1 emptied while page 2 is loaded with rows: no reset, page 2 still draws", () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(HISTORY_KEYS.list, {
+      pages: [
+        { items: [row(W)], next: "c2" },
+        { items: [row(OTHER)], next: null },
+      ],
+      pageParams: [null, "c2"],
+    });
+    applyDeletedCaches(qc, W);
+    const data = qc.getQueryData<{ pages: { items: { id: string }[] }[] }>(HISTORY_KEYS.list);
+    expect(data?.pages.map((page) => page.items.map((r) => r.id))).toEqual([[], [OTHER]]);
+  });
+
+  it("final review: deleting the only workout keeps the cached (empty) list, so the empty state draws at once", () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(HISTORY_KEYS.list, { pages: [{ items: [row(W)], next: null }], pageParams: [null] });
+    applyDeletedCaches(qc, W);
+    const data = qc.getQueryData<{ pages: { items: unknown[] }[] }>(HISTORY_KEYS.list);
+    expect(data?.pages.map((page) => page.items)).toEqual([[]]);
+  });
+
+  it("final review: every loaded page empty with no more to load is the empty list, not a reset", () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(HISTORY_KEYS.list, {
+      pages: [
+        { items: [row(W)], next: "c2" },
+        { items: [], next: null },
+      ],
+      pageParams: [null, "c2"],
+    });
+    applyDeletedCaches(qc, W);
+    expect(qc.getQueryData(HISTORY_KEYS.list)).toBeDefined();
+  });
+
+  it("minor 693: the last loaded page emptied with a next resets the list", () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(HISTORY_KEYS.list, {
+      pages: [
+        { items: [row(OTHER)], next: "c2" },
+        { items: [row(W)], next: "c3" },
+      ],
+      pageParams: [null, "c2"],
+    });
+    applyDeletedCaches(qc, W);
+    expect(qc.getQueryData(HISTORY_KEYS.list)).toBeUndefined();
+  });
+
   it("a page that keeps rows is filtered as before, with no reset", () => {
     const qc = makeQueryClient();
     qc.setQueryData(HISTORY_KEYS.list, { pages: [{ items: [row(W), row(OTHER)], next: "c2" }], pageParams: [null] });

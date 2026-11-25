@@ -68,9 +68,12 @@ export function applyDeletedCaches(queryClient: QueryClient, workoutId: string):
   const filtered = queryClient.setQueryData<InfiniteData<WorkoutHistoryResponse>>(HISTORY_KEYS.list, (data) =>
     data === undefined ? data : { ...data, pages: data.pages.map((page) => ({ ...page, items: page.items.filter((row) => row.id !== workoutId) })) },
   );
-  // Minor 655: a page the delete emptied while more workouts follow it would draw a blank list until the re-read
-  // lands (or for good if it fails): start the list over instead.
-  if (filtered?.pages.some((page) => page.items.length === 0 && page.next !== null)) void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
+  // Minor 655: a delete that empties the last loaded page while more workouts follow would draw a blank list until the
+  // re-read lands, or for good if it fails: start the list over instead. Minor 693: only then; an emptied page above
+  // loaded rows draws fine, and a reset would lose the list's scroll position. An empty last page with nothing after it
+  // is the empty list, which draws its empty state at once (final review).
+  const last = filtered?.pages.at(-1);
+  if (last !== undefined && last.items.length === 0 && last.next !== null) void queryClient.resetQueries({ queryKey: HISTORY_KEYS.list });
   invalidateOthers(queryClient, own);
 }
 

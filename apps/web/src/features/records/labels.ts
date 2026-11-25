@@ -2,6 +2,13 @@ import { kgToLb, LB_TO_KG, RECORD_TYPE_VALUES, type PersonalRecord, type RecordT
 import { reportError } from "../../observability/reportError";
 import { formatRecordByType, formatWeightKgPrecise } from "../units/format";
 
+/** Minor 718: an unknown record type is reported once per page load. */
+let unknownTypeReported = false;
+/** Tests only: start the once-per-load report over. */
+export function resetUnknownTypeReportForTests(): void {
+  unknownTypeReported = false;
+}
+
 export function recordLabel(type: RecordType): string {
   switch (type) {
     case "heaviest_weight":
@@ -26,7 +33,11 @@ export function recordLabel(type: RecordType): string {
       // generic label rather than throwing while a summary renders. Static tags only (DESIGN §8.1).
       const unreachable: never = type;
       void unreachable;
-      reportError(new Error("unknown record type"), { source: "records", op: "unknown-record-type" });
+      // Minor 718: once per page load, not on every render that labels it.
+      if (!unknownTypeReported) {
+        unknownTypeReported = true;
+        reportError(new Error("unknown record type"), { source: "records", op: "unknown-record-type" });
+      }
       return "Record";
     }
   }

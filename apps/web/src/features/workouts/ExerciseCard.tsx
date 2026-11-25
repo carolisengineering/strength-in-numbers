@@ -53,8 +53,8 @@ export interface ExerciseCardProps {
   onLogged?: (event: LoggedEvent) => void;
   /** Spec 17.1 AC27: Finish mode. */
   logExtra?: boolean;
-  /** Spec 17.5 AC8: a sheet opened from this card (a set, Add note) ends the Undo offer. */
-  onSheetOpen?: () => void;
+  /** Spec 17.5 AC8, minor 711: a sheet from this card (a set, Add set, the note) is open (`true`) or closed (`false`). */
+  onOverlayChange?: (open: boolean) => void;
   /** Spec 17.5: passed straight through to `EntryRow`. */
   restore?: DraftRestore;
   onRestoreDone?: (token: number) => void;
@@ -147,7 +147,7 @@ export function ExerciseCard({
   headingRef,
   onLogged,
   logExtra,
-  onSheetOpen,
+  onOverlayChange,
   restore,
   onRestoreDone,
   sections,
@@ -169,9 +169,13 @@ export function ExerciseCard({
   const setNote = useSetExerciseNote();
   const [noteSheet, setNoteSheet] = useState<{ session: number; open: boolean } | null>(null);
   const sheetOpen = editing !== null || adding || noteSheet?.open === true;
+  // Minor 711: open and closed both reported, so the screen counts this sheet as an overlay for as long as it's open
+  // (the cleanup reports a close, an unmount with the sheet open included).
   useEffect(() => {
-    if (sheetOpen) onSheetOpen?.();
-  }, [sheetOpen, onSheetOpen]);
+    if (!sheetOpen) return;
+    onOverlayChange?.(true);
+    return () => onOverlayChange?.(false);
+  }, [sheetOpen, onOverlayChange]);
   const noteSync = sync.get(exercise.id);
   const hasNote = Boolean(exercise.notes);
   function saveNote(notes: string | null) {
@@ -228,7 +232,7 @@ export function ExerciseCard({
             Remove exercise
           </Button>
           {/* Spec 17.7 AC20 (§5 order). Spec 18.0 AC12: on the edit screen its sheet waits for the server. Opening the
-              sheet still ends the Undo offer through `onSheetOpen` (Spec 17.5 AC8). */}
+              sheet keeps the Undo offer off through `onOverlayChange` (Spec 17.5 AC8, minor 711). */}
           <Button
             variant="secondary"
             data-note-action=""

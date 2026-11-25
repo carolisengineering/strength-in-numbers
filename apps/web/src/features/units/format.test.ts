@@ -1,6 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const observability = vi.hoisted(() => ({ reportError: vi.fn() }));
+vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
+
 import { RECORD_UNIT_VALUES } from "@sin/core";
-import { e1rmSteps, formatE1rmGain, formatRecordByType, formatRecordPair, formatRecordValue, formatVolumeKg, formatWeightKg, roundedE1rm } from "./format";
+import {
+  e1rmSteps,
+  formatE1rmGain,
+  formatRecordByType,
+  formatRecordPair,
+  formatRecordValue,
+  formatVolumeKg,
+  formatWeightKg,
+  resetUnknownUnitReportForTests,
+  roundedE1rm,
+} from "./format";
 
 /** What the API stores for a weight entered in lb: `weight_kg`, rounded to numeric(7,3). */
 const storedKg = (lb: number) => Math.round(lb * 0.45359237 * 1000) / 1000;
@@ -157,5 +171,16 @@ describe("17.6 AC6 — a rise that rounds away is value only", () => {
 
   it("Review Focus 3: a lb account where stored 100 and 100.017 kg both read 220.5 lb", () => {
     expect(formatRecordPair(pair("heaviest_weight", 100.017, 100, "kg"), "lb")).toEqual({ newText: "220.5 lb", oldText: null, gainText: null, spoken: "220.5 lb" });
+  });
+});
+
+describe("minor 718 — an unknown record unit formats, not throws", () => {
+  it("reads as a plain number, and is reported once with static tags", () => {
+    resetUnknownUnitReportForTests();
+    observability.reportError.mockClear();
+    expect(formatRecordValue(1234.5, "lap" as never, "kg")).toBe("1,234.5");
+    expect(formatRecordValue(3, "lap" as never, "lb")).toBe("3");
+    expect(observability.reportError).toHaveBeenCalledTimes(1);
+    expect(observability.reportError.mock.calls[0]![1]).toEqual({ source: "records", op: "unknown-record-unit" });
   });
 });

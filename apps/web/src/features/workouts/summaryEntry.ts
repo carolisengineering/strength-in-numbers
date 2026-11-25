@@ -9,6 +9,16 @@ export function isFromHome(state: unknown): boolean {
   return typeof state === "object" && state !== null && (state as { fromHome?: unknown }).fromHome === true;
 }
 
+/**
+ * Minor 715: the summary's Edit marks the edit entry, so Done can go Back to that summary (keeping its own
+ * `fromHome`) instead of replacing the edit entry with a second, unmarked copy of it.
+ */
+export const FROM_SUMMARY = { fromSummary: true } as const;
+
+export function isFromSummary(state: unknown): boolean {
+  return typeof state === "object" && state !== null && (state as { fromSummary?: unknown }).fromSummary === true;
+}
+
 /** The state for a link from `pathname` to a summary: marked only when the link sits on the section's list itself. */
 export function summaryEntryState(pathname: string, home: string): typeof FROM_HOME | undefined {
   return pathname === home ? FROM_HOME : undefined;

@@ -311,6 +311,24 @@ describe("17.12 review focus — the routine panes' edge cases", () => {
     expect(router.state.location.pathname).toBe("/app/workouts");
   });
 
+  it("minor 667: a dismissed notice doesn't come back on Back, Forward or a resize", async () => {
+    const { fake, router, user } = await setup(previewPath(A));
+    await panesReady();
+    await within(detailPane()).findByRole("heading", { level: 1, name: "Push A" });
+    fake.state.routines.delete(A);
+    await user.click(within(detailPane()).getByRole("button", { name: "Start this routine" }));
+    const notice = await within(listPane()).findByText(ROUTINE_GONE_NOTICE);
+    await user.click(within(notice.closest("div")!.parentElement!).getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(screen.queryByText(ROUTINE_GONE_NOTICE)).toBeNull());
+    await act(() => router.navigate(-1));
+    await act(() => router.navigate(1));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/app/workouts"));
+    act(() => setDesktop(false));
+    act(() => setDesktop(true));
+    await panesReady();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText(ROUTINE_GONE_NOTICE)).toBeNull();
+  });
 });
 
 describe("17.12 AC27 — final review: choosing the open routine changes nothing, so Back still works", () => {

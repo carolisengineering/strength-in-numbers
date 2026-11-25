@@ -83,10 +83,14 @@ export function visibleRecords(records: readonly PersonalRecord[]): PersonalReco
 /** AC6 (owner decision 2026-11-14, minor 476): a lift counts only when one of its rows rose. */
 const rose = (lift: LedgerLift): boolean => lift.rows.some((r) => r.gainText !== null);
 
-function headingOf(lifts: readonly LedgerLift[], counted: number, section: LedgerSection): string | null {
-  if (counted === 0) return null;
-  const oneRow = lifts.length === 1 && lifts[0]!.rows.length === 1;
-  const count = liftCountText(counted);
+/**
+ * The heading over the lifts that rose. Minor 602 (owner, 2026-11-25): "New record" whenever exactly one lift rose with
+ * one row, whatever value-only lifts are drawn beside it (they're drawn, never counted).
+ */
+function headingOf(risers: readonly LedgerLift[], section: LedgerSection): string | null {
+  if (risers.length === 0) return null;
+  const oneRow = risers.length === 1 && risers[0]!.rows.length === 1;
+  const count = liftCountText(risers.length);
   // AC15 (D5): a workout opened from History did not just set its records; they are the ones it holds now.
   if (section === "history") return oneRow ? "Record from this workout" : `Records from this workout on ${count}`;
   return oneRow ? "New record" : `New records on ${count}`;
@@ -146,8 +150,9 @@ export function buildRecordLedger({ records, workout, pref, section }: { records
   // AC10 (17.2 AC25, D17): the workout's exercise order; a lift that can't be matched goes after, in name order.
   built.sort((a, b) => (a.order === b.order ? a.name.localeCompare(b.name, "en") : a.order - b.order));
   const drawn = built.flatMap((b) => (b.kind === "lift" ? [b.lift] : []));
-  const rising = drawn.filter(rose).length;
-  const heading = headingOf(drawn, rising, section);
+  const risers = drawn.filter(rose);
+  const rising = risers.length;
+  const heading = headingOf(risers, section);
   // Minor 476: with no panel, a value-only lift is gone; only a first-ever record it held stays, as its line.
   const lifts = heading === null ? [] : drawn;
   const firsts = built.flatMap((b) => (b.kind === "first" ? [b.first] : heading === null && b.first !== null ? [b.first] : []));
