@@ -571,7 +571,8 @@ const BODY_ID_CASES: CrossUserCase[] = [
     expect: 404,
     type: "not-found",
     own: (w) => w.c.routineId,
-    controlStatus: 201,    cleanup: deleteCsLiveWorkout,
+    controlStatus: 201,
+    cleanup: deleteCsLiveWorkout,
   }),
   slotCase({
     route: "POST /v1/workouts/:id/exercises",

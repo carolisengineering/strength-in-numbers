@@ -9,12 +9,14 @@ import { apiProgram, overlayPath, rel, srcFiles, srcProgram } from "./helpers/ts
  * - every call made on, or handed, a `ScopedClient` (never a transaction's client) inside a `for` / `while` / `do` body,
  *   an array callback (`map`, `forEach`, …) or the arguments of `Promise.all`, keyed `file#function: what is called`;
  * - minor 407: every call that hands a `ScopedClient` to a looping helper, keyed `file#helper←calling function`. A
- *   looping helper is a function with a `RawClient` / `ScopedClient` parameter that runs `$queryRaw` / `$executeRaw` on
- *   it inside a loop. Handing it a transaction's client is one transaction, so that is not flagged.
+ *   looping helper is a function with a `RawClient` / `ScopedClient` parameter that, inside a loop, runs `$queryRaw` /
+ *   `$executeRaw` on it or passes it to another function. Handing it a transaction's client is one transaction, so
+ *   that is not flagged.
  * Each one is either moved into one transaction or listed below with its bound and reason.
  *
  * Limits: a call through a closure defined outside the loop is not seen (the scan reads where the call is written), and
- * helpers are followed one level only: a helper that hands its client to a second helper that loops is not seen.
+ * helpers are followed one level only: a helper that hands its client, outside any loop, to a second helper that loops
+ * is not seen.
  */
 
 const ARRAY_CALLBACKS = new Set(["map", "forEach", "flatMap", "filter", "reduce", "some", "every"]);
@@ -64,7 +66,10 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
           const walk = (n: ts.Node) => {
             if (loops) return;
             const callee = ts.isCallExpression(n) ? n.expression : ts.isTaggedTemplateExpression(n) ? n.tag : undefined;
-            if (callee && ts.isPropertyAccessExpression(callee) && RAW_CALL.test(callee.name.text) && checker.getSymbolAtLocation(callee.expression) === paramSymbol && inLoop(n, node)) loops = true;
+            const runsOnIt = callee !== undefined && ts.isPropertyAccessExpression(callee) && RAW_CALL.test(callee.name.text) && checker.getSymbolAtLocation(callee.expression) === paramSymbol;
+            // ...or the loop hands the client on: `for (const r of rows) await insertOne(c, r)` is a round per row too.
+            const handsItOn = ts.isCallExpression(n) && n.arguments.some((a) => ts.isIdentifier(a) && checker.getSymbolAtLocation(a) === paramSymbol);
+            if ((runsOnIt || handsItOn) && inLoop(n, node)) loops = true;
             ts.forEachChild(n, walk);
           };
           walk(node.body!);
@@ -158,7 +163,10 @@ const mapped = (list: string[], c: RawClient) => Promise.all(list.map((id) => c.
 async function once(c: RawClient, id: string) {
   await c.$executeRaw\`SELECT \${id}\`;
 }
-void each; void mapped; void once;
+async function viaOnce(c: RawClient, list: string[]) {
+  for (const id of list) await once(c, id);
+}
+void each; void mapped; void once; void viaOnce;
 export type Tx = Prisma.TransactionClient;
 `;
   const keysFor = (body: string) => scan(apiProgram([], { [FIXTURE]: HEAD + body }), [overlayPath(FIXTURE)]).map((f) => f.key);
@@ -173,6 +181,11 @@ export type Tx = Prisma.TransactionClient;
 
   it("the same helper handed a transaction's client is one transaction, and passes (Review Focus 2)", () => {
     expect(keysFor("export async function run() {\n  await db.as(u).$transaction((tx) => each(tx, ids));\n}\n")).toEqual([]);
+  });
+
+  it("a helper whose loop hands its client to another function is flagged too (final review)", () => {
+    expect(keysFor("export async function run() {\n  await viaOnce(db.as(u), ids);\n}\n")).toEqual([`${FIXTURE}#viaOnce←run`]);
+    expect(keysFor("export async function run() {\n  await db.as(u).$transaction((tx) => viaOnce(tx, ids));\n}\n")).toEqual([]);
   });
 
   it("a helper that doesn't loop is not flagged for a scoped client", () => {

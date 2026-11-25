@@ -547,11 +547,12 @@ function tablesOf(text: string): { tables: string[]; delegates: string[] } {
  * - shared on purpose: only reference data or the catalog's shared rows, its fragments' tables included;
  * - cross-user maintenance: only in the three operator scripts;
  * - anchored: each anchor it names exists, is user-filtered, and locks or inserts the root row (minor 391), and a row
- *   listed in `TIES` still holds its tie (minor 390; skipped when none of the tie's file was extracted, as in a fixture);
+ *   listed in `ties` still holds its tie (minor 390). `ties` is `TIES` unless the caller passes its own: a fixture
+ *   over made-up files passes `{}`;
  * - fragment: lists its callers, each classified, and a fragment over owned tables only has callers that are
  *   user-filtered, anchored, maintenance or fragments themselves (§6.7 #17).
  */
-export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extracted[]): string[] {
+export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extracted[], ties: Readonly<Record<string, string>> = TIES): string[] {
   const issues: string[] = [];
   const byKey = new Map(rows.map((r) => [r.key, r]));
   const textOf = new Map(extracted.map((s) => [s.key, s.text]));
@@ -598,9 +599,7 @@ export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extr
       }
     }
   }
-  const extractedFiles = new Set(extracted.map((s) => s.file));
-  for (const [key, tie] of Object.entries(TIES)) {
-    if (!extractedFiles.has(key.slice(0, key.indexOf("#")))) continue;
+  for (const [key, tie] of Object.entries(ties)) {
     if (byKey.get(key)?.category !== "anchored") issues.push(`${key}: listed in TIES, but it is not an anchored row`);
     else if (!(textOf.get(key) ?? "").includes(tie)) issues.push(`${key}: its tie ("${tie}") is gone`);
   }

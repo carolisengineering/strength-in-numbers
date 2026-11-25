@@ -310,7 +310,7 @@ describe("AC21 — hasUserPredicate wants a predicate, not a mention (code revie
     );
     const rows = extractStatements([local]);
     const audit = parseAudit(writeAudit([], rows)).map((r) => ({ ...r, status: "ok", category: r.kind === "fragment" ? "fragment" : "user-filtered" }));
-    const issues = sanityIssues(audit, rows);
+    const issues = sanityIssues(audit, rows, {});
     expect(issues.some((s) => s.includes("foo#2"))).toBe(false);
     expect(issues.some((s) => s.includes("bar#1"))).toBe(true);
   });
@@ -329,15 +329,15 @@ describe("AC21 — category sanity over fixtures (final review #4)", () => {
     parseAudit(writeAudit([], rows)).map((r) => ({ ...r, status: "ok", category: cats[r.key.split("#")[1]!] ?? "fragment" }));
 
   it("refuses a user-filtered claim with no user predicate, and an anchored claim with no anchor", () => {
-    expect(sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows)).toEqual([
+    expect(sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows, {})).toEqual([
       // `all` names no user: its user-filtered claim is refused.
       expect.stringContaining("src/repositories/f.ts#all#1"),
     ]);
-    expect(sanityIssues(audit({ own: "user-filtered", me: "user-filtered", all: "anchored" }), rows).some((s) => s.includes("all#1"))).toBe(true);
+    expect(sanityIssues(audit({ own: "user-filtered", me: "user-filtered", all: "anchored" }), rows, {}).some((s) => s.includes("all#1"))).toBe(true);
   });
 
   it("a shared-on-purpose row whose tables come from a fragment it calls is refused", () => {
-    const issues = sanityIssues(audit({ all: "shared on purpose", own: "user-filtered", me: "user-filtered" }), rows);
+    const issues = sanityIssues(audit({ all: "shared on purpose", own: "user-filtered", me: "user-filtered" }), rows, {});
     expect(issues.some((s) => s.includes("all#1") && s.includes("shared"))).toBe(true);
   });
 
@@ -349,18 +349,18 @@ describe("AC21 — category sanity over fixtures (final review #4)", () => {
     );
     const catalogRows = extractStatements([CATALOG]);
     const shared = parseAudit(writeAudit([], catalogRows)).map((r) => ({ ...r, status: "ok", category: "shared on purpose" }));
-    const issues = sanityIssues(shared, catalogRows);
+    const issues = sanityIssues(shared, catalogRows, {});
     expect(issues.some((s) => s.includes("roles#1"))).toBe(false);
     expect(issues.some((s) => s.includes("mixed#1") && s.includes("shared"))).toBe(true);
   });
 
   it("a model-delegate call on an owned table is not shared on purpose", () => {
-    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "shared on purpose" }), rows);
+    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "shared on purpose" }), rows, {});
     expect(issues.some((s) => s.includes("me#1") && s.includes("shared"))).toBe(true);
   });
 
   it("a user model call keyed by id is user-filtered (self)", () => {
-    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows);
+    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows, {});
     expect(issues.some((s) => s.includes("me#1"))).toBe(false);
   });
 });
@@ -389,16 +389,16 @@ describe("AC21 — minor 391: an anchored row can name several anchors", () => {
   });
 
   it("two anchors that are both user-filtered locks pass", () => {
-    expect(sanityIssues(audit(`${key("lockA")}, ${key("lockB")}`), rows)).toEqual([]);
+    expect(sanityIssues(audit(`${key("lockA")}, ${key("lockB")}`), rows, {})).toEqual([]);
   });
 
   it("an anchor that is not user-filtered fails, naming that anchor (Review Focus 4)", () => {
-    const issues = sanityIssues(audit(`${key("lockA")}, ${key("peek")}`), rows).filter((i) => i.startsWith(key("count")));
+    const issues = sanityIssues(audit(`${key("lockA")}, ${key("peek")}`), rows, {}).filter((i) => i.startsWith(key("count")));
     expect(issues).toEqual([`${key("count")}: its anchor ${key("peek")} is missing, not user-filtered, or neither locks nor inserts`]);
   });
 
   it("an anchor that doesn't exist fails, naming it, and the others still count", () => {
-    const issues = sanityIssues(audit(`${key("lockA")}, src/repositories/two.ts#gone#1`), rows);
+    const issues = sanityIssues(audit(`${key("lockA")}, src/repositories/two.ts#gone#1`), rows, {});
     expect(issues).toEqual([`${key("count")}: its anchor src/repositories/two.ts#gone#1 is missing, not user-filtered, or neither locks nor inserts`]);
   });
 
@@ -429,6 +429,17 @@ describe("AC21 — minor 390: a listed tie can't be removed without failing the 
     expect(untied.find((s) => s.key === CREATE_SET)!.text).not.toContain("workout_id =");
     expect(sanityIssues(rows, untied)).toEqual([`${CREATE_SET}: its tie ("${TIES[CREATE_SET]}") is gone`]);
     expect(sanityIssues(rows, extracted)).toEqual([]);
+  });
+
+  it("every TIES key is a statement in src (a renamed file or function can't switch its tie off; final review)", () => {
+    const keys = new Set(extracted.map((s) => s.key));
+    expect(Object.keys(TIES).filter((k) => !keys.has(k))).toEqual([]);
+  });
+
+  it("a tie is checked even when none of its file was extracted (final review)", () => {
+    const withoutFile = (key: string) => !key.startsWith("src/repositories/set-entry.prisma.ts#");
+    const issues = sanityIssues(rows.filter((r) => withoutFile(r.key)), extracted.filter((s) => withoutFile(s.key)));
+    expect(issues).toContain(`${CREATE_SET}: listed in TIES, but it is not an anchored row`);
   });
 
   it("a tied row that is no longer anchored, or no longer exists, fails too", () => {
