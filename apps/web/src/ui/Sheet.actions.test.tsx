@@ -241,7 +241,7 @@ describe("17.10 AC4 — status line and notice", () => {
       expect(sheetError()).toBe("Couldn't save.");
     });
 
-    it("closing the sheet mid-way neither warns nor throws (Review Focus 3)", () => {
+    it("unmounting in the same act as a re-render with a new failure neither warns nor throws (Review Focus 3)", () => {
       const spy = vi.spyOn(console, "error").mockImplementation(() => {});
       const view = (error: SheetError | null) => (
         <Sheet open title="Edit set" onClose={vi.fn()}>
@@ -473,29 +473,59 @@ describe("17.10 AC1 — closing and reopening (Review Focus 3)", () => {
 });
 
 const sources = import.meta.glob(["../**/*.tsx", "!../**/*.test.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
-/** The Cancel copy constants a sheet passes as its `dismissLabel` (AC16). */
-const CANCEL_CONSTANTS = /\b(?:CANCEL_LOAD|SECTION_COPY\.cancel|C\.cancel|RESULT_COPY\.cancel|EXERCISES_COPY\.cancel)\b/g;
+/**
+ * A Cancel a sheet could draw (AC16, minor 499): any copy constant named CANCEL, any `X.cancel` copy key (`\b` keeps out
+ * `cancelQueries` / `cancelRemove`), and the literal word as a string or as a JSX text child.
+ */
+const CANCEL_CONSTANTS = /\b[A-Z_]*CANCEL[A-Z_]*\b|\b[A-Za-z_]+\.cancel\b|"Cancel"|>\s*Cancel\s*</g;
 /** Cancels that act on part of the body, not the sheet (AC7): Match for Hevy's in-card Cancel, in pick and create modes. */
 const IN_BODY_CANCELS: Record<string, number> = { "../features/hevy/send/MatchForHevySheet.tsx": 2 };
+/** Uses of a Cancel in a file that aren't a `dismissLabel` (import lists name the constants too; only uses count). */
+function strayCancels(raw: string): number {
+  const source = raw.replace(/^import\b[\s\S]*?\bfrom\s+"[^"]+";$/gm, "");
+  let others = 0;
+  for (const match of source.matchAll(CANCEL_CONSTANTS)) {
+    if (!/dismissLabel=\{?$/.test(source.slice(Math.max(0, match.index - "dismissLabel={".length), match.index))) others += 1;
+  }
+  return others;
+}
+/** A file that renders a Sheet, and each component it imports from its own folder (one hop): a Cancel drawn by a child is the sheet's too. */
+function sheetFiles(): string[] {
+  const files = new Set<string>();
+  for (const [path, raw] of Object.entries(sources)) {
+    if (!/<Sheet\b/.test(raw)) continue;
+    files.add(path);
+    const dir = path.slice(0, path.lastIndexOf("/") + 1);
+    for (const m of raw.matchAll(/\bfrom\s+"\.\/([^"]+)"/g)) {
+      const child = `${dir}${m[1]}.tsx`;
+      if (child in sources) files.add(child);
+    }
+  }
+  return [...files].sort();
+}
 
 describe("17.10 AC15, AC7 — every sheet uses the row", () => {
   it("no source file names noActionRow (the Phase A opt-out is gone)", () => {
     expect(Object.keys(sources).filter((path) => sources[path]!.includes("noActionRow"))).toEqual([]);
   });
 
-  it("in a file that renders a Sheet, a Cancel copy constant is only its dismissLabel, so no sheet draws its own Cancel", () => {
+  it("in a sheet or a component it renders, Cancel is only the sheet's dismissLabel (minor 499)", () => {
     const stray: string[] = [];
-    for (const [path, raw] of Object.entries(sources)) {
-      if (!/<Sheet\b/.test(raw)) continue;
-      // Import lists name the constants too; only uses count.
-      const source = raw.replace(/^import\b[\s\S]*?\bfrom\s+"[^"]+";$/gm, "");
-      let others = 0;
-      for (const match of source.matchAll(CANCEL_CONSTANTS)) {
-        if (source.slice(Math.max(0, match.index - "dismissLabel={".length), match.index) !== "dismissLabel={") others += 1;
-      }
+    for (const path of sheetFiles()) {
+      const others = strayCancels(sources[path]!);
       if (others !== (IN_BODY_CANCELS[path] ?? 0)) stray.push(`${path}: ${others}`);
     }
     expect(stray).toEqual([]);
+  });
+
+  it("the literal pattern finds RoutineEditor's own Cancel, outside any sheet", () => {
+    expect(strayCancels(sources["../features/routines/RoutineEditor.tsx"]!)).toBeGreaterThanOrEqual(1);
+  });
+
+  it("minor 499: a literal Cancel or a Cancel constant in a sheet or its child is found", () => {
+    for (const sample of ["<Button>{C.cancel}</Button>", "<button>\n  Cancel\n</button>"]) {
+      expect([...sample.matchAll(CANCEL_CONSTANTS)], sample).not.toEqual([]);
+    }
   });
 });
 

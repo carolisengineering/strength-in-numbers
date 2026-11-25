@@ -8,7 +8,7 @@ describe("20.1 AC30 — every criterion has a committed, tagged test", () => {
   it("each wanted criterion appears in a describe title that names Spec 20.1", () => {
     const tagged = new Set<number>();
     for (const source of Object.values(tests)) {
-      for (const title of source.matchAll(/describe\(\s*(["'`])(20\.1 AC[^"'`]*)\1/g)) {
+      for (const title of source.matchAll(/describe\(\s*(["'`])(20\.1 AC(?:(?!\1).)*)\1/g)) {
         for (const ac of title[2]!.matchAll(/AC(\d+)/g)) tagged.add(Number(ac[1]));
       }
     }

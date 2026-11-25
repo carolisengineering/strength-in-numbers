@@ -14,7 +14,7 @@ describe("17.2 AC38 — every behavioral criterion has a committed, tagged test"
   it("each wanted AC appears in a describe title as '17.2 ACn'", () => {
     const tagged = new Set<number>();
     for (const source of Object.values(tests)) {
-      for (const title of source.matchAll(/describe\(\s*(["'`])([^"'`]*)\1/g)) {
+      for (const title of source.matchAll(/describe\(\s*(["'`])((?:(?!\1).)*)\1/g)) {
         for (const group of title[2]!.matchAll(/17\.2 ((?:AC\d+(?:\s*(?:,|\/|and)\s*)?)+)/g)) {
           for (const ac of group[1]!.matchAll(/AC(\d+)/g)) tagged.add(Number(ac[1]));
         }

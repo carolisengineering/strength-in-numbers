@@ -18,6 +18,16 @@ const sources = filesUnder(SRC, /\.(css|ts|tsx)$/)
 /** The two widths a media condition may name (`--bp-tablet`, `--bp-desktop`). */
 const ALLOWED = ["48rem", "64rem"];
 
+/**
+ * Each width condition in a file: `(min-width: …)` / `(max-width: …)` anywhere, and in a stylesheet also the range
+ * form `(width >= …)` (minor 648). TypeScript reads only the first form, so a parameter such as `viewFor(width: number)`
+ * is never taken for a condition.
+ */
+function conditionsIn(path: string, text: string): { condition: string; width: string }[] {
+  const pattern = path.endsWith(".css") ? /\((?:(?:min|max)-width\s*:|width\s*[<>]=?)\s*([^)]+)\)/g : /\((?:min|max)-width\s*:\s*([^)]+)\)/g;
+  return [...text.matchAll(pattern)].map((m) => ({ condition: m[0], width: m[1]?.trim() ?? "" }));
+}
+
 describe("17.12 AC1 — breakpoints are tokens, and every media condition uses one of them", () => {
   it("tokens.css declares the layout tokens with their exact values", () => {
     const css = tokensCss;
@@ -37,14 +47,18 @@ describe("17.12 AC1 — breakpoints are tokens, and every media condition uses o
     const offenders: string[] = [];
     let conditions = 0;
     for (const { path, text } of sources) {
-      for (const match of text.matchAll(/\((?:min|max)-width:\s*([^)]+)\)/g)) {
+      for (const { condition, width } of conditionsIn(path, text)) {
         conditions += 1;
-        const width = match[1]?.trim() ?? "";
-        if (!ALLOWED.includes(width)) offenders.push(`${path}: ${match[0]}`);
+        if (!ALLOWED.includes(width)) offenders.push(`${path}: ${condition}`);
       }
     }
     // The scan reads something: the shell's and the front door's 48rem conditions at least.
     expect(conditions).toBeGreaterThanOrEqual(2);
     expect(offenders).toEqual([]);
+  });
+
+  it("minor 648: a range condition in a stylesheet is read; a TypeScript parameter named width is not", () => {
+    expect(conditionsIn("x.module.css", "@media (width >= 50rem) {")).toEqual([{ condition: "(width >= 50rem)", width: "50rem" }]);
+    expect(conditionsIn("scale.ts", "export function viewFor(width: number) {")).toEqual([]);
   });
 });

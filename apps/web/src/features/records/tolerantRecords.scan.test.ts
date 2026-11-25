@@ -7,11 +7,12 @@ const sources = import.meta.glob(
 ) as Record<string, string>;
 
 /**
- * The core schemas that parse a record list strictly; `TolerantUpdatedWorkoutSchema` doesn't match (no word boundary).
- * The scan covers these names only (spec AC3): a schema built in the web with its own `z.enum(RECORD_TYPE_VALUES)` or
- * `newRecords` array would pass it, so a new record parse must go through `tolerantRecords.ts` by review.
+ * A strict record-list parse: the core schemas that parse one (`TolerantUpdatedWorkoutSchema` doesn't match, no word
+ * boundary), and, since minor 682, one built in the web: `z.enum(RECORD_TYPE_VALUES)`, or a `records` / `newRecords`
+ * key whose value is a zod schema (a plain `records:` / `newRecords:` object key elsewhere has no `z.` and passes).
  */
-const STRICT_RECORD_SCHEMAS = /\b(?:PersonalRecordSchema|PersonalRecordsResponseSchema|UpdatedWorkoutSchema)\b/;
+const STRICT_RECORD_SCHEMAS =
+  /\b(?:PersonalRecordSchema|PersonalRecordsResponseSchema|UpdatedWorkoutSchema)\b|z\.enum\(\s*RECORD_TYPE_VALUES|\b(?:newRecords|records)\s*:\s*z\./;
 
 describe("07.5 AC3 — every web parse of a record list is tolerant", () => {
   it("found the two clients that parse record lists", () => {
@@ -26,5 +27,11 @@ describe("07.5 AC3 — every web parse of a record list is tolerant", () => {
       .map(([path]) => path)
       .sort();
     expect(offenders).toEqual([]);
+  });
+
+  it("minor 682: a record schema built by hand is caught", () => {
+    for (const sample of ["x: z.enum(RECORD_TYPE_VALUES)", "WorkoutSchema.extend({ newRecords: z.array(S) })"]) {
+      expect(sample, sample).toMatch(STRICT_RECORD_SCHEMAS);
+    }
   });
 });
