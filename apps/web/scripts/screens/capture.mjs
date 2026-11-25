@@ -740,14 +740,16 @@ async function checkPlanRows(page, label, found = {}) {
 // Minor 523: in the open row, each edge note ("First set", "Last set") sits beside its own Move button: its center
 // within the button's height, and to its right. Minors 520 and 521 (09b): the flagged row's Reps and Weight tops
 // match, and the open row's line never says "Check this set". Violations go under `planRows`.
-async function checkPlanRowExtras(page, label, { notes = false, invalid = false } = {}) {
+// Minor 535: the edge notes are matched by their exact text (the only row's "A plan needs at least one set" is under the
+// list, not beside a Move button), each expected note must be there, and the open row must have its summary.
+async function checkPlanRowExtras(page, label, { notes = false, edges: expected = notes ? ["First set"] : [], invalid = false } = {}) {
   const m = await page.evaluate(() => {
     const group = document.querySelector('dialog[open] ol[aria-label="Planned sets"] [role="group"]');
     const out = { edges: [], tops: null, openSummary: null };
     if (!group) return out;
     for (const button of group.querySelectorAll("button[aria-describedby]")) {
       const note = document.getElementById(button.getAttribute("aria-describedby"));
-      if (!note || !/set$/.test(note.textContent ?? "")) continue;
+      if (!note || !["First set", "Last set"].includes(note.textContent?.trim() ?? "")) continue;
       const b = button.getBoundingClientRect();
       const n = note.getBoundingClientRect();
       out.edges.push({ note: note.textContent, centerInside: n.top + n.height / 2 >= b.top && n.top + n.height / 2 <= b.bottom, rightOf: n.left >= b.right });
@@ -759,8 +761,10 @@ async function checkPlanRowExtras(page, label, { notes = false, invalid = false 
     return out;
   });
   const violations = [];
-  if (notes) {
+  if (m.openSummary === null) violations.push("the open row has no summary");
+  if (expected.length) {
     if (m.edges.length === 0) violations.push("minor 523: no edge note in the open row");
+    for (const want of expected) if (!m.edges.some((e) => e.note.trim() === want)) violations.push(`minor 535: no "${want}" in the open row`);
     for (const e of m.edges) if (!e.centerInside || !e.rightOf) violations.push(`minor 523: "${e.note}" is not beside its button`);
   }
   if (invalid) {
@@ -770,6 +774,25 @@ async function checkPlanRowExtras(page, label, { notes = false, invalid = false 
   }
   planRows.push({ shot: label, ...m, violations });
   for (const v of violations) console.error(`  PLAN ROWS ${label}: ${v}`);
+}
+/**
+ * Minor 501: the routine editor's two other sheets, Move to section (a row's Options) and Add section, each opened and
+ * shot so `shoot`'s sheet-row checks run on them, then closed with Cancel. The page is on Push Day's editor.
+ */
+async function routineEditorSheets(page, device) {
+  const close = async () => {
+    await page.locator("dialog[open] [data-sheet-actions]").getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.waitForSelector("dialog[open]", { state: "detached", timeout: 4000 });
+  };
+  await page.locator('ul[aria-label^="Exercises"] li').first().getByRole("button", { name: "Options", exact: true }).click({ timeout: 4000 });
+  await page.getByRole("button", { name: "Move to section…" }).first().click({ timeout: 4000 });
+  await page.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+  await shoot(page, device, "08m-move-to-section", "Routine editor: Move to section… from a row's Options (minor 501)");
+  await close();
+  await page.locator("#routine-add-section").click({ timeout: 4000 });
+  await page.waitForSelector("dialog[open] [data-sheet-actions]", { timeout: 4000 });
+  await shoot(page, device, "08n-add-section", "Routine editor: the Add section sheet (minor 501)");
+  await close();
 }
 async function shoot(page, device, name, note) {
   await settle(page);
@@ -790,6 +813,7 @@ async function shoot(page, device, name, note) {
     await page.waitForTimeout(250);
   }
   await markScroller(page);
+  // Minor 554: returned to the caller, so the zoom pass reads this dump rather than building a second one.
   const dump = await layoutDump(page);
   dump.scroller = sc.tag;
   const closeOffsets = await page.evaluate(() =>
@@ -829,6 +853,7 @@ async function shoot(page, device, name, note) {
   const clippedInputs = dump.items.filter((it) => it.clipped && !it.disabled).map((it) => `${it.tag} "${it.text}" ${it.w}×${it.h} clipped`);
   report.push({ file: `${label}.png`, note, controls: dump.count, overlaps: dump.overlaps.length, pinnedHits: dump.pinnedCoverage.reduce((a, s) => a + s.hits.length, 0), smallTargets: small, clippedInputs });
   console.log(`  ${label}: ${dump.count} controls, ${dump.overlaps.length} overlaps, pinned hits ${report.at(-1).pinnedHits}`);
+  return dump;
 }
 
 // Minor 690, final review I-1: every step that talks to the fake Hevy (key, import, send) starts only when it can end
@@ -1042,6 +1067,9 @@ const ZOOM_KNOWN = [
   { shot: "light/mobile-200pct/z8-routine-editor", item: "small target: button \"Weighted Dip, superset 2, 3 × 6–10 @ 10 kg\"", bl: "BL-38" },
 ];
 const zoom = [];
+/** Minor 546: matches per ZOOM_KNOWN row (by index), and the zoom shots that actually ran. */
+const zoomKnownHits = new Map();
+const zoomShotsRun = new Set();
 // The zoom pass's shots: their small targets, clipped inputs and sheet-row problems are zoom findings (so ZOOM_KNOWN can
 // hold them), and the run-wide checks skip them.
 const ZOOM_SHOT = /(^|\/)(mobile-(320-reflow|200pct)|desktop-1280-200pct)\//;
@@ -1115,7 +1143,7 @@ async function zoomPass(browser) {
         if (fontSize) await page.evaluate((f) => { document.documentElement.style.fontSize = f; }, fontSize);
         await settle(page);
         if (s.open) await s.open(page);
-        await shoot(page, device, s.name, `Spec 17.13 AC19: ${s.name.slice(3)} at ${fontSize ? `${viewport.width} × ${viewport.height}, ${fontSize} text` : `${viewport.width} × ${viewport.height}`}`);
+        const dump = await shoot(page, device, s.name, `Spec 17.13 AC19: ${s.name.slice(3)} at ${fontSize ? `${viewport.width} × ${viewport.height}, ${fontSize} text` : `${viewport.width} × ${viewport.height}`}`);
         // Spec 07.6 AC15: History's badge with large text — on one line, inside its row, the day left whole.
         const shot = `light/${device}/${s.name}`;
         const found = await page.evaluate(() => {
@@ -1128,7 +1156,6 @@ async function zoomPass(browser) {
           wide(document.querySelector("dialog[open] [data-sheet-body]"), "the sheet body");
           return out;
         });
-        const dump = await layoutDump(page);
         for (const o of dump.overlaps) found.push(`overlap: ${o.a} / ${o.b}`);
         for (const it of dump.items.filter((x) => x.smallTarget && !x.disabled)) found.push(`small target: ${it.tag} "${it.text}"`);
         for (const it of dump.items.filter((x) => x.clipped && !x.disabled)) found.push(`clipped input: ${it.tag} "${it.text}"`);
@@ -1144,6 +1171,15 @@ async function zoomPass(browser) {
         }
         const known = ZOOM_KNOWN.filter((k) => k.shot === shot);
         const violations = found.filter((item) => !known.some((k) => k.item === item));
+        // Minor 546: a known row allows one control; a second identical one is a new finding. Hits are tallied, so a row
+        // that no longer matches anything on a shot that ran is reported at the end of the run.
+        zoomShotsRun.add(shot);
+        for (const k of known) {
+          const n = found.filter((item) => item === k.item).length;
+          if (n > 1) violations.push(`known row ${k.bl} matched ${n} items`);
+          const at = ZOOM_KNOWN.indexOf(k);
+          zoomKnownHits.set(at, (zoomKnownHits.get(at) ?? 0) + n);
+        }
         zoom.push({ shot, found, known, violations });
         // Spec 07.6 AC15: History's badge with large text, after the screen's own checks so a throw here skips none.
         if (s.name === "z5-history") await checkHistoryBadges(page, `${THEME}/${device}/${s.name}`);
@@ -1196,10 +1232,11 @@ const measureShell = (page) =>
       bottomNav: Boolean(bottomNav),
       railWidth: rail ? Math.round(box(rail).width) : null,
       mainWidth: Math.round(box(document.querySelector("main"))?.width ?? 0),
-      // Minor 647: the distance between <main>'s left gap and its right gap.
+      // Minor 647: the distance between <main>'s left gap and its right gap. Minor 705: measured against the layout width
+      // (clientWidth), which a classic scrollbar doesn't count; innerWidth does.
       mainOffCenter: (() => {
         const m = box(document.querySelector("main"));
-        return m ? Math.round(Math.abs(m.left - (window.innerWidth - m.right))) : null;
+        return m ? Math.round(Math.abs(m.left - (document.documentElement.clientWidth - m.right))) : null;
       })(),
       railTargets: rail ? [...rail.querySelectorAll("a")].map((a) => ({ text: a.getAttribute("aria-label") ?? a.textContent.trim(), h: Math.round(box(a).height) })) : [],
       userOverflows: user ? user.scrollWidth > user.clientWidth + 1 || box(user).right > (rail ? box(rail).right : Infinity) + 0.5 : false,
@@ -1339,19 +1376,25 @@ async function desktopPass(browser) {
     // Review Focus 3: a long display name at 1024 keeps the rail at 240 px and stays inside it.
     await tryStep(`desktop ${theme} long name`, async () => {
       const ctx = await openContext(browser, { viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1, colorScheme: theme, timezoneId: "America/Chicago", locale: "en-US" });
-      await ctx.route(isSinApi, makeHandler({ active: false, meName: LONG_NAME }));
-      const page = await ctx.newPage();
-      await page.goto(BASE + "/app/history");
-      await settle(page);
-      await shoot(page, "desktop-1024", "d6-long-name", "Spec 17.12 review focus 3: a 60-character name in the rail");
-      const entry = await checkShell(page, `${theme}/desktop-1024/d6-long-name`, { wide: true, mainWidth: 784 });
-      const extra = [];
-      if (entry.shell.railWidth !== 240) extra.push(`the rail is ${entry.shell.railWidth} px wide with a long name, not 240`);
-      if (entry.shell.userOverflows) extra.push("the user link overflows the rail");
-      for (const v of extra) console.error(`  DESKTOP ${entry.shot}: ${v}`);
-      entry.violations.push(...extra);
-      desktop.push(entry);
-      await ctx.close();
+      try {
+        await ctx.route(isSinApi, makeHandler({ active: false, meName: LONG_NAME }));
+        const page = await ctx.newPage();
+        // Minor 649: the same setup as the pass's other pages.
+        page.setDefaultTimeout(8000);
+        page.on("pageerror", (err) => consoleErrors.push(`desktop-1024 ${page.url()}: PAGEERROR ${err.message.slice(0, 300)}`));
+        await page.goto(BASE + "/app/history");
+        await settle(page);
+        await shoot(page, "desktop-1024", "d6-long-name", "Spec 17.12 review focus 3: a 60-character name in the rail");
+        const entry = await checkShell(page, `${theme}/desktop-1024/d6-long-name`, { wide: true, mainWidth: 784 });
+        const extra = [];
+        if (entry.shell.railWidth !== 240) extra.push(`the rail is ${entry.shell.railWidth} px wide with a long name, not 240`);
+        if (entry.shell.userOverflows) extra.push("the user link overflows the rail");
+        for (const v of extra) console.error(`  DESKTOP ${entry.shot}: ${v}`);
+        entry.violations.push(...extra);
+        desktop.push(entry);
+      } finally {
+        await ctx.close();
+      }
     });
   }
 }
@@ -1497,6 +1540,8 @@ async function checkHistoryBadges(page, where) {
         spaced,
         dayClipped: !!day && (day.scrollWidth > day.clientWidth + 1 || day.getBoundingClientRect().right > r.right + 0.5),
         text: text ? text.textContent.trim() : null,
+        // `.badge` has `flex-shrink: 0` (HistoryScreen.module.css), so an overlong badge shows up as `outside` or
+        // `sideways`, not as a wrap. `wraps` guards a future change to that rule (minor 677).
         wraps: !!text && text.getBoundingClientRect().height > line * 1.5,
         outside: !!b && (b.right > r.right + 0.5 || b.left < r.left - 0.5),
         sideways: row.scrollWidth > row.clientWidth + 1,
@@ -2519,6 +2564,10 @@ try {
       await sheet.getByRole("button", { name: /^1 · / }).click();
       await shoot(page, device, "09c-item-row-first-open", "Item sheet with set 1 open: 'First set' beside Move up (minor 523)");
       await checkPlanRowExtras(page, `${at}/09c-item-row-first-open`, { notes: true });
+      // Minor 535: the last row's "Last set" beside Move down.
+      await sheet.getByRole("button", { name: /^5 · / }).click();
+      await shoot(page, device, "09d-item-row-last-open", "Item sheet with set 5 open: 'Last set' beside Move down (minor 535)");
+      await checkPlanRowExtras(page, `${at}/09d-item-row-last-open`, { edges: ["Last set"] });
       await sheet.getByRole("button", { name: /^3 · / }).click();
       // Review Focus 3: React re-inserts a moved row's node, which blurs the pressed button in Chromium.
       await sheet.getByRole("button", { name: "Move down, set 3" }).click();
@@ -2543,6 +2592,8 @@ try {
       sheet = await openBench(page);
       await checkPlanRows(page, `${at}/09-plan-row-focus-and-enter`, { moveFocus, enterSubmits, enterOpen });
       await page.keyboard.press("Escape");
+      await go(`/app/workouts/routines/${D.ids.PUSH_ID}/edit`);
+      await routineEditorSheets(page, device);
     });
     if (device === "mobile") {
       // Spec 17.11 AC24: the plan rows at 320 × 568 with a long typed value on a closed line.
@@ -2567,6 +2618,19 @@ try {
           await sheet.getByRole("button", { name: /^1 · / }).click();
           await shoot(np, "mobile-320", "09p-item-row-narrow-first", "Item sheet at 320 x 568 with set 1 open: the action row wraps and 'First set' stays beside Move up (minor 523)");
           await checkPlanRowExtras(np, `${theme}/mobile-320/09p-item-row-narrow-first`, { notes: true });
+          // Minor 535: remove rows from the end until one is left; it opens with both edge notes.
+          for (let n = 5; n >= 2; n -= 1) {
+            const summary = sheet.getByRole("button", { name: new RegExp(`^${n} · `) });
+            if ((await summary.getAttribute("aria-expanded")) !== "true") await summary.click();
+            await sheet.getByRole("button", { name: `Remove, set ${n}` }).click();
+          }
+          await sheet.getByRole("button", { name: /^1 · / }).waitFor();
+          await shoot(np, "mobile-320", "09q-plan-only-row", "Item sheet at 320 x 568 with one set left: First set and Last set beside their buttons (minor 535)");
+          await checkPlanRowExtras(np, `${theme}/mobile-320/09q-plan-only-row`, { edges: ["First set", "Last set"] });
+          await np.keyboard.press("Escape");
+          await np.goto(BASE + `/app/workouts/routines/${D.ids.PUSH_ID}/edit`);
+          await settle(np);
+          await routineEditorSheets(np, "mobile-320");
         } finally {
           await nctx.close();
         }
@@ -2705,12 +2769,21 @@ try {
             /record/i.test(document.getElementById(s.getAttribute("aria-labelledby"))?.textContent ?? ""),
           );
           const nav = document.querySelector('nav[aria-label="Primary"]');
-          return { records: region ? region.getBoundingClientRect().top : null, nav: nav ? nav.getBoundingClientRect().top : null, viewport: [window.innerWidth, window.innerHeight] };
+          // Minor 485: the heading itself must be above the nav, not only the region's top edge; a workout with only
+          // first-time lines has no heading, so its list's top stands in.
+          const heading = region?.querySelector("h2") ?? null;
+          const firsts = region ? null : document.querySelector("ul[data-first-times]");
+          return {
+            records: region ? region.getBoundingClientRect().top : null,
+            headingBottom: heading ? heading.getBoundingClientRect().bottom : firsts ? firsts.getBoundingClientRect().top : null,
+            nav: nav ? nav.getBoundingClientRect().top : null,
+            viewport: [window.innerWidth, window.innerHeight],
+          };
         });
         Object.assign(firstScreen, box);
-        if (box.records === null) violations.push("13: no records region");
+        if (box.headingBottom === null) violations.push("13: no records heading and no first-time list");
         else if (box.nav === null) violations.push("13: no Primary nav");
-        else if (box.records >= box.nav) violations.push(`13: the records start at ${Math.round(box.records)} px, below the nav's top at ${Math.round(box.nav)} px`);
+        else if (box.headingBottom > box.nav) violations.push(`13: the records heading ends at ${Math.round(box.headingBottom)} px, below the nav's top ${Math.round(box.nav)}`);
       } catch (e) {
         violations.push(`13: the check stopped early: ${e.message.split("\n")[0]}`);
       }
@@ -2754,6 +2827,8 @@ try {
             page.waitForResponse((r) => new URL(r.url()).pathname === "/v1/personal-records" && r.url().includes(id), { timeout: 8000 }),
             go(`/app/history/${id}`),
           ]);
+          // Minor 704: the response is in, but React may not have drawn it yet.
+          await settle(page);
           m = await read(file ?? "97 timed");
           expect(m.recordRegions.length === 0 && m.firsts.length === 0, `${file ?? "97"}: records shown (${m.recordRegions.join(", ")}${m.firsts.join(", ")})`);
           expect(!m.recordsError && m.exerciseRegions > 0, `${file ?? "97"}: records read failed or no exercises drawn`);
@@ -3736,27 +3811,8 @@ try {
       const meet = a && b && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
       return meet ? [`"${await started.textContent()}" meets Change time`] : [];
     };
-    for (const locale of ["en-GB", "de-DE"]) {
-      await tryStep(`locale ${locale}`, async () => {
-        THEME = `locale-${locale}`;
-        const ctx = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
-        await ctx.route(isSinApi, makeHandler({ active: true }));
-        const page = await ctx.newPage();
-        page.setDefaultTimeout(8000);
-        for (const [where, p, name] of [
-          ["the live header", "/app/workouts", "01-workout-active"],
-          ["the summary", `/app/history/${D.ids.latestFinished}`, "13-history-detail"],
-          ["History", "/app/history", "12-history"],
-        ]) {
-          await page.goto(BASE + p);
-          await settle(page);
-          const extra = name === "01-workout-active" ? await showHeader(page) : [];
-          await shoot(page, "mobile", name, `Spec 17.13 AC4b: ${where} under ${locale}`);
-          await checkLocaleShot(page, locale, where, { baseline: mainShot(name), extra });
-        }
-        await ctx.close();
-      });
-    }
+    // Run before the other locales, so its long moment is their 320 px baseline (minor 530).
+    let enUsLongMoment320 = null;
     await tryStep("locale en-US 320 header", async () => {
       THEME = "locale-en-US";
       // A start today (the time alone) is the baseline; then a start on Wed, Sep 30 at 12:05 PM Chicago time, the
@@ -3776,9 +3832,45 @@ try {
       await settle(page);
       const extra = await showHeader(page, "Started Wed, Sep 30, 12:05 PM");
       await shoot(page, "mobile-320", "01n-header-long-moment", "Spec 17.13 review focus 4: the longest en-US moment beside Change Time at 320 × 568");
+      enUsLongMoment320 = report.at(-1);
       await checkLocaleShot(page, "en-US", "the live header at 320", { baseline: today, extra: [...todayExtra, ...extra] });
       await ctx.close();
     });
+    for (const locale of ["en-GB", "de-DE"]) {
+      await tryStep(`locale ${locale}`, async () => {
+        THEME = `locale-${locale}`;
+        const state = { active: true };
+        const ctx = await openContext(browser, { ...DEVICES.mobile, colorScheme: "light", timezoneId: "America/Chicago", locale });
+        await ctx.route(isSinApi, makeHandler(state));
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(8000);
+        for (const [where, p, name] of [
+          ["the live header", "/app/workouts", "01-workout-active"],
+          ["the summary", `/app/history/${D.ids.latestFinished}`, "13-history-detail"],
+          ["History", "/app/history", "12-history"],
+        ]) {
+          await page.goto(BASE + p);
+          await settle(page);
+          const extra = name === "01-workout-active" ? await showHeader(page) : [];
+          await shoot(page, "mobile", name, `Spec 17.13 AC4b: ${where} under ${locale}`);
+          await checkLocaleShot(page, locale, where, { baseline: mainShot(name), extra });
+        }
+        // Minor 530: the long moment (a start on Sep 30), at 390 and at 320 × 568, beside Change time.
+        state.almostDone = { ...D.active, startedAt: "2026-09-30T17:05:00.000Z" };
+        await page.goto(BASE + "/app/workouts");
+        await settle(page);
+        let extra = await showHeader(page, /^Started .*30/);
+        await shoot(page, "mobile", `01n-header-long-moment-${locale}`, `Minor 530: the live header, Sep 30, under ${locale}`);
+        await checkLocaleShot(page, locale, "the live header, Sep 30", { baseline: mainShot("01-workout-active"), extra });
+        await page.setViewportSize({ width: 320, height: 568 });
+        await page.goto(BASE + "/app/workouts");
+        await settle(page);
+        extra = await showHeader(page, /^Started .*30/);
+        await shoot(page, "mobile-320", `01n-header-long-moment-${locale}`, `Minor 530: the live header, Sep 30, under ${locale} at 320 × 568`);
+        await checkLocaleShot(page, locale, "the live header, Sep 30, at 320", { baseline: enUsLongMoment320, extra });
+        await ctx.close();
+      });
+    }
     // Two charts across a year: three month starts (month labels), and Dec 20 to Jan 10 (no two month starts, so the
     // ends get day labels with the year, the longest labels the chart draws; final review I1).
     // Minor 533: and under fr-FR, Oct 1 to Jan 1, whose long month names made the last two labels meet.
@@ -3954,6 +4046,13 @@ if (DEVICE_FILTER.includes("desktop") && (desktop.length === 0 || report.some((r
 }
 // Spec 17.13 AC19, Review Focus 5: the zoom pass fails the run on a finding not in ZOOM_KNOWN, or when it never ran.
 if (zoom.some((z) => z.violations.length)) process.exitCode = 1;
+// Minor 546: a known row that matched nothing on a shot that ran is stale (the finding is fixed, or the row is wrong).
+ZOOM_KNOWN.forEach((k, at) => {
+  if (zoomShotsRun.has(k.shot) && !zoomKnownHits.get(at)) {
+    console.error(`  ZOOM: known row ${k.bl} (${k.shot}) matched nothing`);
+    process.exitCode = 1;
+  }
+});
 if (DEVICE_FILTER.includes("mobile") && (zoom.length === 0 || report.some((r) => r.note?.startsWith("SKIPPED zoom")))) {
   console.error("  ZOOM: the zoom pass did not run on every screen");
   process.exitCode = 1;
