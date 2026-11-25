@@ -20,8 +20,15 @@ import { isUserId, type UserId } from "@sin/core";
  * The row-level security policies read `app.user_id` / `app.auth_sub` (Spec 21.1 Phase D, minor 437).
  */
 
-/** The raw half of a Prisma client: what every SQL helper takes (moved here from `set-entry.prisma.ts`). */
-export type RawClient = Pick<Prisma.TransactionClient, "$queryRaw" | "$executeRaw">;
+/**
+ * The raw half of a Prisma client: what every SQL helper takes (moved here from `set-entry.prisma.ts`). Its calls return
+ * a plain `Promise` (minor 405): a scoped call has already started, so it can never be an entry of Prisma's batch
+ * `$transaction([...])`, which takes lazy `PrismaPromise`s. A `PrismaClient` and a transaction client still fit.
+ */
+export interface RawClient {
+  $queryRaw<T = unknown>(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<T>;
+  $executeRaw(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<number>;
+}
 
 export interface ScopedTxOptions {
   isolationLevel?: Prisma.TransactionIsolationLevel;
@@ -82,22 +89,22 @@ function rootTxOptions(opts: ScopedTxOptions | undefined): { isolationLevel?: Pr
   return out;
 }
 
-function setConfig(client: RawClient, setting: string, value: string) {
+/** On a Prisma client, so the result is still a lazy `PrismaPromise` the batch form accepts. */
+function setConfig(client: Pick<Prisma.TransactionClient, "$queryRaw">, setting: string, value: string) {
   return setting === USER_SETTING
     ? client.$queryRaw`SELECT set_config('app.user_id', ${value}, true)`
     : client.$queryRaw`SELECT set_config('app.auth_sub', ${value}, true)`;
 }
 
 function scopedClient(prisma: PrismaClient, setting: string, value: string): ScopedClient {
-  const bare =
-    (method: "$queryRaw" | "$executeRaw") =>
-    (...args: RawArgs): Promise<unknown> => {
-      const statement = (prisma[method] as (...a: RawArgs) => Prisma.PrismaPromise<unknown>)(...args);
-      return prisma.$transaction([setConfig(prisma, setting, value), statement]).then((results) => results[1]);
-    };
+  // The root client's own methods, forwarded: the statement is the caller's, audited where it is written.
+  const queryRaw = prisma.$queryRaw;
+  const executeRaw = prisma.$executeRaw;
+  const bare = <T>(statement: Prisma.PrismaPromise<T>): Promise<T> =>
+    prisma.$transaction([setConfig(prisma, setting, value), statement]).then((results) => results[1]);
   return {
-    $queryRaw: bare("$queryRaw") as unknown as RawClient["$queryRaw"],
-    $executeRaw: bare("$executeRaw") as unknown as RawClient["$executeRaw"],
+    $queryRaw: <T = unknown>(...args: RawArgs) => bare(queryRaw<T>(...args)),
+    $executeRaw: (...args: RawArgs) => bare(executeRaw(...args)),
     $transaction: (fn, opts) =>
       prisma.$transaction(async (tx) => {
         if (opts?.readOnly) await tx.$executeRaw`SET TRANSACTION READ ONLY`;
@@ -109,9 +116,11 @@ function scopedClient(prisma: PrismaClient, setting: string, value: string): Sco
 
 /** The owner-login pass-through: no setting, but the same id check, `readOnly` and options as the scoped form. */
 function unscopedClient(prisma: PrismaClient): ScopedClient {
+  const queryRaw = prisma.$queryRaw;
+  const executeRaw = prisma.$executeRaw;
   return {
-    $queryRaw: ((...args: RawArgs) => (prisma.$queryRaw as (...a: RawArgs) => unknown)(...args)) as RawClient["$queryRaw"],
-    $executeRaw: ((...args: RawArgs) => (prisma.$executeRaw as (...a: RawArgs) => unknown)(...args)) as RawClient["$executeRaw"],
+    $queryRaw: <T = unknown>(...args: RawArgs) => queryRaw<T>(...args),
+    $executeRaw: (...args: RawArgs) => executeRaw(...args),
     $transaction: (fn, opts) =>
       prisma.$transaction(async (tx) => {
         if (opts?.readOnly) await tx.$executeRaw`SET TRANSACTION READ ONLY`;

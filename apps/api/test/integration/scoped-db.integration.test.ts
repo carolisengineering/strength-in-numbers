@@ -3,7 +3,7 @@ import { PrismaClient, type Prisma } from "@prisma/client";
 import { parseUserId } from "@sin/core";
 import { uuidv7 } from "uuidv7";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createScopedDb, type UserScopedDb } from "../../src/db/scoped.js";
+import { createScopedDb, type RawClient, type UserScopedDb } from "../../src/db/scoped.js";
 import { isRawUniqueViolation, rawSqlState, type RawPrismaError } from "../../src/repositories/pg-errors.js";
 import { shouldRunIntegration, startBareDb, type IntegrationDb } from "./helpers.js";
 
@@ -77,7 +77,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 — the scoped handle on rea
     });
 
     // Review Focus 1: a 409 decided by a unique index, a 422 by an FK or CHECK, all read the same shape.
-    const violations: [string, (c: Pick<Prisma.TransactionClient, "$executeRaw">) => Promise<unknown>][] = [
+    const violations: [string, (c: RawClient) => Promise<unknown>][] = [
       ["23505 unique", (c) => c.$executeRaw`INSERT INTO child VALUES (${2}, 1, 'taken', 0)`],
       ["23503 foreign key", (c) => c.$executeRaw`INSERT INTO child VALUES (${3}, 99, 'x', 0)`],
       ["23514 check", (c) => c.$executeRaw`INSERT INTO child VALUES (${4}, 1, 'y', -1)`],
@@ -96,7 +96,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 — the scoped handle on rea
     }
 
     it("Review Focus 5 — returned values keep their types: bigint stays bigint, timestamptz stays Date", async () => {
-      const read = (c: Pick<Prisma.TransactionClient, "$queryRaw">) =>
+      const read = (c: RawClient) =>
         c.$queryRaw<{ n: bigint; t: Date; s: string; d: Prisma.Decimal }[]>`
           SELECT count(*) AS n, '2026-01-02T03:04:05.678Z'::timestamptz AS t, 'x'::text AS s, 1.5::numeric AS d
           FROM generate_series(1, 3)`;

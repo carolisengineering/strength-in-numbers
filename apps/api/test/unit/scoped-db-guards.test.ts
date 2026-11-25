@@ -1,10 +1,9 @@
 // apps/api/test/unit/scoped-db-guards.test.ts
-import { readdirSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { MODEL_DELEGATES } from "../../scripts/lib/query-extract.js";
-import { apiProgram, overlayPath, rel as relPath, srcFiles, srcProgram } from "./helpers/ts-program.js";
+import { API_ROOT as API, apiProgram, overlayPath, rel as relPath, srcFiles, srcProgram } from "./helpers/ts-program.js";
 
 /**
  * Spec 21.1 AC14, AC16, AC20 — the static guards that keep "who is asking" on every statement:
@@ -15,17 +14,6 @@ import { apiProgram, overlayPath, rel as relPath, srcFiles, srcProgram } from ".
  * A type-aware scan (the TypeScript checker), so a renamed variable cannot hide a bare client.
  */
 
-const API = fileURLToPath(new URL("../..", import.meta.url));
-
-function filesIn(dirs: readonly string[]): string[] {
-  return dirs.flatMap((d) =>
-    readdirSync(`${API}${d}`)
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => `${API}${d}/${f}`),
-  );
-}
-
-const rel = (file: string) => file.slice(API.length);
 const lineOf = (sf: ts.SourceFile, node: ts.Node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
 
 function enclosingName(node: ts.Node): string {
@@ -91,14 +79,20 @@ export function bareClientUses(p: ts.Program, files: readonly string[]): string[
   return out;
 }
 
-/** AC16: every `.<name>()` call outside the handle itself, as `file#enclosing function`. */
-function callSitesOf(name: "shared" | "crossUserMaintenance", files: readonly string[]): string[] {
+/** AC16's files: all of `src`, recursively, as AC14 reads it (minor 569; it used to be six folders' top level). */
+const ac16Files = (): string[] => srcFiles();
+
+/**
+ * AC16: every `.<name>()` call outside the handle itself, as `file#enclosing function`. `overlay` adds in-memory files
+ * (absolute path → text) to the scan, for the tests of the scan itself.
+ */
+function callSitesOf(name: "shared" | "crossUserMaintenance", overlay: Readonly<Record<string, string>> = {}): string[] {
   const out = new Set<string>();
-  for (const file of files) {
-    const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+  for (const file of [...ac16Files(), ...Object.keys(overlay)]) {
+    const sf = ts.createSourceFile(file, overlay[file] ?? readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
     const visit = (node: ts.Node) => {
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === name && node.arguments.length === 0) {
-        out.add(`${rel(file)}#${enclosingName(node)}`);
+        out.add(`${relPath(file)}#${enclosingName(node)}`);
       }
       ts.forEachChild(node, visit);
     };
@@ -169,10 +163,15 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
 });
 
 describe("Spec 21.1 AC16 — minor 404: shared() is only for the shared reference reads", () => {
-  const SCANNED = ["src/repositories", "src/auth", "src/records", "src/account", "src/routes", "src/hevy"];
+  it("21.1 AC16 — minor 569: the shared() scan reads all of src, subfolders included", () => {
+    expect(ac16Files()).toEqual(srcFiles());
+    const nested = overlayPath("src/repositories/nested/x.ts");
+    const sites = callSitesOf("shared", { [nested]: "declare const db: { shared(): unknown };\nexport function peek() {\n  return db.shared();\n}\n" });
+    expect(sites).toContain("src/repositories/nested/x.ts#peek");
+  });
 
   it("shared()'s call sites are exactly the exercise reference reads", () => {
-    expect(callSitesOf("shared", filesIn(SCANNED))).toEqual([
+    expect(callSitesOf("shared")).toEqual([
       "src/repositories/exercise.prisma.ts#listEquipment",
       "src/repositories/exercise.prisma.ts#listMuscleGroups",
       "src/repositories/exercise.prisma.ts#validateReferences",
@@ -180,7 +179,7 @@ describe("Spec 21.1 AC16 — minor 404: shared() is only for the shared referenc
   });
 
   it("the operator scripts' cross-user listings use crossUserMaintenance(), and nothing else does", () => {
-    expect(callSitesOf("crossUserMaintenance", filesIn(SCANNED))).toEqual(["src/account/purge.ts#runPurge", "src/records/rebuild.ts#rebuildRecords"]);
+    expect(callSitesOf("crossUserMaintenance")).toEqual(["src/account/purge.ts#runPurge", "src/records/rebuild.ts#rebuildRecords"]);
   });
 
   it("the audit classifies the reference reads shared on purpose, and the listings cross-user maintenance", () => {
