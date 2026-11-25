@@ -14,7 +14,9 @@ const auth = vi.hoisted(() => ({
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
 import type { Exercise } from "@sin/core";
-import { USER_ID } from "../test/catalogHarness";
+import { HttpResponse, http } from "msw";
+import { API_BASE_URL, USER_ID } from "../test/catalogHarness";
+import { server } from "../test/msw/server";
 import { makeExercise } from "../test/catalogFixtures";
 import { resetDesktop, setDesktop } from "../test/desktop";
 import { makePersonalRecord, makeProgressPoint } from "../test/workoutFixtures";
@@ -294,5 +296,56 @@ describe("17.12 AC20 — deleting the open exercise (review focus 3)", () => {
     watch.disconnect();
     expect(sawDeleted).toBe(false);
     expect(within(listPane()).queryByRole("link", { name: /^Echo Bike/ })).toBeNull();
+  });
+});
+
+describe("minor 660 — the Exercises panes across a copy, a resize and Records", () => {
+  /** The fake serves series by id, and the copy's id is minted by the fork. */
+  const serveAnySeries = () =>
+    server.use(http.get(`${API_BASE_URL}/v1/progress/exercises/:id`, ({ params }) => HttpResponse.json({ exerciseId: params["id"], points: PROGRESS[BENCH] })));
+
+  it.each([
+    ["the opened-by-default exercise", EXERCISES_PATH],
+    ["/:id", exercisePath(BENCH)],
+  ])("wide, Make your own copy from %s: the copy replaces the page beside the list", async (_label, path) => {
+    const { fake, router, user } = await setup(path);
+    serveAnySeries(); // after setup: prepareApp's handlers are newer than anything used before it
+
+    await detailTitle("Barbell bench press");
+    await user.click(within(detailPane()).getByText(EXERCISES_COPY.detailsLabel));
+    await user.click(within(detailPane()).getByRole("button", { name: EXERCISES_COPY.makeCopy }));
+    await waitFor(() => expect(fake.state.catalog.some((e) => e.forkedFromExerciseId === BENCH)).toBe(true));
+    const made = fake.state.catalog.find((e) => e.forkedFromExerciseId === BENCH)!;
+    await waitFor(() => expect(router.state.location.pathname).toBe(exercisePath(made.id)));
+    expect(router.state.historyAction).toBe("REPLACE");
+    expect(panes()).toHaveLength(2);
+    expect(await detailTitle("Barbell bench press")).toBeInTheDocument();
+    await waitFor(() => expect(within(detailPane()).getByTestId("exercise-status")).toHaveTextContent(EXERCISES_COPY.copyReady));
+  });
+
+  it("across 64rem on /:id: the page alone, then beside the list again with its row current", async () => {
+    await setup(exercisePath(BENCH));
+    await detailTitle("Barbell bench press");
+    act(() => setDesktop(false));
+    expect(panes()).toEqual([]);
+    expect(screen.getByRole("heading", { level: 1, name: "Barbell bench press" })).toBeInTheDocument();
+    act(() => setDesktop(true));
+    await panesReady();
+    expect(await detailTitle("Barbell bench press")).toBeInTheDocument();
+    expect(await rowLink("Barbell bench press")).toHaveAttribute("aria-current", "page");
+  });
+
+  it("Records whose top row isn't the most recently logged exercise: the detail is still the most recent", async () => {
+    const records = [
+      makePersonalRecord({ exerciseId: BENCH, exerciseName: "Barbell bench press", localDate: "2026-10-06", achievedAt: "2026-10-06T10:00:00.000Z" }),
+      makePersonalRecord({ exerciseId: PULL, exerciseName: "Pull-up", localDate: "2026-10-08", achievedAt: "2026-10-08T10:00:00.000Z" }),
+    ];
+    await setup(RECORDS_PATH, { fake: { records } });
+    const list = await within(listPane()).findByRole("list", { name: "Exercises" });
+    const links = within(list).getAllByRole("link");
+    expect(links[0]).toHaveAccessibleName(/^Pull-up/);
+    expect(links[0]).not.toHaveAttribute("aria-current");
+    expect(await detailTitle("Barbell bench press")).toBeInTheDocument();
+    expect(within(list).getByRole("link", { name: /^Barbell bench press/ })).toHaveAttribute("aria-current", "page");
   });
 });

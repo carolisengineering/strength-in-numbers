@@ -21,6 +21,7 @@ import { server } from "../../test/msw/server";
 import { makeProgressPoint } from "../../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../../test/workoutFake";
 import { cleanupApp, deferred, prepareApp, renderApp } from "../../test/workoutHarness";
+import { EXERCISE_KEYS } from "./keys";
 import { EXERCISES_COPY } from "./messages";
 import { EXERCISES_PATH } from "./paths";
 
@@ -99,16 +100,23 @@ describe("18.2 AC50 — minor 659: deleting the exercise opened by default keeps
   });
 
   it("Review Focus 3: a failed delete releases the hold; the page stays with its error, and a later refresh moves the selection on", async () => {
-    const { fake, user } = await setup(EXERCISES_PATH, true);
+    const { fake, queryClient, router, user } = await setup(EXERCISES_PATH, true);
     const dialog = await openDelete(user);
     fake.failNext({ method: "DELETE", path: DELETE }, () => problemResponse(500, "internal"));
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
     await within(detailPane()).findByText(EXERCISES_COPY.couldntSave);
     expect(within(detailPane()).getByRole("heading", { level: 1, name: "Echo Bike" })).toBeInTheDocument();
-    // Gone elsewhere; the next sync drops it, and the derived selection follows.
-    fake.state.catalog.splice(0, 1, { ...echo, isActive: false });
-    await user.click(within(listPane()).getByRole("link", { name: /^Barbell bench press/ }));
-    await within(detailPane()).findByRole("heading", { level: 1, name: "Barbell bench press" });
+    // Minor 719: no click. Bench is logged later elsewhere; a usage refresh moves the derived selection to it, which it
+    // can only do once the hold is released. (The catalog is a store a test can't refresh; usage is what the derived
+    // selection reads first.)
+    server.use(
+      http.get(`${API_BASE_URL}/v1/exercises/usage`, () =>
+        HttpResponse.json({ exercises: [{ rootId: BENCH, lastLoggedOn: "2026-10-15" }, { rootId: ECHO, lastLoggedOn: "2026-10-10" }] }),
+      ),
+    );
+    await act(() => queryClient.invalidateQueries({ queryKey: EXERCISE_KEYS.usage }));
+    expect(await within(detailPane()).findByRole("heading", { level: 1, name: "Barbell bench press" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(EXERCISES_PATH);
   });
 });
 
