@@ -949,8 +949,17 @@ const measureEntryPanel = (page, scope = 'form[aria-label^="Log a set of"]') =>
     const firstRow = form.querySelector("[data-stepper-row]") ?? form.querySelector("input");
     const slot = form.querySelector("[data-rest-slot]");
     const timer = form.querySelector('[role="timer"]');
+    // Minor 455: how many lines the panel's exercise name takes (distinct line boxes of its text).
+    const nameEl = labelRow.querySelector('p[aria-hidden="true"]');
+    const nameLines = (() => {
+      if (!nameEl) return null;
+      const range = document.createRange();
+      range.selectNodeContents(nameEl);
+      return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+    })();
     return {
       panel: form.getAttribute("aria-label"),
+      nameLines,
       rows,
       small,
       hscroll: form.scrollWidth > form.clientWidth,
@@ -1169,6 +1178,8 @@ const DESKTOP_SCREENS = [
 ];
 /** Review Focus 3: a 60-character display name, which must ellipsize inside the rail. */
 const LONG_NAME = "Maximiliana Wolfeschlegelsteinhausenbergerdorff-Featherstone";
+/** Minor 455: an exercise name that wraps in the entry panel's label row at 390 px. */
+const AC10_LONG_NAME = "Single-Arm Landmine Rotational Press to Overhead Reach";
 
 /** Spec 17.12: the shell's layout at this width, read from the page. */
 const measureShell = (page) =>
@@ -1696,6 +1707,19 @@ try {
       state.trackLogged = {};
       const violations = [];
       const steps = [];
+      // Every outbox file: one per account since Spec 06.7 AC8, plus the legacy single file.
+      // The app is left first (for a static file on the same origin), because a page that unloads writes its outbox
+      // back, and the next page would adopt the held writes.
+      const clearOutbox = async () => {
+        await page.goto(`${BASE}/manifest.webmanifest`);
+        await page.evaluate(() => {
+          try {
+            const keys = Object.keys(window.localStorage).filter((k) => k === "sin:workout:outbox" || k.startsWith("sin:workout:outbox:"));
+            for (const k of keys) window.localStorage.removeItem(k);
+          } catch { /* storage blocked */ }
+        });
+      };
+      const refuseSetCreate = (u) => isSinApi(u) && /^\/v1\/workout-exercises\/[^/]+\/sets$/.test(u.pathname);
       try {
       await go("/app/workouts");
       // Chromium's scroll anchoring holds content still when a row appears above it, which would hide the drift this
@@ -1731,29 +1755,62 @@ try {
       }
       await shoot(page, device, "26b-logging-after-four-logs", "Spec 17.4: after four logs the panel still clears the bar and the button has not moved");
       await shoot(page, device, "26e-undo-offer", "Spec 17.5 AC1: the status line says what was logged, with Undo on its right");
-      for (const text of ["1 set not saved yet", "2 sets and 1 note not saved yet"]) {
-        await page.evaluate((t) => { document.querySelector('[data-testid="session-status"]').textContent = t; }, text);
-        const withMessage = await measureLoggingLoop(page);
-        steps.push({ step: text, ...withMessage });
-        if (withMessage.buttonTop !== before.buttonTop) violations.push(`"${text}": button top ${withMessage.buttonTop}, was ${before.buttonTop}`);
-        if (withMessage.undo === null) violations.push(`"${text}": Undo left the line`);
-        if (text === "1 set not saved yet") await shoot(page, device, "26f-undo-sync-message", "Spec 17.5 AC2: a sync message replaces the confirmation; Undo stays");
-      }
+      // Minor 422: a shot scrolls the page, so the panel is brought back (as a lifter's last log leaves it) before the
+      // rows are measured again, and those rows must clear the bar too.
+      const measureBack = async (label) => {
+        await page.locator('form[aria-label^="Log a set of"]').evaluate((f) => f.scrollIntoView({ block: "nearest" }));
+        const m = await measureLoggingLoop(page);
+        if (m.covered.length) violations.push(`${label}: under the bar: ${m.covered.join(", ")}`);
+        return m;
+      };
+      const statusIs = async (text) => {
+        const status = page.getByTestId("session-status");
+        await page.waitForFunction((t) => document.querySelector('[data-testid="session-status"]')?.textContent === t, text, { timeout: 4000 }).catch(() => {});
+        const actual = await status.textContent();
+        if (actual !== text) violations.push(`"${text}": the status reads "${actual}"`);
+      };
+      // Minor 418: real unsaved writes, not text written over the line. The fake holds every write unanswered, so the
+      // outbox keeps them pending and the screen says so in its own words.
+      state.hangWrites = true;
+      const tapLog = async () => {
+        const log = page.getByTestId("session-bar").getByRole("button", { name: /^Log / });
+        const box = await log.boundingBox();
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        await page.waitForTimeout(700); // past the bar's 600 ms double-tap window
+      };
+      await tapLog();
+      await statusIs("1 set not saved yet");
+      const withOne = await measureBack('"1 set not saved yet"');
+      steps.push({ step: "1 set not saved yet", ...withOne });
+      if (withOne.buttonTop !== before.buttonTop) violations.push(`"1 set not saved yet": button top ${withOne.buttonTop}, was ${before.buttonTop}`);
+      if (withOne.undo === null) violations.push(`"1 set not saved yet": Undo left the line`);
+      await shoot(page, device, "26f-undo-sync-message", "Spec 17.5 AC2: a sync message replaces the confirmation; Undo stays");
+      // A note first (its sheet ends the Undo offer, Spec 17.5 AC8), then a set, which offers Undo again.
+      await page.locator("article:has(form)").getByRole("button", { name: /^Options for / }).click();
+      await page.locator("article:has(form)").getByRole("button", { name: /^Add note for / }).click();
+      await page.locator("dialog[open] textarea").fill("Paused at the bottom of each rep");
+      await page.locator("dialog[open]").getByRole("button", { name: "Save", exact: true }).click();
+      await page.waitForSelector("dialog[open]", { state: "detached", timeout: 4000 });
+      await tapLog();
+      await statusIs("2 sets and 1 note not saved yet");
+      const withTwo = await measureBack('"2 sets and 1 note not saved yet"');
+      steps.push({ step: "2 sets and 1 note not saved yet", ...withTwo });
+      if (withTwo.buttonTop !== before.buttonTop) violations.push(`"2 sets and 1 note not saved yet": button top ${withTwo.buttonTop}, was ${before.buttonTop}`);
+      if (withTwo.undo === null) violations.push(`"2 sets and 1 note not saved yet": Undo left the line`);
       await shoot(page, device, "26c-logging-status-message", "Spec 17.4: two unsaved kinds in the reserved status line (minor 427 wording); the button has not moved");
-      // AC12: with the keyboard up an empty line gives up its space, and the scroll padding follows; a message keeps its place.
-      await page.evaluate(() => {
-        document.documentElement.setAttribute("data-keyboard", "open");
-        document.querySelector('[data-testid="session-status"]').textContent = "";
-      });
+      // AC12: with the keyboard up a message keeps its place; an empty line gives up its space, and the scroll padding
+      // follows. The message is the real one above; the empty line is written by hand, after it, because the writes are
+      // still held and the screen would not clear it.
+      await page.evaluate(() => { document.documentElement.setAttribute("data-keyboard", "open"); });
+      const keyboardMessage = await measureBack("keyboard up, message");
+      steps.push({ step: "keyboard up, message", ...keyboardMessage });
+      if (keyboardMessage.statusHeight !== 44) violations.push(`keyboard up: a message's line is ${keyboardMessage.statusHeight}px tall`);
+      await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = ""; });
       const keyboardEmpty = await measureLoggingLoop(page);
       steps.push({ step: "keyboard up, empty", ...keyboardEmpty });
       if (keyboardEmpty.statusHeight !== 0) violations.push(`keyboard up: an empty status line is ${keyboardEmpty.statusHeight}px tall`);
       if (keyboardEmpty.scrollPadding >= before.scrollPadding) violations.push(`keyboard up: scroll padding stayed ${keyboardEmpty.scrollPadding}px`);
       if (keyboardEmpty.scrollPadding < keyboardEmpty.barHeight) violations.push(`keyboard up: scroll padding ${keyboardEmpty.scrollPadding}px is under the ${keyboardEmpty.barHeight}px bar`);
-      await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "1 set not saved yet"; });
-      const keyboardMessage = await measureLoggingLoop(page);
-      steps.push({ step: "keyboard up, message", ...keyboardMessage });
-      if (keyboardMessage.statusHeight !== 44) violations.push(`keyboard up: a message's line is ${keyboardMessage.statusHeight}px tall`);
       await page.evaluate(() => { document.documentElement.removeAttribute("data-keyboard"); });
       if (device === "mobile") {
         await page.setViewportSize({ width: 320, height: 568 });
@@ -1761,7 +1818,13 @@ try {
         await shoot(page, device, "26d-logging-320", "Spec 17.4: the workout bar at 320 × 568");
         // Spec 17.5 AC4: the longest line beside Undo must not grow the row and move Log. Minor 427: the true longest,
         // every unsaved kind at once in 17.4 AC11's amended wording (one "not saved yet"), with two-digit counts.
+        // A two-digit count can't be produced in the harness; this checks the layout holds the longest text (minor 418).
+        // At 320 × 568 a weight × reps panel with Warm-up and More is taller than the room between the header and the
+        // bar plus the nav, even scrolled to the top of the list, so what it leaves under the bar is recorded, not
+        // failed (a deferred minor, outside this check's scope).
+        await page.locator('form[aria-label^="Log a set of"]').evaluate((f) => f.scrollIntoView({ block: "start" }));
         const narrow = await measureLoggingLoop(page);
+        steps.push({ step: "320 px, scrolled to the panel", ...narrow });
         await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "12 sets, 2 notes and 2 timer entries not saved yet"; });
         const narrowLong = await measureLoggingLoop(page);
         steps.push({ step: "320 px, long message", ...narrowLong });
@@ -1769,7 +1832,8 @@ try {
         if (narrowLong.buttonTop !== narrow.buttonTop) violations.push(`320 px: a long message moved the button from ${narrow.buttonTop} to ${narrowLong.buttonTop}`);
         if (narrowLong.statusHeight > 44) violations.push(`320 px: a long message grew the line to ${narrowLong.statusHeight}px`);
         await shoot(page, device, "26g-undo-320", "Spec 17.5 AC4: the longest message beside Undo at 320 × 568");
-        // Spec 06.7 AC21, D19: a refusal takes the line by itself; with a two-digit count it must fit beside Undo too.
+        // Spec 06.7 AC21, D19: a refusal takes the line by itself; with a two-digit count it must fit beside Undo too
+        // (written by hand, as above: the harness can't produce two-digit counts).
         await page.evaluate(() => { document.querySelector('[data-testid="session-status"]').textContent = "12 things couldn't be saved — fix them first"; });
         const narrowLocked = await measureLoggingLoop(page);
         steps.push({ step: "320 px, refusal", ...narrowLocked });
@@ -1777,12 +1841,29 @@ try {
         if (narrowLocked.buttonTop !== narrow.buttonTop) violations.push(`320 px: the refusal line moved the button from ${narrow.buttonTop} to ${narrowLocked.buttonTop}`);
         if (narrowLocked.statusHeight > 44) violations.push(`320 px: the refusal line grew the line to ${narrowLocked.statusHeight}px`);
       }
+      // Minor 418: the real refusal line. The held writes are dropped (a reload ends them, the outbox files go), and
+      // the next set's create is answered 422, so the screen locks Finish in its own words.
+      state.hangWrites = false;
+      await page.setViewportSize(opts.viewport);
+      await clearOutbox();
+      await page.route(refuseSetCreate, (route) => (route.request().method() === "POST" ? route.fulfill(problem(422, "validation-failed", "Validation failed")) : route.fallback()));
+      await go("/app/workouts");
+      const beforeRefusal = await measureLoggingLoop(page);
+      await tapLog();
+      await statusIs("1 thing couldn't be saved — fix it first");
+      const refused = await measureBack("a refused set");
+      steps.push({ step: "a refused set", ...refused });
+      if (refused.buttonTop !== beforeRefusal.buttonTop) violations.push(`a refused set: button top ${refused.buttonTop}, was ${beforeRefusal.buttonTop}`);
+      if (refused.statusHeight > 44) violations.push(`a refused set: the line grew to ${refused.statusHeight}px`);
       } catch (e) {
         violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
       } finally {
+        state.hangWrites = false;
+        await page.unroute(refuseSetCreate);
         await page.evaluate(() => { document.documentElement.removeAttribute("data-keyboard"); });
         await page.setViewportSize(opts.viewport);
         await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:rest"); } catch { /* storage blocked */ } });
+        await clearOutbox();
         state.trackLogged = null;
       }
       loggingLoop.push({ theme, device, steps, violations });
@@ -1903,14 +1984,46 @@ try {
           await clippedValue(`${at} edit sheet`, "dialog[open]", "Weight", "102.5");
           await shoot(page, device, size.width === 320 ? "33e-edit-sheet-320" : "33d-edit-sheet-steppers", size.width === 320 ? "Spec 17.8 AC16: the edit sheet at 320 × 568: the same steppers, the unit strip under the weight" : "Spec 17.8 AC16: the edit sheet's steppers, with Set type and the unit strips");
           await page.keyboard.press("Escape");
+          // Minor 465: the sheet with a duration (Plank) and with a carry's weight and distance, not only weight × reps.
+          await clearStored();
+          await go(`/app/history/${D.ids.plankOnly}/edit`);
+          await page.getByRole("button", { name: /^Add set to Plank/ }).first().click();
+          await page.waitForSelector("dialog[open]", { timeout: 4000 });
+          const plankSheet = await measureEntryPanel(page, "dialog[open] form");
+          checkPanel(`${at} Plank sheet`, plankSheet);
+          if (plankSheet.duration === null || plankSheet.duration === undefined) violations.push(`${at} Plank sheet: no Minutes and Seconds in a stepper row`);
+          else {
+            const [minutesTop, secondsTop] = plankSheet.duration.tops;
+            if (Math.abs(minutesTop - secondsTop) > 1) violations.push(`${at} Plank sheet: Minutes and Seconds don't share a line at ${size.width} px`);
+            for (const unit of plankSheet.duration.clipped) violations.push(`${at} Plank sheet: the "${unit}" unit is clipped`);
+          }
+          await page.keyboard.press("Escape");
+          await clearStored();
+          await go(`/app/history/${D.ids.conditioning}/edit`);
+          await page.getByRole("button", { name: /^Add set to Farmer Carry/ }).first().click();
+          await page.waitForSelector("dialog[open]", { timeout: 4000 });
+          checkPanel(`${at} carry sheet`, await measureEntryPanel(page, "dialog[open] form"));
+          if (size.width === 320) {
+            const units = await measureSegments(page, "dialog[open]", "Distance unit");
+            steps.push({ step: `${at} carry sheet Distance unit`, ...units });
+            if (units.missing) violations.push(`${at} carry sheet: ${units.missing}`);
+            else {
+              if (units.hscroll) violations.push(`${at} carry sheet: the page scrolls sideways`);
+              if (units.sheetHscroll) violations.push(`${at} carry sheet: the sheet scrolls sideways`);
+              for (const label of units.clipped) violations.push(`${at} carry sheet: "${label}" is clipped`);
+              for (const label of units.wrapped) violations.push(`${at} carry sheet: "${label}" wraps to two lines`);
+            }
+          }
+          await page.keyboard.press("Escape");
         }
         // AC10, at 390 px on one panel state: the label row's height and the first stepper row's offset are the same with a
         // rest running, at Ready and with no rest. Each state is read after a reload, so the same panel is current.
-        if (device === "mobile") {
+        // Minor 455: the same pass again with a name long enough to wrap, which is where a rest readout would squeeze it.
+        const ac10 = async (tag, heading, shots) => {
           await page.setViewportSize({ width: 390, height: 844 });
           await clearStored();
           await go("/app/workouts");
-          const benchHeading = page.getByRole("article", { name: /^Bench/ }).getByRole("heading", { level: 2 }).getByRole("button");
+          const benchHeading = page.getByRole("article", { name: heading }).getByRole("heading", { level: 2 }).getByRole("button");
           if (await benchHeading.count()) await benchHeading.click();
           for (let i = 0; i < 3 && (await page.getByRole("timer").count()) === 0; i += 1) {
             await page.getByTestId("session-bar").getByRole("button", { name: /^Log / }).click();
@@ -1923,10 +2036,10 @@ try {
             window.localStorage.setItem("sin:workout:rest", JSON.stringify({ ...file, startedAt: Date.now() - (file.durationS - left) * 1000 }));
             return true;
           }, s);
-          if (!(await leaveSeconds(90))) throw new Error("no rest started after three logs");
+          if (!(await leaveSeconds(90))) throw new Error(`AC10${tag}: no rest started after three logs`);
           await go("/app/workouts");
           const running = await measureEntryPanel(page);
-          steps.push({ step: "390 rest running", ...running });
+          steps.push({ step: `390${tag} rest running`, ...running });
           // The widest readout: a 15-minute rest (the 900 s bound) reads "Rest 15:00", which must fit the reserved slot.
           const saved90 = await page.evaluate(() => window.localStorage.getItem("sin:workout:rest"));
           await page.evaluate(() => {
@@ -1935,31 +2048,36 @@ try {
           });
           await go("/app/workouts");
           const longRest = await measureEntryPanel(page);
-          steps.push({ step: "390 long rest", ...longRest });
+          steps.push({ step: `390${tag} long rest`, ...longRest });
           await page.evaluate((raw) => window.localStorage.setItem("sin:workout:rest", raw), saved90);
           await leaveSeconds(2);
           await go("/app/workouts");
           await page.waitForTimeout(3000);
           const ready = await measureEntryPanel(page);
-          steps.push({ step: "390 Ready", ...ready });
-          if (ready.restState !== "ready") violations.push(`AC10: after the rest ended the readout is "${ready.restState}" (want ready)`);
+          steps.push({ step: `390${tag} Ready`, ...ready });
+          if (ready.restState !== "ready") violations.push(`AC10${tag}: after the rest ended the readout is "${ready.restState}" (want ready)`);
           await page.locator('form[aria-label^="Log a set of"]').scrollIntoViewIfNeeded();
-          await shoot(page, device, "26j-rest-ready", "Spec 17.8 AC8: the rest ended: a filled Ready at figure size in the panel's label row");
+          if (shots) await shoot(page, device, "26j-rest-ready", "Spec 17.8 AC8: the rest ended: a filled Ready at figure size in the panel's label row");
           const savedRest = await page.evaluate(() => window.localStorage.getItem("sin:workout:rest"));
           await clearStored();
           await go("/app/workouts");
           const none = await measureEntryPanel(page);
-          steps.push({ step: "390 no rest", ...none });
-          if (running.restState !== "running") violations.push(`AC10: the running state read "${running.restState}"`);
-          if (none.restState !== null) violations.push(`AC10: the no-rest state read "${none.restState}"`);
-          if (longRest.restState !== "running") violations.push(`AC10: the 15-minute rest read "${longRest.restState}"`);
+          steps.push({ step: `390${tag} no rest`, ...none });
+          if (running.restState !== "running") violations.push(`AC10${tag}: the running state read "${running.restState}"`);
+          if (none.restState !== null) violations.push(`AC10${tag}: the no-rest state read "${none.restState}"`);
+          if (longRest.restState !== "running") violations.push(`AC10${tag}: the 15-minute rest read "${longRest.restState}"`);
           for (const [name, m] of [["running", running], ["a 15-minute rest", longRest], ["Ready", ready]]) {
-            if (m.panel !== none.panel) violations.push(`AC10: ${name} measured "${m.panel}", no rest "${none.panel}"`);
+            if (m.panel !== none.panel) violations.push(`AC10${tag}: ${name} measured "${m.panel}", no rest "${none.panel}"`);
             // A readout wider than the slot's min-width would grow it, narrow the name and could rewrap it.
-            if (Math.abs(m.slotWidth - none.slotWidth) > 0.5) violations.push(`AC10: the rest slot is ${m.slotWidth}px with ${name}, ${none.slotWidth}px with no rest`);
-            if (Math.abs(m.labelRowHeight - none.labelRowHeight) > 0.5) violations.push(`AC10: label row is ${m.labelRowHeight}px with ${name}, ${none.labelRowHeight}px with no rest`);
-            if (Math.abs(m.firstRowOffset - none.firstRowOffset) > 0.5) violations.push(`AC10: steppers start ${m.firstRowOffset}px down with ${name}, ${none.firstRowOffset}px with no rest`);
+            if (Math.abs(m.slotWidth - none.slotWidth) > 0.5) violations.push(`AC10${tag}: the rest slot is ${m.slotWidth}px with ${name}, ${none.slotWidth}px with no rest`);
+            if (Math.abs(m.labelRowHeight - none.labelRowHeight) > 0.5) violations.push(`AC10${tag}: label row is ${m.labelRowHeight}px with ${name}, ${none.labelRowHeight}px with no rest`);
+            if (Math.abs(m.firstRowOffset - none.firstRowOffset) > 0.5) violations.push(`AC10${tag}: steppers start ${m.firstRowOffset}px down with ${name}, ${none.firstRowOffset}px with no rest`);
+            if (m.nameLines !== none.nameLines) violations.push(`AC10${tag}: the name is on ${m.nameLines} lines with ${name}, ${none.nameLines} with no rest`);
           }
+          return { none, savedRest };
+        };
+        if (device === "mobile") {
+          const { savedRest } = await ac10("", /^Bench/, true);
           // The 320 px capture of a running rest (AC23), on the same panel: the saved rest, restarted 30 s ago.
           await page.setViewportSize({ width: 320, height: 568 });
           await page.evaluate((raw) => {
@@ -1969,6 +2087,16 @@ try {
           await go("/app/workouts");
           await page.getByRole("timer").scrollIntoViewIfNeeded();
           await shoot(page, device, "26k-rest-running-320", "Spec 17.8 AC7: a rest running at 320 × 568: the figure beside the exercise's name");
+          // The pass makes Bench current and its logs advance to Overhead Press (exercises[1]), the panel it measures.
+          state.almostDone = structuredClone(D.active);
+          state.almostDone.exercises[1].exerciseNameSnapshot = AC10_LONG_NAME;
+          try {
+            const { none } = await ac10(" long name", /^Bench/, false);
+            if (none.panel !== `Log a set of ${AC10_LONG_NAME}`) violations.push(`AC10 long name: measured "${none.panel}", not the long name`);
+            if (none.nameLines < 2) violations.push(`AC10 long name: the name is on ${none.nameLines} line`);
+          } finally {
+            state.almostDone = null;
+          }
         }
       } catch (e) {
         violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
@@ -2989,8 +3117,8 @@ try {
         for (const label of m.clipped) violations.push(`${where} at ${size.width}: "${label}" is clipped`);
         for (const label of m.wrapped) violations.push(`${where} at ${size.width}: "${label}" wraps to two lines`);
         const rows = m.perRow.join("+");
-        if (rule === "two" && rows !== "2+2") violations.push(`${where} at ${size.width}: Set type is ${rows}, want 2 × 2`);
-        if (rows === "3+1") violations.push(`${where} at ${size.width}: Set type is 3 + 1`);
+        if (rule === "two" && rows !== "2+2") violations.push(`${where} at ${size.width}: the strip is ${rows}, want 2 × 2`);
+        if (rows === "3+1") violations.push(`${where} at ${size.width}: the strip is 3 + 1`);
       };
       state.active = true;
       try {
@@ -3005,7 +3133,7 @@ try {
           await page.getByRole("button", { name: /^More set options for / }).first().click({ timeout: 4000 });
           await page.waitForTimeout(200);
           check("panel", size, await measureSegments(page, 'form[aria-label^="Log a set of"]', "Set type"), rule);
-          if (!narrow) await shoot(page, device, "s177a-set-options-segmented", "Spec 17.7 AC6: Set options with Set type (2 × 2 in the 390 px panel) and Weight unit as Segmented");
+          if (!narrow) await shoot(page, device, "s177a-set-options-segmented", "Spec 17.7 AC6: More, with Set type (2 × 2 in the 390 px panel) and Weight unit as Segmented");
 
           await go(`/app/history/${D.ids.latestPush}/edit`);
           await page.getByRole("button", { name: /^Add set to Bench/ }).first().click({ timeout: 4000 });
@@ -3023,13 +3151,24 @@ try {
           check("plan row", size, await measureSegments(page, "dialog[open]", "Set 1 type"), narrow ? "two" : null);
           await shoot(page, device, `s177a-plan-row-segmented${narrow ? "-320" : ""}`, `Spec 17.7 AC6: a routine plan row's Set type across the row, Weight unit above the rows${narrow ? ", at 320 × 568 (2 × 2)" : ""}`);
           await page.keyboard.press("Escape");
+
+          // Minor 442: the section sheet's Timer strip ("Set Timer" is its longest option).
+          state.showTimed = true;
+          await go(`/app/workouts/routines/${D.TIMED.id}/edit`);
+          await page.getByRole("button", { name: "Edit section Main" }).click({ timeout: 4000 });
+          await page.waitForSelector("dialog[open]", { timeout: 4000 });
+          await page.waitForTimeout(200);
+          check("section sheet Timer", size, await measureSegments(page, "dialog[open]", "Timer"), narrow ? "two" : null);
+          await page.keyboard.press("Escape");
+          state.showTimed = false;
         }
-        if (steps.length !== sizes.length * 3) violations.push(`measured ${steps.length} of ${sizes.length * 3} surfaces`);
+        if (steps.length !== sizes.length * 4) violations.push(`measured ${steps.length} of ${sizes.length * 4} surfaces`);
       } catch (e) {
         violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
       } finally {
         await page.setViewportSize(opts.viewport);
         state.active = false;
+        state.showTimed = false;
       }
       segments.push({ theme, device, steps, violations });
       for (const v of violations) console.error(`  SEGMENTED ${theme}/${device}: ${v}`);
