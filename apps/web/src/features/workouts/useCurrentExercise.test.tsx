@@ -79,3 +79,21 @@ describe("17.1 AC14 — a late log never moves a lifter who has moved on", () =>
     expect(hook.result.current.currentId).toBe(idOf(d, "C"));
   });
 });
+
+describe("minors 710, 713 — the lifter's choice token", () => {
+  it("rises by one on select and on selectWhenAdded, at once, and not on advanceFrom", () => {
+    const d = makeWorkoutDetail({ exercises: [ex("A", 2, 1), ex("B", 2)] });
+    const { result } = mount(d);
+    const start = result.current.choiceNow();
+    act(() => result.current.advanceFrom(result.current.currentId!, idOf(d, "B")));
+    expect(result.current.choiceNow()).toBe(start);
+    let during = -1;
+    act(() => {
+      result.current.select(idOf(d, "A"));
+      during = result.current.choiceNow(); // read in the same tick, before the re-render
+    });
+    expect(during).toBe(start + 1);
+    act(() => result.current.selectWhenAdded("not-yet-listed"));
+    expect(result.current.choiceNow()).toBe(start + 2);
+  });
+});
