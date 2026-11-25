@@ -83,8 +83,12 @@ export function setColumns(setList: string): string[] {
 
 /** `UPDATE [ONLY] <table> [[AS] alias] SET `, the table quoted or not. `FOR UPDATE` has no `SET` and never matches. */
 const UPDATE_HEAD = /\bUPDATE\s+(?:ONLY\s+)?("?)(\w+)\1(?:\s+(?:AS\s+)?(?!SET\b)\w+)?\s+SET\s+/gi;
-/** `INSERT INTO <table> … ON CONFLICT … DO UPDATE SET `. */
-const UPSERT_HEAD = /\bINSERT\s+INTO\s+("?)(\w+)\1[\s\S]*?\bON\s+CONFLICT\b[\s\S]*?\bDO\s+UPDATE\s+SET\s+/gi;
+/**
+ * `INSERT INTO <table> … ON CONFLICT … DO UPDATE SET `. Neither gap may cross another `INSERT INTO`, so in a statement
+ * with two inserts (a CTE) the upsert belongs to the insert it follows, not to the first one.
+ */
+const NO_INSERT = String.raw`(?:(?!\bINSERT\s+INTO\b)[\s\S])*?`;
+const UPSERT_HEAD = new RegExp(String.raw`\bINSERT\s+INTO\s+("?)(\w+)\1${NO_INSERT}\bON\s+CONFLICT\b${NO_INSERT}\bDO\s+UPDATE\s+SET\s+`, "gi");
 const SET_END = /^(?:FROM|WHERE|RETURNING)\b/i;
 
 /** The `SET` list that starts at `from`: up to the first `FROM` / `WHERE` / `RETURNING` outside parentheses, or the end. */
@@ -170,6 +174,13 @@ describe("Spec 21.1 Review Focus 2 — every column the API updates is granted t
     ["no WHERE at all", 'UPDATE "user" SET a = now()', "user", ["a"]],
   ])("minor 412 — the parser reads %s", (_name, sql, table, columns) => {
     expect(updateTargets(sql)).toEqual([{ table, columns }]);
+  });
+
+  it("minor 412 — an upsert after another insert in the same statement is read for its own table (code review)", () => {
+    const cte = 'WITH a AS (INSERT INTO "hevy_account" (user_id) VALUES (?) RETURNING user_id) INSERT INTO "user" (id, display_name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name';
+    expect(updateTargets(cte)).toEqual([{ table: "user", columns: ["display_name"] }]);
+    const both = 'WITH a AS (INSERT INTO "hevy_account" (user_id) VALUES (?) ON CONFLICT DO NOTHING) INSERT INTO "user" (id) VALUES (?) ON CONFLICT (id) DO UPDATE SET email = ?';
+    expect(updateTargets(both)).toEqual([{ table: "user", columns: ["email"] }]);
   });
 
   it("minor 412 — a SET list with a fragment in a column's place can't be read", () => {
