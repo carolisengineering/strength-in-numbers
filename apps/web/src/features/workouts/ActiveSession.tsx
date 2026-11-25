@@ -448,8 +448,10 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     couple: timedGrouping.couple,
   });
 
-  // Minor 711: a card's sheets and the Workout menu report open and closed, counted here, so they hold the offer off for
-  // as long as they're open, not only when they open. Floored at 0, so a stray close can't stick it.
+  // Minor 711: a card's sheets report open and closed, counted here, so they hold the offer off for as long as they're
+  // open, not only when they open. Floored at 0, so a stray close can't stick it. The Workout menu isn't counted: it is an
+  // inline disclosure that covers nothing and often stays open after a Finish → Cancel, so it only ends the offer when it
+  // opens (final review), and its dialogs are counted on their own.
   const [openOverlays, setOpenOverlays] = useState(0);
   const onOverlayChange = useCallback((open: boolean) => setOpenOverlays((n) => Math.max(0, n + (open ? 1 : -1))), []);
   // Spec 17.5 AC8: anything that takes the screen over ends the offer, one made while it is open included (minor 430).
@@ -894,7 +896,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         }
         endItem={endItem}
         onDiscard={() => setDiscardOpen(true)}
-        onOpenChange={onOverlayChange}
+        onOpen={undo.end}
       />
 
       {refusedText !== null && refusedOp !== null ? (

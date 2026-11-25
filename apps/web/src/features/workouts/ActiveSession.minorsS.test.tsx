@@ -98,6 +98,14 @@ describe("minor 711 — every open card sheet keeps the Undo offer off", () => {
     expect(undoButton()).toBeNull();
   });
 
+  it("final review: the Workout menu left open (an inline disclosure) doesn't keep Undo off for later logs", async () => {
+    const { user } = await setup([ex("A", { plannedSets: planned(3) }), ex("B")]);
+    await user.click(screen.getByRole("button", { name: "Workout menu" }));
+    expect(screen.getByRole("button", { name: "Workout menu" })).toHaveAttribute("aria-expanded", "true");
+    await user.click(logButton("A"));
+    await waitFor(() => expect(undoButton()).not.toBeNull());
+  });
+
   it("Review Focus 2: a card that unmounts with its sheet open doesn't keep Undo off", async () => {
     const { fake, user, queryClient } = await setup([ex("A", { sets: [firstSet()] }), ex("B", { plannedSets: planned(3) })]);
     await makeCurrent(user, "A");

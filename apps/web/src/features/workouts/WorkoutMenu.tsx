@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { Button } from "../../ui/Button";
 import styles from "./WorkoutMenu.module.css";
@@ -16,21 +16,16 @@ export interface WorkoutMenuProps {
     onClick: () => void;
   };
   onDiscard: () => void;
-  /** Spec 17.5 AC8, minor 711: the menu is open (`true`) or closed (`false`); an unmount while open reports a close. */
-  onOpenChange?: (open: boolean) => void;
+  /** Called when the menu opens (Spec 17.5 AC8). */
+  onOpen?: () => void;
 }
 
 /**
  * Spec 17.1 D13: the rare, away-from-the-thumb actions share one inline disclosure (the Options pattern, no popover).
  * The items stay revealed while their dialog is open, so the dialog can hand focus back to the item that opened it.
  */
-export function WorkoutMenu({ leading, below, endItem, onDiscard, onOpenChange }: WorkoutMenuProps) {
+export function WorkoutMenu({ leading, below, endItem, onDiscard, onOpen }: WorkoutMenuProps) {
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    onOpenChange?.(true);
-    return () => onOpenChange?.(false);
-  }, [open, onOpenChange]);
   const reasonId = useId();
   const described = endItem.disabled && endItem.reason !== null;
   return (
@@ -40,7 +35,10 @@ export function WorkoutMenu({ leading, below, endItem, onDiscard, onOpenChange }
         <Button
           variant="secondary"
           aria-expanded={open}
-          onClick={() => setOpen(!open)}
+          onClick={() => {
+            if (!open) onOpen?.();
+            setOpen(!open);
+          }}
         >
           Workout menu
         </Button>

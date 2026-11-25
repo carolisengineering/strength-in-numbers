@@ -251,7 +251,15 @@ describe("minor 655 — a History page emptied by a delete resets the list", () 
     expect(data?.pages.map((page) => page.items.map((r) => r.id))).toEqual([[], [OTHER]]);
   });
 
-  it("minor 693: every loaded page empty resets the list", () => {
+  it("final review: deleting the only workout keeps the cached (empty) list, so the empty state draws at once", () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(HISTORY_KEYS.list, { pages: [{ items: [row(W)], next: null }], pageParams: [null] });
+    applyDeletedCaches(qc, W);
+    const data = qc.getQueryData<{ pages: { items: unknown[] }[] }>(HISTORY_KEYS.list);
+    expect(data?.pages.map((page) => page.items)).toEqual([[]]);
+  });
+
+  it("final review: every loaded page empty with no more to load is the empty list, not a reset", () => {
     const qc = makeQueryClient();
     qc.setQueryData(HISTORY_KEYS.list, {
       pages: [
@@ -261,7 +269,7 @@ describe("minor 655 — a History page emptied by a delete resets the list", () 
       pageParams: [null, "c2"],
     });
     applyDeletedCaches(qc, W);
-    expect(qc.getQueryData(HISTORY_KEYS.list)).toBeUndefined();
+    expect(qc.getQueryData(HISTORY_KEYS.list)).toBeDefined();
   });
 
   it("minor 693: the last loaded page emptied with a next resets the list", () => {
