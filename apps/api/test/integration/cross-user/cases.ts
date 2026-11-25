@@ -1,6 +1,6 @@
 import { uuidv7 } from "uuidv7";
 import type { RouteKey } from "./registry.js";
-import { B_ONLY, type World } from "./world.js";
+import { B_ONLY, SENT_HEVY_WORKOUT, type World } from "./world.js";
 
 const B_ONLY_DAY = B_ONLY.day;
 
@@ -27,6 +27,8 @@ export interface ControlReq extends Req {
   expectStatus: number;
   /** For reads: an id of A's that the response body must contain. */
   expectId?: string;
+  /** For a control that is itself a refusal: the problem type's last segment (`exercise-already-owned`). */
+  expectType?: string;
 }
 
 export interface CaseResponse {
@@ -56,8 +58,11 @@ export interface CrossUserCase {
    * - `write-isolation`: a write with no foreign id; B must be unchanged (AC9).
    */
   kind: "foreign-id" | "collection" | "collision" | "write-isolation";
-  /** The status pinned from spec §5 (for `foreign-id`, the answer to both calls). */
-  expect: { status: number };
+  /**
+   * The status pinned from spec §5 (for `foreign-id`, the answer to both calls). Minor 378: a body-slot case also
+   * pins the problem type's last segment (`not-found`) and, for a 422, the one field path §5 names.
+   */
+  expect: { status: number; type?: string; path?: string };
   actor: Actor;
   /** B's id for the slot (`foreign-id` only). */
   foreignId?(w: World): string;
@@ -100,6 +105,10 @@ interface PathCaseSpec {
   controlStatus: number;
   /** For reads: the control's body must hold A's id. */
   controlExpectsOwnId?: boolean;
+  /** For reads whose body doesn't echo the path id: another id of A's the control's body must hold (minor 375). */
+  controlExpectId?: (w: World) => string;
+  /** A control that is a refusal proving the owner branch ran: its problem type (minor 375). */
+  controlExpectType?: string;
 }
 
 /** A `foreign-id` case whose slot is the path `:id`. */
@@ -124,6 +133,8 @@ function pathCase(s: PathCaseSpec): CrossUserCase {
         ...(body ? { body: body(w, scratch) } : {}),
         expectStatus: s.controlStatus,
         ...(s.controlExpectsOwnId ? { expectId: id } : {}),
+        ...(s.controlExpectId ? { expectId: s.controlExpectId(w) } : {}),
+        ...(s.controlExpectType ? { expectType: s.controlExpectType } : {}),
       };
     },
   };
@@ -136,6 +147,19 @@ const newExercise: CrossUserCase["disposable"] = async (_w, api) =>
 
 const newRoutine: CrossUserCase["disposable"] = async (w, api) =>
   (await api.must("A", { method: "POST", url: "/v1/routines", body: routineBody(w.a.customExercise, `A-OWN-disposable-${uuidv7()}`) }, 201)).id;
+
+/**
+ * Minor 386 — each disposable import gets a day of its own, an hour from 10:00 UTC, counted up from 2025-01-01. The
+ * importer reads "same day, start within an hour, same exercises" as a duplicate and creates nothing, so two
+ * disposables on one day could collide once the first is unlinked. The days are far from every other workout in the
+ * world (the last week, and the Hevy imports of 2026-09-10).
+ */
+let disposableDays = 0;
+export function nextDisposableDay(): { startTime: string; endTime: string } {
+  const start = Date.UTC(2025, 0, 1, 10) + disposableDays * 86_400_000;
+  disposableDays += 1;
+  return { startTime: new Date(start).toISOString(), endTime: new Date(start + 3_600_000).toISOString() };
+}
 
 /** A finished workout of A's, imported from Hevy (A always has a live workout, so it can't start another). */
 const newFinishedWorkout: CrossUserCase["disposable"] = async (_w, api) => {
@@ -151,8 +175,7 @@ const newFinishedWorkout: CrossUserCase["disposable"] = async (_w, api) => {
             hevyWorkoutId: `disposable-${uuidv7()}`,
             title: "A-OWN-disposable",
             description: null,
-            startTime: "2026-09-01T10:00:00Z",
-            endTime: "2026-09-01T11:00:00Z",
+            ...nextDisposableDay(),
             tzOffsetMinutes: 0,
             exercises: [
               {
@@ -209,6 +232,7 @@ const PATH_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.customExercise,
     own: (w) => w.a.customExercise,
     controlStatus: 200,
+    controlExpectId: (w) => w.a.routine,
   }),
   pathCase({
     route: "PATCH /v1/exercises/:id",
@@ -224,8 +248,10 @@ const PATH_ID_CASES: CrossUserCase[] = [
     route: "POST /v1/exercises/:id/fork",
     name: "B's custom exercise",
     foreign: (w) => w.b.customExercise,
-    own: (w) => w.globalExercise,
-    controlStatus: 201,
+    // A's own custom exercise can't be forked: the refusal proves the route found A's row (a built-in forks for anyone).
+    own: (w) => w.a.customExercise,
+    controlStatus: 409,
+    controlExpectType: "exercise-already-owned",
   }),
   pathCase({
     route: "DELETE /v1/exercises/:id",
@@ -240,6 +266,8 @@ const PATH_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.customExercise,
     own: (w) => w.a.customExercise,
     controlStatus: 200,
+    // A point of A's own workout: the exercise id alone is the path echoed back.
+    controlExpectId: (w) => w.a.finishedWorkout,
   }),
 
   // Workouts (rows 18–21, 27)
@@ -422,6 +450,8 @@ const PATH_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.finishedWorkout,
     own: (w) => w.a.finishedWorkout,
     controlStatus: 200,
+    // The link state of A's workout: the Hevy id the world sent it under.
+    controlExpectId: () => SENT_HEVY_WORKOUT.A,
   }),
   pathCase({
     route: "POST /v1/workouts/:id/hevy-link",
@@ -459,10 +489,23 @@ interface SlotCaseSpec {
   slot: string;
   actor?: Actor;
   foreign: (w: World) => string;
-  /** The request with `id` in the slot; everything else identical between the two calls. */
-  req: (w: World, id: string) => Req;
+  /**
+   * The request with `id` in the slot; everything else identical between the two calls. Minor 378: the control is
+   * this same request with A's own id (`own`), so a wrong path or body can't make the case pass for another reason.
+   * `scratch` is the disposable's result, set only for the control.
+   */
+  req: (w: World, id: string, scratch?: string) => Req;
   expect: number;
-  control: (w: World, scratch?: string) => ControlReq;
+  /** The problem type's last segment; none for a `200`. */
+  type?: string;
+  /** For a 422: the one field path spec §5 names. */
+  path?: string;
+  /** The actor's own id for the slot. */
+  own: (w: World) => string;
+  controlStatus: number;
+  /** For controls whose body holds an id of the actor's: `own` unless `controlExpectId` names another. */
+  controlExpectsOwnId?: boolean;
+  controlExpectId?: (w: World, scratch?: string) => string;
   disposable?: CrossUserCase["disposable"];
   cleanup?: CrossUserCase["cleanup"];
 }
@@ -473,11 +516,15 @@ function slotCase(s: SlotCaseSpec): CrossUserCase {
     name: s.name,
     covers: [s.slot],
     kind: "foreign-id",
-    expect: { status: s.expect },
+    expect: { status: s.expect, ...(s.type ? { type: s.type } : {}), ...(s.path ? { path: s.path } : {}) },
     actor: s.actor ?? "A",
     foreignId: s.foreign,
     call: (w, id) => s.req(w, id!),
-    control: s.control,
+    control: (w, scratch) => {
+      const own = s.own(w);
+      const expectId = s.controlExpectId ? s.controlExpectId(w, scratch) : s.controlExpectsOwnId ? own : undefined;
+      return { ...s.req(w, own, scratch), expectStatus: s.controlStatus, ...(expectId === undefined ? {} : { expectId }) };
+    },
     ...(s.disposable ? { disposable: s.disposable } : {}),
     ...(s.cleanup ? { cleanup: s.cleanup } : {}),
   };
@@ -522,13 +569,9 @@ const BODY_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.routine,
     req: (_w, id) => ({ method: "POST", url: "/v1/workouts", body: { clientGeneratedId: C_START_KEY, startedAt: hoursAgo(1), routineId: id } }),
     expect: 404,
-    control: (w) => ({
-      method: "POST",
-      url: "/v1/workouts",
-      body: { clientGeneratedId: uuidv7(), startedAt: hoursAgo(1), routineId: w.c.routineId },
-      expectStatus: 201,
-    }),
-    cleanup: deleteCsLiveWorkout,
+    type: "not-found",
+    own: (w) => w.c.routineId,
+    controlStatus: 201,    cleanup: deleteCsLiveWorkout,
   }),
   slotCase({
     route: "POST /v1/workouts/:id/exercises",
@@ -537,7 +580,9 @@ const BODY_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.customExercise,
     req: (w, id) => ({ method: "POST", url: `/v1/workouts/${w.a.liveWorkout}/exercises`, body: { exerciseId: id } }),
     expect: 404,
-    control: (w) => ({ method: "POST", url: `/v1/workouts/${w.a.liveWorkout}/exercises`, body: { exerciseId: w.a.customExercise }, expectStatus: 201 }),
+    type: "not-found",
+    own: (w) => w.a.customExercise,
+    controlStatus: 201,
   }),
   slotCase({
     route: "PATCH /v1/workout-exercises/:id",
@@ -546,38 +591,37 @@ const BODY_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.liveSection,
     req: (w, id) => ({ method: "PATCH", url: `/v1/workout-exercises/${w.a.liveWorkoutExercise}`, body: { sectionId: id } }),
     expect: 404,
-    control: (w) => ({
-      method: "PATCH",
-      url: `/v1/workout-exercises/${w.a.liveWorkoutExercise}`,
-      body: { sectionId: w.a.liveSection },
-      expectStatus: 200,
-      expectId: w.a.liveSection,
-    }),
+    type: "not-found",
+    own: (w) => w.a.liveSection,
+    controlStatus: 200,
+    controlExpectsOwnId: true,
   }),
   slotCase({
     route: "POST /v1/routines",
     name: "B's custom exercise in an item",
     slot: "body.items[].exerciseId",
     foreign: (w) => w.b.customExercise,
-    req: (_w, id) => ({ method: "POST", url: "/v1/routines", body: routineBody(id, "Made by A") }),
+    req: (_w, id) => ({ method: "POST", url: "/v1/routines", body: routineBody(id, "A-OWN-routine-made-by-A") }),
     expect: 422,
-    control: (w) => ({ method: "POST", url: "/v1/routines", body: routineBody(w.a.customExercise, `A-OWN-routine-${uuidv7()}`), expectStatus: 201 }),
+    type: "validation-error",
+    path: "items.0.exerciseId",
+    own: (w) => w.a.customExercise,
+    controlStatus: 201,
   }),
   slotCase({
     route: "PUT /v1/routines/:id",
     name: "B's custom exercise in an item of A's routine",
     slot: "body.items[].exerciseId",
     foreign: (w) => w.b.customExercise,
-    req: (w, id) => ({ method: "PUT", url: `/v1/routines/${w.a.routine}`, body: routineBody(id, "Replaced by A") }),
+    // The control replaces a disposable routine, so A's own routine stays as the world built it for the later cases.
+    req: (w, id, scratch) => ({ method: "PUT", url: `/v1/routines/${scratch ?? w.a.routine}`, body: routineBody(id, "A-OWN-routine-replaced-by-A") }),
     expect: 422,
+    type: "validation-error",
+    path: "items.0.exerciseId",
     disposable: newRoutine,
-    control: (w, scratch) => ({
-      method: "PUT",
-      url: `/v1/routines/${scratch!}`,
-      body: routineBody(w.a.customExercise, `A-OWN-routine-${uuidv7()}`),
-      expectStatus: 200,
-      expectId: scratch!,
-    }),
+    own: (w) => w.a.customExercise,
+    controlStatus: 200,
+    controlExpectId: (_w, scratch) => scratch!,
   }),
   slotCase({
     route: "GET /v1/personal-records",
@@ -586,7 +630,9 @@ const BODY_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.customExercise,
     req: (_w, id) => ({ method: "GET", url: `/v1/personal-records?exerciseId=${id}` }),
     expect: 200,
-    control: (w) => ({ method: "GET", url: `/v1/personal-records?exerciseId=${w.a.customExercise}`, expectStatus: 200, expectId: w.a.customExercise }),
+    own: (w) => w.a.customExercise,
+    controlStatus: 200,
+    controlExpectsOwnId: true,
   }),
   slotCase({
     route: "GET /v1/personal-records",
@@ -595,7 +641,9 @@ const BODY_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.finishedWorkout,
     req: (_w, id) => ({ method: "GET", url: `/v1/personal-records?workoutId=${id}` }),
     expect: 200,
-    control: (w) => ({ method: "GET", url: `/v1/personal-records?workoutId=${w.a.finishedWorkout}`, expectStatus: 200, expectId: w.a.finishedWorkout }),
+    own: (w) => w.a.finishedWorkout,
+    controlStatus: 200,
+    controlExpectsOwnId: true,
   }),
   slotCase({
     route: "PUT /v1/hevy/mapping",
@@ -604,7 +652,11 @@ const BODY_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.customExercise,
     req: (_w, id) => ({ method: "PUT", url: "/v1/hevy/mapping", body: aMapping(id) }),
     expect: 422,
-    control: (w) => ({ method: "PUT", url: "/v1/hevy/mapping", body: aMapping(w.a.customExercise), expectStatus: 200, expectId: w.a.customExercise }),
+    type: "validation-error",
+    path: "pairs.0.exerciseId",
+    own: (w) => w.a.customExercise,
+    controlStatus: 200,
+    controlExpectsOwnId: true,
   }),
   slotCase({
     route: "PATCH /v1/hevy/mapping",
@@ -613,13 +665,11 @@ const BODY_ID_CASES: CrossUserCase[] = [
     foreign: (w) => w.b.customExercise,
     req: (_w, id) => ({ method: "PATCH", url: "/v1/hevy/mapping", body: { upsert: aMapping(id).pairs } }),
     expect: 422,
-    control: (w) => ({
-      method: "PATCH",
-      url: "/v1/hevy/mapping",
-      body: { upsert: aMapping(w.a.customExercise).pairs },
-      expectStatus: 200,
-      expectId: w.a.customExercise,
-    }),
+    type: "validation-error",
+    path: "upsert.0.exerciseId",
+    own: (w) => w.a.customExercise,
+    controlStatus: 200,
+    controlExpectsOwnId: true,
   }),
 ];
 
@@ -727,7 +777,7 @@ const COLLECTION_CASES: CrossUserCase[] = [
     check: (_w, res) => {
       if ((json(res).points as unknown[]).length !== 0) throw new Error(`expected no points: ${res.body}`);
     },
-    control: (w) => ({ method: "GET", url: `/v1/progress/exercises/${w.globalExercise}`, expectStatus: 200 }),
+    control: (w) => ({ method: "GET", url: `/v1/progress/exercises/${w.globalExercise}`, expectStatus: 200, expectId: w.a.finishedWorkout }),
   }),
   collection({
     route: "GET /v1/workouts",

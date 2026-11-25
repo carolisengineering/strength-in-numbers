@@ -128,6 +128,29 @@ export function idSlots(route: RegisteredRoute): string[] {
 
 const lastKey = (slot: string) => slot.slice(slot.lastIndexOf(".") + 1).replace(/\[\]$/, "");
 
+/** The entries that match no request slot on purpose: the spec lists them although no request carries them. */
+export const SPEC_MANDATED_NOT_A_SIN_ID: readonly string[] = ["* sourceExerciseId"];
+
+/**
+ * Minor 377 — the `NOT_A_SIN_ID` entries that excuse no slot of any registered route: a wildcard no slot's key
+ * matches, or a route entry whose route isn't registered or lacks that slot. A stale wildcard could later excuse a
+ * real id, so the suite fails on one. An allow-listed entry is reported the other way round: once a route takes it.
+ */
+export function staleNotASinIdEntries(routes: readonly RegisteredRoute[], entries: Readonly<Record<string, string>> = NOT_A_SIN_ID): string[] {
+  const slotsByRoute = new Map(routes.map((r) => [r.key as string, idSlots(r)]));
+  const keysSeen = new Set([...slotsByRoute.values()].flat().map(lastKey));
+  const out: string[] = [];
+  for (const entry of Object.keys(entries)) {
+    const matches = entry.startsWith("* ")
+      ? keysSeen.has(entry.slice(2))
+      : [...slotsByRoute].some(([key, slots]) => entry.startsWith(`${key} `) && slots.includes(entry.slice(key.length + 1)));
+    if (SPEC_MANDATED_NOT_A_SIN_ID.includes(entry)) {
+      if (matches) out.push(`${entry} (allow-listed as response-only, but a route now takes it)`);
+    } else if (!matches) out.push(entry);
+  }
+  return out;
+}
+
 /** `idSlots` minus the ones `NOT_A_SIN_ID` explains. */
 export function requiredSlots(route: RegisteredRoute): string[] {
   return idSlots(route).filter(

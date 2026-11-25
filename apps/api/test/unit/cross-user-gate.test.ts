@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { RegisteredRoute, RouteKey } from "../integration/cross-user/registry.js";
 import { EXEMPTIONS } from "../integration/cross-user/exemptions.js";
-import { NOT_A_SIN_ID, idSlots, requiredSlots } from "../integration/cross-user/slots.js";
+import { NOT_A_SIN_ID, SPEC_MANDATED_NOT_A_SIN_ID, idSlots, requiredSlots, staleNotASinIdEntries } from "../integration/cross-user/slots.js";
 import { checkCoverage } from "../integration/cross-user/gate.js";
 import type { CrossUserCase } from "../integration/cross-user/cases.js";
 import { collectRoutes } from "../integration/cross-user/registry.js";
@@ -15,13 +15,13 @@ function route(key: RouteKey, schema: RegisteredRoute["schema"] = {}): Registere
   return { key, method, url, schema };
 }
 
-/** A case with only the fields the gate reads. */
-function caseFor(key: RouteKey, covers: string[] = [], name = "case"): CrossUserCase {
+/** A case with only the fields the gate reads: a `foreign-id` case when it covers a slot, else a `collection`. */
+function caseFor(key: RouteKey, covers: string[] = [], name = "case", kind: CrossUserCase["kind"] = covers.length > 0 ? "foreign-id" : "collection"): CrossUserCase {
   return {
     route: key,
     name,
     covers,
-    kind: "foreign-id",
+    kind,
     expect: { status: 404 },
     actor: "A",
     call: () => ({ method: "GET", url: "/" }),
@@ -62,8 +62,34 @@ describe("AC3 — the coverage gate", () => {
 
   it("names a case that claims a slot the route does not have", () => {
     const slots = () => ["params.id"];
-    const failures = checkCoverage(["GET /v1/x/:id"], [caseFor("GET /v1/x/:id", ["params.id", "body.nope"], "B's x")], {}, slots);
+    const failures = checkCoverage(["GET /v1/x/:id"], [caseFor("GET /v1/x/:id", ["params.id"]), caseFor("GET /v1/x/:id", ["body.nope"], "B's x")], {}, slots);
     expect(failures).toEqual(['GET /v1/x/:id case "B\'s x" covers body.nope, which the route does not have']);
+  });
+
+  it("21.0 AC6 — minor 376: a foreign-id case covers exactly one slot (the runner puts B's id in one)", () => {
+    const slots = () => ["params.id", "body.exerciseId"];
+    const two = checkCoverage(["POST /v1/x/:id"], [caseFor("POST /v1/x/:id", ["params.id", "body.exerciseId"], "two at once")], {}, slots);
+    // Neither slot counts as covered: the runner would aim B's id at the first only.
+    expect(two).toEqual([
+      'POST /v1/x/:id case "two at once" is a foreign-id case covering 2 slots; it must cover exactly one',
+      "POST /v1/x/:id slot params.id is not covered",
+      "POST /v1/x/:id slot body.exerciseId is not covered",
+    ]);
+    const none = checkCoverage(
+      ["POST /v1/x/:id"],
+      [caseFor("POST /v1/x/:id", ["params.id"]), caseFor("POST /v1/x/:id", ["body.exerciseId"]), caseFor("POST /v1/x/:id", [], "aims at nothing", "foreign-id")],
+      {},
+      slots,
+    );
+    expect(none).toEqual(['POST /v1/x/:id case "aims at nothing" is a foreign-id case covering 0 slots; it must cover exactly one']);
+  });
+
+  it("21.0 AC6 — minor 376: a collection, collision or write-isolation case covers no slot (it sends no foreign id)", () => {
+    const slots = () => ["params.id"];
+    for (const kind of ["collection", "collision", "write-isolation"] as const) {
+      const failures = checkCoverage(["GET /v1/x/:id"], [caseFor("GET /v1/x/:id", ["params.id"], "claims it", kind)], {}, slots);
+      expect(failures).toEqual([`GET /v1/x/:id case "claims it" is a ${kind} case but claims params.id; only a foreign-id case covers a slot`, "GET /v1/x/:id slot params.id is not covered"]);
+    }
   });
 
   it("names an exempt route that takes an id (an exemption covers no id slot)", () => {
@@ -154,6 +180,29 @@ describe("AC6 — id slots are derived from the route's schemas", () => {
   it("every NOT_A_SIN_ID entry carries a reason", () => {
     for (const [key, reason] of Object.entries(NOT_A_SIN_ID)) expect(reason.trim(), key).not.toBe("");
   });
+
+  describe("minor 377 — NOT_A_SIN_ID entries that excuse no slot are reported", () => {
+    const routes = [
+      route("POST /v1/workouts", { body: z.object({ clientGeneratedId: z.string(), routineId: z.string().optional() }) }),
+      route("PUT /v1/things/:id/rounds/:round"),
+    ];
+    const entries = (list: string[]) => Object.fromEntries(list.map((k) => [k, "a reason"]));
+
+    it("a wildcard no route's slot ends with, and a route entry for an unregistered route or a slot it lacks, are stale", () => {
+      const list = entries(["* clientGeneratedId", "* nope", "POST /v1/nothing nope", "PUT /v1/things/:id/rounds/:round params.round", "PUT /v1/things/:id/rounds/:round params.gone"]);
+      expect(staleNotASinIdEntries(routes, list)).toEqual(["* nope", "POST /v1/nothing nope", "PUT /v1/things/:id/rounds/:round params.gone"]);
+    });
+
+    it("`* sourceExerciseId` is response-only and required by the spec, so it is never stale", () => {
+      expect(SPEC_MANDATED_NOT_A_SIN_ID).toEqual(["* sourceExerciseId"]);
+      expect(staleNotASinIdEntries(routes, entries(["* sourceExerciseId"]))).toEqual([]);
+    });
+
+    it("an allow-listed entry that does match a slot is reported: the allow-list would hide a real id", () => {
+      const withSlot = [route("POST /v1/x", { body: z.object({ sourceExerciseId: z.string() }) })];
+      expect(staleNotASinIdEntries(withSlot, entries(["* sourceExerciseId"]))).toEqual(["* sourceExerciseId (allow-listed as response-only, but a route now takes it)"]);
+    });
+  });
 });
 
 describe("AC6 — the walker reads every real /v1 route", () => {
@@ -171,6 +220,15 @@ describe("AC6 — the walker reads every real /v1 route", () => {
     expect(required["PATCH /v1/exercises/:id"]).toEqual(["params.id"]);
     expect(required["POST /v1/hevy/import/workouts"]).toEqual([]);
     expect(required["PUT /v1/hevy/mapping"]).toEqual(["body.pairs[].exerciseId"]);
+    // Minor 377: every real entry still excuses a real slot.
+    expect(staleNotASinIdEntries(v1)).toEqual([]);
+  });
+
+  it("21.0 AC6 — minor 376: the real case table passes the gate's kind rules", async () => {
+    const { v1 } = await collectRoutes((onRoute) => buildTestApp({ onRoute }).then((r) => r.app));
+    const { CASES } = await import("../integration/cross-user/cases.js");
+    const byKey = new Map(v1.map((r) => [r.key, r]));
+    expect(checkCoverage([...byKey.keys()], CASES, EXEMPTIONS, (key) => requiredSlots(byKey.get(key)!))).toEqual([]);
   });
 });
 
