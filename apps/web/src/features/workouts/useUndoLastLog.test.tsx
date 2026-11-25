@@ -10,7 +10,7 @@ import { useUndoLastLog } from "./useUndoLastLog";
 
 const EXERCISE = { name: "Bench Press", modality: "weight_reps" as const };
 
-function setup(options: { overlayOpen?: boolean } = {}) {
+function setup(options: { overlayOpen?: boolean; onRender?: (r: ReturnType<typeof useUndoLastLog>) => void } = {}) {
   const first = makeSet({ setNumber: 1 });
   const second = makeSet({ setNumber: 2, weight: 62.5, weightKg: 62.5 });
   const exercises = makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: EXERCISE.name, sets: [first, second] }] }).exercises;
@@ -19,8 +19,8 @@ function setup(options: { overlayOpen?: boolean } = {}) {
   const wrapper = wrapperWith(makeQueryClient(), fakeClient({ deleteSet: async () => {} }));
   const props = { exercises: exercises as readonly WorkoutExerciseDetail[], overlayOpen: options.overlayOpen ?? false };
   const hook = renderHook(
-    ({ exercises: list, overlayOpen }: typeof props) =>
-      useUndoLastLog({
+    ({ exercises: list, overlayOpen }: typeof props) => {
+      const r = useUndoLastLog({
         exercises: list,
         ops: [],
         idMap: {},
@@ -31,7 +31,10 @@ function setup(options: { overlayOpen?: boolean } = {}) {
         revealPanel: vi.fn(),
         onFailure: vi.fn(),
         announce: vi.fn(),
-      }),
+      });
+      options.onRender?.(r);
+      return r;
+    },
     { initialProps: props, wrapper },
   );
   const tap = () => ({ currentTarget: document.createElement("button") }) as unknown as MouseEvent<HTMLButtonElement>;
@@ -79,6 +82,13 @@ describe("minor 432 — useUndoLastLog on its own", () => {
     const { result, first, event } = setup({ overlayOpen: true });
     act(() => result.current.offerFrom(event(first), EXERCISE, null));
     expect(result.current.offer).toBeNull();
+  });
+
+  it("minor 714: while an overlay is open no render returns an offer or undo text", () => {
+    const seen: (string | null)[] = [];
+    const { result, first, event } = setup({ overlayOpen: true, onRender: (r) => seen.push(r.offer ? "offer" : r.undoText) });
+    act(() => result.current.offerFrom(event(first), EXERCISE, null));
+    expect(seen.filter((v) => v !== null)).toEqual([]);
   });
 
   it("minor 430 — an offer held when an overlay opens ends, and doesn't come back when it closes", () => {

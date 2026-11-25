@@ -448,8 +448,13 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     couple: timedGrouping.couple,
   });
 
+  // Minor 711: a card's sheets and the Workout menu report open and closed, counted here, so they hold the offer off for
+  // as long as they're open, not only when they open. Floored at 0, so a stray close can't stick it.
+  const [openOverlays, setOpenOverlays] = useState(0);
+  const onOverlayChange = useCallback((open: boolean) => setOpenOverlays((n) => Math.max(0, n + (open ? 1 : -1))), []);
   // Spec 17.5 AC8: anything that takes the screen over ends the offer, one made while it is open included (minor 430).
-  const overlayOpen = pickerOpen || finishOpen || endEarlyOpen || discardOpen || changeTimeOpen || removing !== null || resultActions.sheet !== null || sectionActions.sheet !== null;
+  const overlayOpen =
+    pickerOpen || finishOpen || endEarlyOpen || discardOpen || changeTimeOpen || removing !== null || resultActions.sheet !== null || sectionActions.sheet !== null || openOverlays > 0;
   // Spec 17.5: the latest log's Undo, in the bar's status line.
   const undo = useUndoLastLog({
     exercises,
@@ -467,7 +472,6 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     onFailure: (error) => void handleFailure("delete-set", error),
     announce: setAnnouncement,
   });
-  const { end: endUndo } = undo;
 
   /** Resolve a failed exercise-structure write per §5.8. */
   async function handleFailure(op: Operation, error: unknown, retry?: () => void, options: { refetched?: boolean } = {}) {
@@ -737,7 +741,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
               failedRowRef={setFailedRowRef}
               headingRef={headingRefFor(exercise.id)}
               onLogged={onLogged}
-              onSheetOpen={endUndo}
+              onOverlayChange={onOverlayChange}
               {...(undo.restore?.exerciseId === exercise.id ? { restore: undo.restore, onRestoreDone: undo.restoreDone } : {})}
               sections={workout.sections}
               linked={bracket !== "none"}
@@ -890,7 +894,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
         }
         endItem={endItem}
         onDiscard={() => setDiscardOpen(true)}
-        onOpen={endUndo}
+        onOpenChange={onOverlayChange}
       />
 
       {refusedText !== null && refusedOp !== null ? (

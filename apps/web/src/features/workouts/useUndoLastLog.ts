@@ -129,9 +129,11 @@ export function useUndoLastLog({ exercises, ops, idMap, rest, overlayOpen, selec
     setRestore({ token: nextToken.current, exerciseId: offer.exerciseId, set });
   }
 
+  // Minor 714: while an overlay is open, render nothing even before the effect above ends the offer, so a log landing
+  // under a dialog never paints "Set N logged" and Undo behind it for a commit.
   return {
-    offer: held !== null && row !== null ? { row, value: held.offer.value, exerciseName: held.offer.exerciseName } : null,
-    undoText: undoing === null || phase === null ? null : undoLine(phase, undoing.row.setNumber),
+    offer: !overlayOpen && held !== null && row !== null ? { row, value: held.offer.value, exerciseName: held.offer.exerciseName } : null,
+    undoText: overlayOpen || undoing === null || phase === null ? null : undoLine(phase, undoing.row.setNumber),
     offerFrom,
     end,
     undo,
