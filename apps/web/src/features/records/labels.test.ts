@@ -1,12 +1,23 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const observability = vi.hoisted(() => ({ reportError: vi.fn() }));
 vi.mock("../../observability/reportError", () => ({ reportError: observability.reportError }));
 
 import type { RecordType } from "@sin/core";
-import { recordLabel } from "./labels";
+import { recordLabel, resetUnknownTypeReportForTests } from "./labels";
 
 describe("minor 680 — an unknown record type gets a generic label, not a throw", () => {
+  beforeEach(() => {
+    resetUnknownTypeReportForTests();
+    observability.reportError.mockClear();
+  });
+
+  it("minor 718: two unknown labels report once per page load", () => {
+    expect(recordLabel("future_type" as RecordType)).toBe("Record");
+    expect(recordLabel("another_type" as RecordType)).toBe("Record");
+    expect(observability.reportError).toHaveBeenCalledTimes(1);
+  });
+
   it('a type this build doesn\'t know reads "Record" and is reported once, with static tags only', () => {
     expect(recordLabel("future_type" as RecordType)).toBe("Record");
     expect(observability.reportError).toHaveBeenCalledTimes(1);

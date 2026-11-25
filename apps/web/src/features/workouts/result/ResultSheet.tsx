@@ -42,8 +42,6 @@ export interface ResultSheetProps {
   onSave(draft: ResultDraft): void;
 }
 
-/** Finish time's own hint (`ClockField` names it `${id}-hint`). */
-const FINISH_HINT_ID = "result-finish-hint";
 
 const step = (text: string, by: 1 | -1, max: number): string => {
   const n = text === "" ? 0 : Number(text);
@@ -64,6 +62,11 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   const [focusTick, setFocusTick] = useState(0);
   const formRef = useRef<HTMLFormElement | null>(null);
   const formId = useId();
+  // Minor 720: every field id is the sheet's own, so two mounted sheets never share one. Finish time's hint is the one
+  // `ClockField` names `${id}-hint`.
+  const finishId = `${formId}-finish`;
+  const finishHintId = `${finishId}-hint`;
+  const roundId = (round: number) => `${formId}-round-${round}`;
   // Spec 17.10 AC13: the one hint the round fields share; Set Timer's rows and the round-ends group never both render.
   // Minor 493: per sheet, so two mounted sheets never point at each other's hint.
   const CLOCK_HINT_ID = useId();
@@ -75,7 +78,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   // AC27: bring the Next row into view on open (once).
   useEffect(() => {
     if (next === null) return;
-    document.getElementById(`result-round-${next}`)?.scrollIntoView?.({ block: "nearest" });
+    document.getElementById(roundId(next))?.scrollIntoView?.({ block: "nearest" });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- on open only
   }, []);
   // AC31: after a Save with errors, the first invalid control in DOM order takes focus.
@@ -108,21 +111,21 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   // sentence a few lines up, so the round-ends hint keeps only its first sentence, and each round also points at
   // Finish time's hint, so a screen reader still hears how to type the clock there (code review).
   const finishTimeShown = timer.format === "time_cap" && draft.mode === "finished";
-  const roundHints = finishTimeShown ? `${CLOCK_HINT_ID} ${FINISH_HINT_ID}` : CLOCK_HINT_ID;
+  const roundHints = finishTimeShown ? `${CLOCK_HINT_ID} ${finishHintId}` : CLOCK_HINT_ID;
   const roundRow = (round: number, digits: string) => (
     <div key={round} className={styles.round} data-round={round}>
       {/* Minor 331: the round to fill hears its "Next" tag after the shared clock hint; the link moves with the tag. */}
       <ClockField
-        id={`result-round-${round}`}
+        id={roundId(round)}
         label={RESULT_COPY.roundLabel(round)}
         hint={null}
-        describedBy={round === next ? `${roundHints} result-round-${round}-next` : roundHints}
+        describedBy={round === next ? `${roundHints} ${roundId(round)}-next` : roundHints}
         digits={digits}
         error={shown.of(`row:${round}`)}
         onChange={(d) => setRow(round, d)}
       />
       {round === next ? (
-        <span id={`result-round-${round}-next`} className={styles.next}>
+        <span id={`${roundId(round)}-next`} className={styles.next}>
           {RESULT_COPY.next}
         </span>
       ) : null}
@@ -131,7 +134,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
   const steppers = (
     <div className={styles.steppers}>
       <NumberStepper
-        id="result-rounds"
+        id={`${formId}-rounds`}
         label={RESULT_COPY.rounds}
         value={draft.rounds}
         inputMode="numeric"
@@ -147,7 +150,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
         onIncrease={() => editCount("rounds", (d) => ({ ...d, rounds: step(d.rounds, 1, RESULT_ROUNDS_MAX) }))}
       />
       <NumberStepper
-        id="result-reps"
+        id={`${formId}-reps`}
         label={RESULT_COPY.reps}
         value={draft.reps}
         inputMode="numeric"
@@ -220,7 +223,7 @@ export function ResultSheet({ open, section, busy, formError, onCancel, onSave }
               />
             ) : null}
             {draft.mode === "finished" ? (
-              <ClockField id="result-finish" label={RESULT_COPY.finishTime} digits={draft.finishDigits} error={shown.of("finish")} onChange={(d) => {
+              <ClockField id={finishId} label={RESULT_COPY.finishTime} digits={draft.finishDigits} error={shown.of("finish")} onChange={(d) => {
                 shown.edit("finish");
                 setDraft((x) => ({ ...x, finishDigits: d }));
               }} />

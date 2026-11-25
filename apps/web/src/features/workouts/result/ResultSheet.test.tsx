@@ -95,12 +95,13 @@ describe("minor 331 — Next is in the round field's description", () => {
   it("the round to fill hears Next after the clock hint; clearing round 3 moves it there", async () => {
     const { dialog, user } = renderSheet(section(SET5, rt([[1, 221], [2, 439], [3, 649], [4, 883]])));
     const describedBy = (n: number) => dialog.getByLabelText(`Round ${n}`).getAttribute("aria-describedby")?.split(" ") ?? [];
-    expect(describedBy(5).at(-1)).toBe("result-round-5-next");
-    expect(document.getElementById("result-round-5-next")).toHaveTextContent("Next");
+    // Minor 720: the ids are the sheet's own, so they're matched by their ending.
+    expect(describedBy(5).at(-1)).toMatch(/-round-5-next$/);
+    expect(document.getElementById(describedBy(5).at(-1)!)).toHaveTextContent("Next");
     expect(document.getElementById(describedBy(5)[0]!)).toHaveTextContent(CLOCK_HINT);
     await user.clear(dialog.getByLabelText("Round 3"));
-    expect(describedBy(3).at(-1)).toBe("result-round-3-next");
-    expect(describedBy(5)).not.toContain("result-round-5-next");
+    expect(describedBy(3).at(-1)).toMatch(/-round-3-next$/);
+    expect(describedBy(5).some((id) => id.endsWith("-round-5-next"))).toBe(false);
   });
 });
 
@@ -239,8 +240,9 @@ describe("17.10 AC13 — the clock hint is said once per group", () => {
 
   it("Time Cap's lone Finish time keeps its own hint", () => {
     const { dialog } = renderSheet(section({ format: "time_cap", capSeconds: 900 }));
-    expect(dialog.getByLabelText("Finish time").getAttribute("aria-describedby")).toBe("result-finish-hint");
-    expect(document.getElementById("result-finish-hint")).toHaveTextContent(HINT);
+    const hintId = dialog.getByLabelText("Finish time").getAttribute("aria-describedby")!;
+    expect(hintId).toMatch(/-finish-hint$/);
+    expect(document.getElementById(hintId)).toHaveTextContent(HINT);
   });
 });
 
@@ -298,5 +300,16 @@ describe("minor 493 — the clock hint id is unique", () => {
     const hints = screen.getAllByText(CLOCK_HINT).map((p) => p.id);
     expect(hints).toHaveLength(2);
     expect(hints[0]).not.toBe(hints[1]);
+  });
+});
+
+describe("minor 720 — two mounted sheets share no id", () => {
+  it("every id in the document is unique with two Set Timer and two AMRAP sheets open", () => {
+    for (const s of [section(SET5, rt([[1, 221]])), section(SET5, rt([[1, 221]]), null, "Second"), section({ format: "amrap", capSeconds: 720 }), section({ format: "amrap", capSeconds: 720 }, [], null, "Third")]) {
+      render(<ResultSheet open section={s} busy={false} formError={null} onSave={vi.fn()} onCancel={vi.fn()} />);
+    }
+    const ids = [...document.querySelectorAll("[id]")].map((el) => el.id);
+    const repeated = ids.filter((id, i) => ids.indexOf(id) !== i);
+    expect(repeated).toEqual([]);
   });
 });

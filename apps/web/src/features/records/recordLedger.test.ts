@@ -80,9 +80,16 @@ describe("17.6 AC6 / 17.2 AC22 — a zero-gain estimate", () => {
   it("17.6 AC6 — minor 476: beside a gaining lift, a value-only lift is still drawn, and not counted", () => {
     const w = workoutOf([lift("Bench Press"), lift("Squat")]);
     const l = ledger([rec(w, 0, heaviest(190, 185)), rec(w, 1, estimate(94.1, 94))], w);
-    expect(l.heading).toBe("New records on 1 lift");
+    // Minor 602 (owner call (b), 2026-11-25): one lift rose with one row, so "New record", whatever else is drawn.
+    expect(l.heading).toBe("New record");
+    expect(ledger([rec(w, 0, heaviest(190, 185)), rec(w, 1, estimate(94.1, 94))], w, { section: "history" }).heading).toBe("Record from this workout");
     expect(l.lifts.map((x) => x.name)).toEqual(["Bench Press", "Squat"]);
     expect(l.lifts[1]!.rows).toEqual([expect.objectContaining({ type: "best_est_1rm", label: "Est. 1-rep max", newText: "94 kg", oldText: null, gainText: null })]);
+  });
+  it("minor 602, Review Focus 5: two lifts rose beside a value-only lift → 'New records on 2 lifts'", () => {
+    const w = workoutOf([lift("Bench Press"), lift("Row"), lift("Squat")]);
+    const l = ledger([rec(w, 0, heaviest(190, 185)), rec(w, 1, heaviest(80, 75)), rec(w, 2, estimate(94.1, 94))], w);
+    expect(l.heading).toBe("New records on 2 lifts");
   });
   it("17.6 AC6 — minor 476: a lift with one gaining row counts, its value-only row drawn beside it", () => {
     const w = workoutOf([lift("Bench Press")]);

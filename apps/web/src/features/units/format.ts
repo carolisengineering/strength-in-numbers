@@ -1,5 +1,14 @@
 import { kgToLb, type RecordType, type RecordUnit, type UnitPreference } from "@sin/core";
 
+import { reportError } from "../../observability/reportError";
+
+/** Minor 718: an unknown record unit is reported once per page load. */
+let unknownUnitReported = false;
+/** Tests only: start the once-per-load report over. */
+export function resetUnknownUnitReportForTests(): void {
+  unknownUnitReported = false;
+}
+
 /**
  * Canonical kg → the lifter's unit (Spec 08.0 §6.4, D8). Pure and React-free so Spec 08.1's chart
  * axes reuse it (and it can move to `@sin/core` later).
@@ -73,8 +82,15 @@ export function formatRecordValue(value: number, unit: RecordUnit, pref: UnitPre
     case "s":
       return formatSeconds(value);
     default: {
+      // Minor 718: still exhaustive at compile time, but a unit a newer server sends reads as a plain number instead of
+      // throwing while a summary renders, reported once per page load with static tags only (DESIGN §8.1).
       const unreachable: never = unit;
-      throw new Error(`Unhandled record unit: ${String(unreachable)}`);
+      void unreachable;
+      if (!unknownUnitReported) {
+        unknownUnitReported = true;
+        reportError(new Error("unknown record unit"), { source: "records", op: "unknown-record-unit" });
+      }
+      return DISTANCE.format(value);
     }
   }
 }

@@ -89,15 +89,22 @@ export function createLandedStore({ storage, userId, report: reportDep }: Landed
   let writable = true;
   /**
    * What a change starts from (minor 630): the file as it is now, so another tab's entry is kept; the entries in memory
-   * when it can't be read or a write already failed.
+   * when it can't be read. Minor 712: after a failed write, this tab's memory merged with whatever the file holds now,
+   * so the next write that succeeds keeps another tab's entries too.
    */
-  const current = (): LandedItem[] => (writable ? (read() ?? items) : items);
+  const current = (): LandedItem[] => {
+    const file = read();
+    if (writable) return file ?? items;
+    if (file === null) return items;
+    return [...items, ...file.filter((f) => !items.some((i) => i.workoutId === f.workoutId))].slice(0, LANDED_MAX);
+  };
 
   function write(next: LandedItem[]): void {
     items = next;
     try {
       if (next.length === 0) storage.remove(LANDED_KEY);
       else storage.set(LANDED_KEY, JSON.stringify({ v: 1, userId, items: next }));
+      writable = true; // the file holds this tab's entries again (minor 712)
     } catch (error) {
       writable = false;
       reportOnce(error);
