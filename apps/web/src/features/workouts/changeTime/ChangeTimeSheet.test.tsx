@@ -279,6 +279,8 @@ describe("minor 573 — the form error is stored when the failure happens", () =
     const observer = new MutationObserver(() => {});
     observer.observe(region, { childList: true, subtree: true, characterData: true });
     act(() => rerender(<Host workout={{ ...w }} client={client} {...callbacks} />));
+    // The same node: a remounted region would leave the observer watching a detached copy that still holds the text.
+    expect(sheetErrorRegion()).toBe(region);
     expect(observer.takeRecords()).toEqual([]);
     observer.disconnect();
     expect(region).toHaveTextContent(EDIT_COPY.changeTimeFailed);
