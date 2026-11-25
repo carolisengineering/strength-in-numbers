@@ -151,6 +151,32 @@ describe("minor 630 — the landed store and storage failures (Spec 06.7 §6.9, 
     expect(file.items.map((x) => x.workoutId).sort()).toEqual(["w1", "w2", "w3"]);
   });
 
+  it("code review: a line removed while storage refused the write doesn't come back once storage works again", () => {
+    const inner = memoryStorageAdapter();
+    let refuse = false;
+    const flaky: StorageAdapter = {
+      ...inner,
+      set: (key, value) => {
+        if (refuse) throw new Error("QuotaExceededError");
+        inner.set(key, value);
+      },
+      remove: (key) => {
+        if (refuse) throw new Error("SecurityError");
+        inner.remove(key);
+      },
+    };
+    const { store } = setup(flaky);
+    store.add(item("a"));
+    store.add(item("b"));
+    refuse = true;
+    store.remove("a"); // the file still holds a
+    refuse = false;
+    store.add(item("c"));
+    expect(store.list().map((x) => x.workoutId)).toEqual(["c", "b"]);
+    const file = JSON.parse(inner.get(LANDED_KEY)!) as { items: { workoutId: string }[] };
+    expect(file.items.map((x) => x.workoutId)).toEqual(["c", "b"]);
+  });
+
   it("when storage can't be written, the line still shows for this page load", () => {
     const storage: StorageAdapter = {
       ...memoryStorageAdapter(),
