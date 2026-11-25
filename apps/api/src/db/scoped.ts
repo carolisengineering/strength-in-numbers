@@ -97,9 +97,10 @@ function setConfig(client: Pick<Prisma.TransactionClient, "$queryRaw">, setting:
 }
 
 function scopedClient(prisma: PrismaClient, setting: string, value: string): ScopedClient {
-  // The root client's own methods, forwarded: the statement is the caller's, audited where it is written.
-  const queryRaw = prisma.$queryRaw;
-  const executeRaw = prisma.$executeRaw;
+  // The root client's own methods, forwarded: the statement is the caller's, audited where it is written. Bound,
+  // because Prisma's raw methods read `this`.
+  const queryRaw = prisma.$queryRaw.bind(prisma);
+  const executeRaw = prisma.$executeRaw.bind(prisma);
   const bare = <T>(statement: Prisma.PrismaPromise<T>): Promise<T> =>
     prisma.$transaction([setConfig(prisma, setting, value), statement]).then((results) => results[1]);
   return {
@@ -116,8 +117,8 @@ function scopedClient(prisma: PrismaClient, setting: string, value: string): Sco
 
 /** The owner-login pass-through: no setting, but the same id check, `readOnly` and options as the scoped form. */
 function unscopedClient(prisma: PrismaClient): ScopedClient {
-  const queryRaw = prisma.$queryRaw;
-  const executeRaw = prisma.$executeRaw;
+  const queryRaw = prisma.$queryRaw.bind(prisma);
+  const executeRaw = prisma.$executeRaw.bind(prisma);
   return {
     $queryRaw: <T = unknown>(...args: RawArgs) => queryRaw<T>(...args),
     $executeRaw: (...args: RawArgs) => executeRaw(...args),

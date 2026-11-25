@@ -188,6 +188,32 @@ describe("Spec 21.1 AC9 — one handle, two entry points", () => {
     expect(fake.txOptions).toEqual([{ timeout: 30_000 }]);
   });
 
+  it("minor 405 — the handle calls the root client's raw methods on the client itself (Prisma's read `this`)", async () => {
+    // Prisma's `$queryRaw` / `$executeRaw` are methods that use `this`; a detached call throws. The other fake's are
+    // arrow properties, which can't show that.
+    class ThisBound {
+      calls: string[] = [];
+      $queryRaw(strings: TemplateStringsArray) {
+        this.calls.push(strings.join("?"));
+        return Promise.resolve([{ ok: 1 }]);
+      }
+      $executeRaw(strings: TemplateStringsArray) {
+        this.calls.push(strings.join("?"));
+        return Promise.resolve(1);
+      }
+      $transaction(batch: Promise<unknown>[]) {
+        return Promise.all(batch);
+      }
+    }
+    for (const make of [createScopedDb, toScoped]) {
+      const root = new ThisBound();
+      const c = make(root as unknown as PrismaClient).as(uuidv7());
+      await expect(c.$queryRaw`SELECT 1`).resolves.toEqual([{ ok: 1 }]);
+      await expect(c.$executeRaw`DELETE FROM t`).resolves.toBe(1);
+      expect(root.calls.filter((s) => !s.includes("set_config"))).toEqual(["SELECT 1", "DELETE FROM t"]);
+    }
+  });
+
   it("minor 405 — a scoped raw call is a running Promise, so it can't be a lazy batch entry (checked by typecheck)", () => {
     expectTypeOf<ReturnType<RawClient["$queryRaw"]>>().toEqualTypeOf<Promise<unknown>>();
     expectTypeOf<ReturnType<RawClient["$executeRaw"]>>().toEqualTypeOf<Promise<number>>();
