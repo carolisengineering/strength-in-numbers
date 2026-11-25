@@ -43,11 +43,38 @@ describe("minor 393 — raw SQL only in spellings the audit lists", () => {
       5,
       HEAD + 'import { sqltag, raw } from "@prisma/client/runtime/library";\n',
     ],
+    [
+      "minor 565 — a delegate off a narrowed client type",
+      'declare const d: Pick<Prisma.TransactionClient, "workout">;\nconst { workout } = d;\nexport const a = workout.findMany();\n',
+      4,
+    ],
+    ["minor 565 — a delegate read off a narrowed client type by name", 'declare const d: Pick<Prisma.TransactionClient, "workout">;\nexport const w = d.workout;\n', 4],
+    ["minor 566 — assignment destructuring", "let q: unknown;\n({ $queryRaw: q } = tx);\nvoid q;\n", 1],
+    ["minor 566 — shorthand assignment destructuring", "let $queryRaw: unknown;\n({ $queryRaw } = tx);\nvoid $queryRaw;\n", 1],
+    ["minor 566 — Reflect.get", 'export const a = Reflect.get(tx, "$queryRaw");\n', 1],
+    ["minor 566 — an index on a Record cast", 'export const a = (tx as unknown as Record<string, Function>)["$executeRaw"];\n', 1],
+    ["minor 566 — $queryRawTyped indexed on a Record cast", 'export const a = (tx as unknown as Record<string, Function>)["$queryRawTyped"];\n', 2],
   ] as [string, string, number, string?][])("%s fails with its rule", (_name, body, rule, head) => {
     const issues = issuesFor(body, head ?? HEAD);
     expect(issues).toHaveLength(1);
     expect(issues[0]).toContain(`rule ${rule}:`);
     expect(issues[0]).toMatch(/^src\/repositories\/tripwire-fixture\.ts:\d+ /);
+  });
+
+  it("minor 566 — a raw method's name in a string or a comment is not an access (Review Focus 1)", () => {
+    expect(
+      issuesFor('declare const log: { info(s: string): void };\n// $queryRaw is audited\nlog.info("$queryRaw is audited");\nexport const names = ["$executeRaw", "$queryRawTyped"];\n'),
+    ).toEqual([]);
+  });
+
+  it("minor 568 — a field reference is not a model call, and passes", () => {
+    expect(issuesFor("export const f = tx.workout.fields.id;\nexport const g = tx.workout.fields;\n")).toEqual([]);
+  });
+
+  it("minor 568 — rule 4's message covers any member, not only a call", () => {
+    const issues = issuesFor("const { workout } = tx;\nexport const a = workout.findMany();\n");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain("rule 4: a model call or member isn't listed by the query audit — write tx.workout.findMany(…)");
   });
 
   it("a renamed client is still a client (Review Focus 3)", () => {

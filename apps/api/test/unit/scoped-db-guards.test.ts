@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { MODEL_DELEGATES } from "../../scripts/lib/query-extract.js";
 import { apiProgram, overlayPath, rel as relPath, srcFiles, srcProgram } from "./helpers/ts-program.js";
 
 /**
@@ -49,7 +50,15 @@ export const BARE_CLIENT_ALLOWED: Readonly<Record<string, string>> = {
 
 const NO_STATEMENT = new Set(["$connect", "$disconnect", "$metrics", "$on"]);
 
-/** AC14: each property access on a receiver typed `PrismaClient` (any union member), as `file:line text`. */
+/** The scoped handle's own types: they run statements with the acting user's setting, so they are never "bare". */
+const SCOPED_TYPES = new Set(["ScopedClient", "UserScopedDb", "RawClient"]);
+
+/**
+ * AC14: each property access on a bare client (any union member), as `file:line text`. Minor 567: a bare client is
+ * known by its members, `$transaction` plus at least one model delegate, so an intersection (`PrismaClient & {…}`) or
+ * an `$extends` client is one too. A transaction client has no `$transaction`, and the scoped handle's types have no
+ * model delegate (and are excluded by name as well).
+ */
 export function bareClientUses(p: ts.Program, files: readonly string[]): string[] {
   const checker = p.getTypeChecker();
   const out: string[] = [];
@@ -57,7 +66,12 @@ export function bareClientUses(p: ts.Program, files: readonly string[]): string[
     const sf = p.getSourceFile(file)!;
     const bare = (receiver: ts.Node) => {
       const t = checker.getTypeAtLocation(receiver);
-      return (t.isUnion() ? t.types : [t]).some((x) => (x.aliasSymbol ?? x.getSymbol())?.getName() === "PrismaClient");
+      return (t.isUnion() ? t.types : [t]).some((x) => {
+        const name = (x.aliasSymbol ?? x.getSymbol())?.getName();
+        if (name !== undefined && SCOPED_TYPES.has(name)) return false;
+        const apparent = checker.getApparentType(x);
+        return apparent.getProperty("$transaction") !== undefined && apparent.getProperties().some((m) => MODEL_DELEGATES.has(m.getName()));
+      });
     };
     const flag = (node: ts.Node) => out.push(`${relPath(file)}:${lineOf(sf, node)} ${node.getText(sf).slice(0, 60)}`);
     const visit = (node: ts.Node) => {
@@ -126,6 +140,21 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
     expect(usesIn(`${head}export const f = (p: PrismaClient) => {\n  const { $transaction: t } = p;\n  return t;\n};\n`)).toHaveLength(1);
     expect(usesIn(`${head}export const f = (p: PrismaClient) => p["$transaction"];\n`)).toHaveLength(1);
     expect(usesIn(`${head}export const f = async (p: PrismaClient) => {\n  const { $disconnect } = p;\n  await $disconnect();\n};\n`)).toEqual([]);
+  });
+
+  it("21.1 AC14 — minor 567: a bare client is known by its members, whatever its type is called", () => {
+    const intersection = usesIn(`${head}declare const c: PrismaClient & { extra: 1 };\nexport const a = c.workout.findMany();\n`);
+    expect(intersection).toHaveLength(1);
+    expect(intersection[0]).toMatch(/^src\/repositories\/x\/fixture\.ts:3 c\.workout/);
+    const extended = usesIn(`${head}const x = new PrismaClient().$extends({});\nexport const b = x.workout.findMany();\n`);
+    expect(extended.some((u) => u.includes(":3 x.workout"))).toBe(true);
+  });
+
+  it("21.1 AC14 — minor 567: the scoped handle's own types are not bare clients", () => {
+    const uses = usesIn(
+      `import type { RawClient, ScopedClient, UserScopedDb } from "../../db/scoped.js";\nexport async function f(db: UserScopedDb, c: ScopedClient, r: RawClient) {\n  await db.as("u").$queryRaw\`SELECT 1\`;\n  await c.$transaction(async (tx) => tx.$queryRaw\`SELECT 1\`);\n  await r.$executeRaw\`SELECT 1\`;\n}\n`,
+    );
+    expect(uses).toEqual([]);
   });
 
   it("a model call on the transaction client is not a bare use (Review Focus 5)", () => {

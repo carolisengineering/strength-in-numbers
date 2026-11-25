@@ -11,6 +11,14 @@ import { MODEL_DELEGATES, QUERY_TAGS, UNSAFE_CALLS, isModelCall, isPrismaMember 
  *
  * A "client" is any receiver whose type (or a union member's) has a `$queryRaw` or `$executeRaw` member: the
  * `PrismaClient`, a transaction client, the scoped handle's `RawClient` / `ScopedClient`, and any alias of them.
+ *
+ * Two rules don't ask what the receiver is, because a cast or a narrowed type hides it:
+ * - a raw method's name (rules 1 and 2) read as a property, an index, a destructuring key or a `Reflect.get` key is a
+ *   hit on any receiver (minor 566); only the tagged `x.$queryRaw` template and the call `x.$queryRaw(…)` are accepted. A string that merely
+ *   holds the name (a log message) is not an access;
+ * - a member whose own type is a Prisma `*Delegate` (rule 4) is a hit whatever it was read off, so
+ *   `Pick<Prisma.TransactionClient, "workout">` doesn't hide a model call (minor 565). `tx.workout.fields`, Prisma's
+ *   field references, run no statement and pass (minor 568).
  */
 
 const RAW_METHODS = new Set([...QUERY_TAGS, ...UNSAFE_CALLS]);
@@ -56,11 +64,22 @@ export function rawSqlSpellingIssues(
     });
   };
 
+  const PRISMA_CLIENT_FILE = /[\\/]\.?prisma[\\/]client[\\/]/;
+
+  /** Minor 565: the node's own type is one of the generated client's `*Delegate` types (any union member). */
+  const isDelegate = (node: ts.Node): boolean => {
+    const t = checker.getTypeAtLocation(node);
+    return (t.isUnion() ? t.types : [t]).some((m) => {
+      const sym = m.aliasSymbol ?? m.getSymbol();
+      return sym !== undefined && sym.getName().endsWith("Delegate") && (sym.getDeclarations() ?? []).some((d) => PRISMA_CLIENT_FILE.test(d.getSourceFile().fileName));
+    });
+  };
+
   /** The `Prisma` namespace of `@prisma/client`, reached through any import or variable alias. */
   const isPrismaNamespace = (node: ts.Node): boolean => {
     const sym = checker.getTypeAtLocation(node).getSymbol();
     if (sym?.getName() !== "Prisma") return false;
-    return (sym.getDeclarations() ?? []).some((d) => /[\\/]\.?prisma[\\/]client[\\/]/.test(d.getSourceFile().fileName));
+    return (sym.getDeclarations() ?? []).some((d) => PRISMA_CLIENT_FILE.test(d.getSourceFile().fileName));
   };
 
   const inTypePosition = (node: ts.Node): boolean => {
@@ -92,10 +111,13 @@ export function rawSqlSpellingIssues(
       return true;
     };
 
-    /** A name read off `receiver`, by `.name`, `["name"]` or a destructuring, checked against the four rules. */
+    /**
+     * A name read off `receiver`, by `.name`, `["name"]`, a destructuring or `Reflect.get`, checked against the four
+     * rules. Rules 1 and 2 hold on any receiver (minor 566).
+     */
     const check = (node: ts.Node, receiver: ts.Node, name: string, form: "property" | "index" | "binding"): boolean => {
-      if (name === TYPED_SQL && isClient(receiver)) return report(node, 2, "$queryRawTyped isn't listed by the query audit", "tx.$queryRaw`…`");
-      if (RAW_METHODS.has(name) && isClient(receiver)) {
+      if (name === TYPED_SQL) return report(node, 2, "$queryRawTyped isn't listed by the query audit", "tx.$queryRaw`…`");
+      if (RAW_METHODS.has(name)) {
         if (form === "property" && (isTag(node) || isCallee(node))) return false;
         return report(node, 1, `${name} ${form === "binding" ? "destructured from" : "indexed on"} a client, or passed around`, `tx.${name}\`…\` or tx.${name}(…)`);
       }
@@ -114,10 +136,13 @@ export function rawSqlSpellingIssues(
         if (name === "Sql") return report(node, 3, "Prisma.Sql used as a value (new Prisma.Sql([text], []) is raw SQL)", "Prisma.sql`…`, or Prisma.raw(…) on UNSAFE_ALLOWLIST");
         return report(node, 3, `Prisma.${name} used other than as Prisma.sql\`…\`, Prisma.raw(…) or Prisma.join(…)`, `Prisma.${name === "sql" ? "sql`…`" : `${name}(…)`} spelled with Prisma`);
       }
-      if (MODEL_DELEGATES.has(name) && isClient(receiver)) {
+      if (MODEL_DELEGATES.has(name) && (isClient(receiver) || isDelegate(node))) {
         const call = node.parent?.parent;
-        if (form === "property" && ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node && call && ts.isCallExpression(call) && call.expression === node.parent && isModelCall(call)) return false;
-        return report(node, 4, `the ${name} delegate taken off a client`, `tx.${name}.findMany(…)`);
+        const member = form === "property" && ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node ? node.parent : undefined;
+        if (member && call && ts.isCallExpression(call) && call.expression === member && isModelCall(call)) return false;
+        // Minor 568: `tx.workout.fields` (and anything under it) is a field reference, not a statement.
+        if (member?.name.text === "fields") return false;
+        return report(node, 4, "a model call or member isn't listed by the query audit", `tx.${name}.findMany(…)`);
       }
       return false;
     };
@@ -127,6 +152,18 @@ export function rawSqlSpellingIssues(
       const t = checker.getTypeAtLocation(key);
       return (t.isUnion() ? t.types : [t]).filter((m) => m.isStringLiteral()).map((m) => (m as ts.StringLiteralType).value);
     };
+
+    /** Minor 566: `({ $queryRaw: q } = tx)`, an object literal used as an assignment pattern, nested ones included. */
+    const checkAssignmentPattern = (pattern: ts.ObjectLiteralExpression, receiver: ts.Node): void => {
+      for (const prop of pattern.properties) {
+        if (!ts.isPropertyAssignment(prop) && !ts.isShorthandPropertyAssignment(prop)) continue;
+        const key = prop.name;
+        const keys = ts.isIdentifier(key) || ts.isStringLiteralLike(key) ? [key.text] : ts.isComputedPropertyName(key) ? (ts.isStringLiteralLike(key.expression) ? [key.expression.text] : literalKeys(key.expression)) : [];
+        keys.some((k) => check(prop, receiver, k, "binding"));
+        if (ts.isPropertyAssignment(prop) && ts.isObjectLiteralExpression(prop.initializer)) checkAssignmentPattern(prop.initializer, prop);
+      }
+    };
+    const unparenthesized = (e: ts.Expression): ts.Expression => (ts.isParenthesizedExpression(e) ? unparenthesized(e.expression) : e);
 
     /** Rule 5: the runtime module imported, re-exported or required directly, except as types only. */
     const runtimeSpecifier = (spec: ts.Expression | undefined) => spec !== undefined && ts.isStringLiteralLike(spec) && PRISMA_RUNTIME.test(spec.text);
@@ -150,6 +187,13 @@ export function rawSqlSpellingIssues(
         // One issue per access: a computed key stops at the first name it could hold that breaks a rule.
         const keys = ts.isStringLiteralLike(node.argumentExpression) ? [node.argumentExpression.text] : literalKeys(node.argumentExpression);
         keys.some((k) => check(node, node.expression, k, "index"));
+      } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isObjectLiteralExpression(unparenthesized(node.left))) {
+        checkAssignmentPattern(unparenthesized(node.left) as ts.ObjectLiteralExpression, node.right);
+      } else if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "get" && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Reflect" && node.arguments.length >= 2) {
+        // `Reflect.get(tx, "$queryRaw")` reads the member as an index does (minor 566).
+        const key = node.arguments[1]!;
+        const keys = ts.isStringLiteralLike(key) ? [key.text] : literalKeys(key);
+        keys.some((k) => check(node, node.arguments[0]!, k, "index"));
       } else if (ts.isObjectBindingPattern(node)) {
         for (const el of node.elements) {
           const key = el.propertyName ?? el.name;
