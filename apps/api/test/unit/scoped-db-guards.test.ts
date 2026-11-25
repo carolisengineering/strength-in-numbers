@@ -1,9 +1,9 @@
 // apps/api/test/unit/scoped-db-guards.test.ts
-import { readdirSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { apiProgram, overlayPath, rel as relPath, srcFiles, srcProgram } from "./helpers/ts-program.js";
+import { MODEL_DELEGATES } from "../../scripts/lib/query-extract.js";
+import { API_ROOT as API, apiProgram, overlayPath, rel as relPath, srcFiles, srcProgram } from "./helpers/ts-program.js";
 
 /**
  * Spec 21.1 AC14, AC16, AC20 — the static guards that keep "who is asking" on every statement:
@@ -14,17 +14,6 @@ import { apiProgram, overlayPath, rel as relPath, srcFiles, srcProgram } from ".
  * A type-aware scan (the TypeScript checker), so a renamed variable cannot hide a bare client.
  */
 
-const API = fileURLToPath(new URL("../..", import.meta.url));
-
-function filesIn(dirs: readonly string[]): string[] {
-  return dirs.flatMap((d) =>
-    readdirSync(`${API}${d}`)
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => `${API}${d}/${f}`),
-  );
-}
-
-const rel = (file: string) => file.slice(API.length);
 const lineOf = (sf: ts.SourceFile, node: ts.Node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
 
 function enclosingName(node: ts.Node): string {
@@ -49,7 +38,15 @@ export const BARE_CLIENT_ALLOWED: Readonly<Record<string, string>> = {
 
 const NO_STATEMENT = new Set(["$connect", "$disconnect", "$metrics", "$on"]);
 
-/** AC14: each property access on a receiver typed `PrismaClient` (any union member), as `file:line text`. */
+/** The scoped handle's own types: they run statements with the acting user's setting, so they are never "bare". */
+const SCOPED_TYPES = new Set(["ScopedClient", "UserScopedDb", "RawClient"]);
+
+/**
+ * AC14: each property access on a bare client (any union member), as `file:line text`. Minor 567: a bare client is
+ * known by its members, `$transaction` plus at least one model delegate, so an intersection (`PrismaClient & {…}`) or
+ * an `$extends` client is one too. A transaction client has no `$transaction`, and the scoped handle's types have no
+ * model delegate (and are excluded by name as well).
+ */
 export function bareClientUses(p: ts.Program, files: readonly string[]): string[] {
   const checker = p.getTypeChecker();
   const out: string[] = [];
@@ -57,7 +54,12 @@ export function bareClientUses(p: ts.Program, files: readonly string[]): string[
     const sf = p.getSourceFile(file)!;
     const bare = (receiver: ts.Node) => {
       const t = checker.getTypeAtLocation(receiver);
-      return (t.isUnion() ? t.types : [t]).some((x) => (x.aliasSymbol ?? x.getSymbol())?.getName() === "PrismaClient");
+      return (t.isUnion() ? t.types : [t]).some((x) => {
+        const name = (x.aliasSymbol ?? x.getSymbol())?.getName();
+        if (name !== undefined && SCOPED_TYPES.has(name)) return false;
+        const apparent = checker.getApparentType(x);
+        return apparent.getProperty("$transaction") !== undefined && apparent.getProperties().some((m) => MODEL_DELEGATES.has(m.getName()));
+      });
     };
     const flag = (node: ts.Node) => out.push(`${relPath(file)}:${lineOf(sf, node)} ${node.getText(sf).slice(0, 60)}`);
     const visit = (node: ts.Node) => {
@@ -77,14 +79,20 @@ export function bareClientUses(p: ts.Program, files: readonly string[]): string[
   return out;
 }
 
-/** AC16: every `.<name>()` call outside the handle itself, as `file#enclosing function`. */
-function callSitesOf(name: "shared" | "crossUserMaintenance", files: readonly string[]): string[] {
+/** AC16's files: all of `src`, recursively, as AC14 reads it (minor 569; it used to be six folders' top level). */
+const ac16Files = (): string[] => srcFiles();
+
+/**
+ * AC16: every `.<name>()` call outside the handle itself, as `file#enclosing function`. `overlay` adds in-memory files
+ * (absolute path → text) to the scan, for the tests of the scan itself.
+ */
+function callSitesOf(name: "shared" | "crossUserMaintenance", overlay: Readonly<Record<string, string>> = {}): string[] {
   const out = new Set<string>();
-  for (const file of files) {
-    const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+  for (const file of [...ac16Files(), ...Object.keys(overlay)]) {
+    const sf = ts.createSourceFile(file, overlay[file] ?? readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
     const visit = (node: ts.Node) => {
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === name && node.arguments.length === 0) {
-        out.add(`${rel(file)}#${enclosingName(node)}`);
+        out.add(`${relPath(file)}#${enclosingName(node)}`);
       }
       ts.forEachChild(node, visit);
     };
@@ -128,6 +136,21 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
     expect(usesIn(`${head}export const f = async (p: PrismaClient) => {\n  const { $disconnect } = p;\n  await $disconnect();\n};\n`)).toEqual([]);
   });
 
+  it("21.1 AC14 — minor 567: a bare client is known by its members, whatever its type is called", () => {
+    const intersection = usesIn(`${head}declare const c: PrismaClient & { extra: 1 };\nexport const a = c.workout.findMany();\n`);
+    expect(intersection).toHaveLength(1);
+    expect(intersection[0]).toMatch(/^src\/repositories\/x\/fixture\.ts:3 c\.workout/);
+    const extended = usesIn(`${head}const x = new PrismaClient().$extends({});\nexport const b = x.workout.findMany();\n`);
+    expect(extended.some((u) => u.includes(":3 x.workout"))).toBe(true);
+  });
+
+  it("21.1 AC14 — minor 567: the scoped handle's own types are not bare clients", () => {
+    const uses = usesIn(
+      `import type { RawClient, ScopedClient, UserScopedDb } from "../../db/scoped.js";\nexport async function f(db: UserScopedDb, c: ScopedClient, r: RawClient) {\n  await db.as("u").$queryRaw\`SELECT 1\`;\n  await c.$transaction(async (tx) => tx.$queryRaw\`SELECT 1\`);\n  await r.$executeRaw\`SELECT 1\`;\n}\n`,
+    );
+    expect(uses).toEqual([]);
+  });
+
   it("a model call on the transaction client is not a bare use (Review Focus 5)", () => {
     const uses = usesIn(`${head}export const f = (p: PrismaClient) => p.$transaction(async (tx) => tx.user.findUnique({ where: { id: "1" } }));\n`);
     expect(uses).toHaveLength(1);
@@ -140,10 +163,15 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
 });
 
 describe("Spec 21.1 AC16 — minor 404: shared() is only for the shared reference reads", () => {
-  const SCANNED = ["src/repositories", "src/auth", "src/records", "src/account", "src/routes", "src/hevy"];
+  it("21.1 AC16 — minor 569: the shared() scan reads all of src, subfolders included", () => {
+    expect(ac16Files()).toEqual(srcFiles());
+    const nested = overlayPath("src/repositories/nested/x.ts");
+    const sites = callSitesOf("shared", { [nested]: "declare const db: { shared(): unknown };\nexport function peek() {\n  return db.shared();\n}\n" });
+    expect(sites).toContain("src/repositories/nested/x.ts#peek");
+  });
 
   it("shared()'s call sites are exactly the exercise reference reads", () => {
-    expect(callSitesOf("shared", filesIn(SCANNED))).toEqual([
+    expect(callSitesOf("shared")).toEqual([
       "src/repositories/exercise.prisma.ts#listEquipment",
       "src/repositories/exercise.prisma.ts#listMuscleGroups",
       "src/repositories/exercise.prisma.ts#validateReferences",
@@ -151,7 +179,7 @@ describe("Spec 21.1 AC16 — minor 404: shared() is only for the shared referenc
   });
 
   it("the operator scripts' cross-user listings use crossUserMaintenance(), and nothing else does", () => {
-    expect(callSitesOf("crossUserMaintenance", filesIn(SCANNED))).toEqual(["src/account/purge.ts#runPurge", "src/records/rebuild.ts#rebuildRecords"]);
+    expect(callSitesOf("crossUserMaintenance")).toEqual(["src/account/purge.ts#runPurge", "src/records/rebuild.ts#rebuildRecords"]);
   });
 
   it("the audit classifies the reference reads shared on purpose, and the listings cross-user maintenance", () => {

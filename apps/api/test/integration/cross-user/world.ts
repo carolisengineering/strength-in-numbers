@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { uuidv7 } from "uuidv7";
 import { insertExercise, type AppIntegrationDb } from "../helpers.js";
 import { makeCrossUserApp, type WorldActor } from "./app.js";
+import type { LeakScanner } from "./compare.js";
+import { crossUserRequester, mustAnswer, type CrossUserRequest } from "./request.js";
 import { ownedIds } from "./snapshot.js";
 
 /**
@@ -61,6 +63,8 @@ export interface World {
 /** The Hevy ids both A and B hold (the AC14 collisions and the row 50 import). */
 export const SHARED_HEVY_TEMPLATE = "T-CROSS-SHARED";
 export const SHARED_HEVY_WORKOUT = "hevy-cross-shared-1";
+/** The Hevy id each actor's finished workout is linked under (the hevy-link control reads A's back, minor 375). */
+export const SENT_HEVY_WORKOUT: Record<WorldActor, string> = { A: "hevy-sent-A", B: "hevy-sent-B", C: "hevy-sent-C" };
 export const IMPORT_DAY = { startTime: "2026-09-10T10:00:00Z", endTime: "2026-09-10T11:00:00Z", title: "Imported push" } as const;
 
 /**
@@ -94,28 +98,14 @@ interface Json {
   [key: string]: unknown;
 }
 
-type Api = (actor: WorldActor, method: string, url: string, body?: unknown) => Promise<{ status: number; json: Json }>;
+type Api = CrossUserRequest;
 
-function apiFor(app: FastifyInstance, as: (a: WorldActor) => Record<string, string>): Api {
-  return async (actor, method, url, body) => {
-    const res = await app.inject({
-      method: method as "GET",
-      url,
-      headers: { ...as(actor), ...(body === undefined ? {} : { "content-type": "application/json" }) },
-      ...(body === undefined ? {} : { payload: JSON.stringify(body) }),
-    });
-    const json = (res.body === "" ? {} : JSON.parse(res.body)) as Json;
-    return { status: res.statusCode, json };
-  };
-}
+/** The suite's shared request helper (minor 380): a 429 fails by name, and A's and C's responses reach the leak scan. */
+const apiFor = (app: FastifyInstance, as: (a: WorldActor) => Record<string, string>, scanner?: LeakScanner): Api => crossUserRequester(app, as, scanner);
 
 /** Calls a route and fails loudly unless it answers `expect`. */
-async function must(api: Api, expectStatus: number, actor: WorldActor, method: string, url: string, body?: unknown): Promise<Json> {
-  const res = await api(actor, method, url, body);
-  if (res.status !== expectStatus) {
-    throw new Error(`world: ${actor} ${method} ${url} answered ${res.status}, expected ${expectStatus}: ${JSON.stringify(res.json)}`);
-  }
-  return res.json;
+function must(api: Api, expectStatus: number, actor: WorldActor, method: string, url: string, body?: unknown): Promise<Json> {
+  return mustAnswer<Json>(api, actor, { method, url, ...(body === undefined ? {} : { body }) }, expectStatus, "world");
 }
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
@@ -219,7 +209,7 @@ async function buildOwned(
   }
   const begin = await must(api, 200, actor, "POST", `/v1/workouts/${started.id}/hevy-link`);
   await must(api, 200, actor, "PUT", `/v1/workouts/${started.id}/hevy-link`, {
-    hevyWorkoutId: `hevy-sent-${actor}`,
+    hevyWorkoutId: SENT_HEVY_WORKOUT[actor],
     fingerprint: begin.fingerprint,
   });
   const imported = await must(api, 200, actor, "POST", "/v1/hevy/import/workouts", {
@@ -286,10 +276,13 @@ async function buildOwned(
   };
 }
 
-/** Builds A, B and C on `db`. The building app allow-lists A and B for Hevy; the cases' app only A (AC16). */
-export async function buildWorld(db: AppIntegrationDb): Promise<World> {
+/**
+ * Builds A, B and C on `db`. The building app allow-lists A and B for Hevy; the cases' app only A (AC16). With a
+ * `scanner`, every response A or C gets while the world is built joins the leak scan (minor 380).
+ */
+export async function buildWorld(db: AppIntegrationDb, scanner?: LeakScanner): Promise<World> {
   const boot = await makeCrossUserApp(db);
-  const bootApi = apiFor(boot.app, boot.as);
+  const bootApi = apiFor(boot.app, boot.as, scanner);
   const userIds = {} as Record<WorldActor, string>;
   for (const actor of ["A", "B", "C"] as const) userIds[actor] = (await must(bootApi, 200, actor, "GET", "/v1/me")).id;
   await boot.app.close();
@@ -298,7 +291,7 @@ export async function buildWorld(db: AppIntegrationDb): Promise<World> {
   const globalOnlyB = await insertExercise(db, { name: "Cross-user Front Squat" });
 
   const built = await makeCrossUserApp(db, { hevyUsers: [userIds.A, userIds.B] });
-  const api = apiFor(built.app, built.as);
+  const api = apiFor(built.app, built.as, scanner);
   try {
     const markers: string[] = [];
     let n = 0;

@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   MODEL_DELEGATES,
+  TIES,
   UNSAFE_ALLOWLIST,
+  anchorsOf,
   checkAudit,
   extractStatements,
   fingerprint,
@@ -308,7 +310,7 @@ describe("AC21 — hasUserPredicate wants a predicate, not a mention (code revie
     );
     const rows = extractStatements([local]);
     const audit = parseAudit(writeAudit([], rows)).map((r) => ({ ...r, status: "ok", category: r.kind === "fragment" ? "fragment" : "user-filtered" }));
-    const issues = sanityIssues(audit, rows);
+    const issues = sanityIssues(audit, rows, {});
     expect(issues.some((s) => s.includes("foo#2"))).toBe(false);
     expect(issues.some((s) => s.includes("bar#1"))).toBe(true);
   });
@@ -327,15 +329,15 @@ describe("AC21 — category sanity over fixtures (final review #4)", () => {
     parseAudit(writeAudit([], rows)).map((r) => ({ ...r, status: "ok", category: cats[r.key.split("#")[1]!] ?? "fragment" }));
 
   it("refuses a user-filtered claim with no user predicate, and an anchored claim with no anchor", () => {
-    expect(sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows)).toEqual([
+    expect(sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows, {})).toEqual([
       // `all` names no user: its user-filtered claim is refused.
       expect.stringContaining("src/repositories/f.ts#all#1"),
     ]);
-    expect(sanityIssues(audit({ own: "user-filtered", me: "user-filtered", all: "anchored" }), rows).some((s) => s.includes("all#1"))).toBe(true);
+    expect(sanityIssues(audit({ own: "user-filtered", me: "user-filtered", all: "anchored" }), rows, {}).some((s) => s.includes("all#1"))).toBe(true);
   });
 
   it("a shared-on-purpose row whose tables come from a fragment it calls is refused", () => {
-    const issues = sanityIssues(audit({ all: "shared on purpose", own: "user-filtered", me: "user-filtered" }), rows);
+    const issues = sanityIssues(audit({ all: "shared on purpose", own: "user-filtered", me: "user-filtered" }), rows, {});
     expect(issues.some((s) => s.includes("all#1") && s.includes("shared"))).toBe(true);
   });
 
@@ -347,19 +349,128 @@ describe("AC21 — category sanity over fixtures (final review #4)", () => {
     );
     const catalogRows = extractStatements([CATALOG]);
     const shared = parseAudit(writeAudit([], catalogRows)).map((r) => ({ ...r, status: "ok", category: "shared on purpose" }));
-    const issues = sanityIssues(shared, catalogRows);
+    const issues = sanityIssues(shared, catalogRows, {});
     expect(issues.some((s) => s.includes("roles#1"))).toBe(false);
     expect(issues.some((s) => s.includes("mixed#1") && s.includes("shared"))).toBe(true);
   });
 
   it("a model-delegate call on an owned table is not shared on purpose", () => {
-    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "shared on purpose" }), rows);
+    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "shared on purpose" }), rows, {});
     expect(issues.some((s) => s.includes("me#1") && s.includes("shared"))).toBe(true);
   });
 
   it("a user model call keyed by id is user-filtered (self)", () => {
-    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows);
+    const issues = sanityIssues(audit({ all: "user-filtered", own: "user-filtered", me: "user-filtered" }), rows, {});
     expect(issues.some((s) => s.includes("me#1"))).toBe(false);
+  });
+});
+
+describe("AC21 — minor 391: an anchored row can name several anchors", () => {
+  const TWO = src(
+    "src/repositories/two.ts",
+    `export async function lockA(db: unknown, id: string, u: string) { return db.$queryRaw\`SELECT id FROM "workout" WHERE id = \${id}::uuid AND user_id = \${u}::uuid FOR UPDATE\`; }
+     export async function lockB(db: unknown, id: string, u: string) { return db.$queryRaw\`SELECT id FROM "workout" WHERE id = \${id}::uuid AND user_id = \${u}::uuid FOR SHARE\`; }
+     export async function peek(db: unknown, id: string) { return db.$queryRaw\`SELECT id FROM "workout" WHERE id = \${id}::uuid FOR UPDATE\`; }
+     export async function count(db: unknown, id: string) { return db.$queryRaw\`SELECT count(*) FROM "workout_exercise" WHERE workout_id = \${id}::uuid\`; }`,
+  );
+  const rows = extractStatements([TWO]);
+  const key = (fn: string) => `src/repositories/two.ts#${fn}#1`;
+  const audit = (anchor: string, peek = "anchored") =>
+    parseAudit(writeAudit([], rows)).map((r) => ({
+      ...r,
+      status: "ok",
+      category: r.key === key("count") ? "anchored" : r.key === key("peek") ? peek : "user-filtered",
+      anchor: r.key === key("count") ? anchor : r.key === key("peek") ? key("lockA") : "—",
+    }));
+
+  it("anchorsOf splits the Anchor column on commas", () => {
+    expect(anchorsOf({ anchor: "a#f#1, b#g#2" })).toEqual(["a#f#1", "b#g#2"]);
+    expect(anchorsOf({ anchor: "`a#f#1`" })).toEqual(["a#f#1"]);
+  });
+
+  it("two anchors that are both user-filtered locks pass", () => {
+    expect(sanityIssues(audit(`${key("lockA")}, ${key("lockB")}`), rows, {})).toEqual([]);
+  });
+
+  it("an anchor that is not user-filtered fails, naming that anchor (Review Focus 4)", () => {
+    const issues = sanityIssues(audit(`${key("lockA")}, ${key("peek")}`), rows, {}).filter((i) => i.startsWith(key("count")));
+    expect(issues).toEqual([`${key("count")}: its anchor ${key("peek")} is missing, not user-filtered, or neither locks nor inserts`]);
+  });
+
+  it("an anchor that doesn't exist fails, naming it, and the others still count", () => {
+    const issues = sanityIssues(audit(`${key("lockA")}, src/repositories/two.ts#gone#1`), rows, {});
+    expect(issues).toEqual([`${key("count")}: its anchor src/repositories/two.ts#gone#1 is missing, not user-filtered, or neither locks nor inserts`]);
+  });
+
+  it("the header lists every anchor of a row, and --write keeps a hand-set list", () => {
+    const written = writeAudit(audit(`${key("lockA")}, ${key("lockB")}`), rows);
+    expect(written).toContain(`- \`${key("count")}\` relies on \`${key("lockA")}\`, \`${key("lockB")}\``);
+    expect(parseAudit(written).find((r) => r.key === key("count"))!.anchor).toBe(`${key("lockA")}, ${key("lockB")}`);
+  });
+});
+
+describe("AC21 — minor 390: a listed tie can't be removed without failing the audit", () => {
+  const extracted = extractStatements(readSources());
+  const rows = parseAudit(readFileSync(AUDIT_PATH, "utf8"));
+  const CREATE_SET = "src/repositories/set-entry.prisma.ts#createSet#3";
+
+  it("TIES lists the five statements keyed by a request id and tied to the locked workout", () => {
+    expect(Object.keys(TIES).sort()).toEqual([
+      "src/repositories/set-entry.prisma.ts#createSet#3",
+      "src/repositories/workout-section.prisma.ts#lockSectionRow#1",
+      "src/repositories/workout-section.prisma.ts#removeWorkoutSection#1",
+      "src/repositories/workout.prisma.ts#deleteWorkoutExercise#2",
+      "src/repositories/workout.prisma.ts#updateWorkoutExercise#2",
+    ]);
+  });
+
+  it("removing a tie fails the audit, even with the row re-approved", () => {
+    const untied = extracted.map((s) => (s.key === CREATE_SET ? { ...s, text: s.text.replace(" AND workout_id = ${parent.workout_id}::uuid", "") } : s));
+    expect(untied.find((s) => s.key === CREATE_SET)!.text).not.toContain("workout_id =");
+    expect(sanityIssues(rows, untied)).toEqual([`${CREATE_SET}: its tie ("${TIES[CREATE_SET]}") is gone`]);
+    expect(sanityIssues(rows, extracted)).toEqual([]);
+  });
+
+  it("every TIES key is a statement in src (a renamed file or function can't switch its tie off; final review)", () => {
+    const keys = new Set(extracted.map((s) => s.key));
+    expect(Object.keys(TIES).filter((k) => !keys.has(k))).toEqual([]);
+  });
+
+  it("a tie is checked even when none of its file was extracted (final review)", () => {
+    const withoutFile = (key: string) => !key.startsWith("src/repositories/set-entry.prisma.ts#");
+    const issues = sanityIssues(rows.filter((r) => withoutFile(r.key)), extracted.filter((s) => withoutFile(s.key)));
+    expect(issues).toContain(`${CREATE_SET}: listed in TIES, but it is not an anchored row`);
+  });
+
+  it("a tied row that is no longer anchored, or no longer exists, fails too", () => {
+    const reclassified = rows.map((r) => (r.key === CREATE_SET ? { ...r, category: "user-filtered" } : r));
+    expect(sanityIssues(reclassified, extracted)).toContain(`${CREATE_SET}: listed in TIES, but it is not an anchored row`);
+    const gone = rows.filter((r) => r.key !== CREATE_SET);
+    expect(sanityIssues(gone, extracted)).toContain(`${CREATE_SET}: listed in TIES, but it is not an anchored row`);
+  });
+});
+
+describe("minor 399 — an alias's callers list under its target", () => {
+  it("a call of `export const X: Owned = Y` is a caller of Y's fragment", () => {
+    const OWNERSHIP = src(
+      "src/repositories/ownership.ts",
+      `export const ownedA: Owned = (u, ref) => Prisma.sql\`EXISTS (SELECT 1 FROM "a" WHERE a.id = \${ref} AND a.user_id = \${u}::uuid)\`;
+       export const ownedB: Owned = ownedA;`,
+    );
+    const USER = src(
+      "src/repositories/b.ts",
+      'import { ownedB } from "./ownership.js";\nexport async function read(db: unknown, u: string) { return db.$queryRaw`SELECT 1 FROM "b" WHERE ${ownedB(u, Prisma.sql`b.a_id`)}`; }',
+    );
+    const rows = extractStatements([OWNERSHIP, USER]);
+    expect(rows.find((r) => r.key === "src/repositories/ownership.ts#ownedA#1")!.callers).toEqual(["src/repositories/b.ts#read#1"]);
+    expect(rows.filter((r) => r.kind === "fragment")).toHaveLength(1);
+  });
+
+  it("an alias of something that isn't a fragment adds no caller", () => {
+    const rows = extractStatements([
+      src("src/repositories/c.ts", 'const limit = 5;\nexport const cap = limit;\nexport const F = Prisma.sql`x = 1`;\nexport async function read(db: unknown) { return db.$queryRaw`SELECT ${cap} WHERE ${F}`; }'),
+    ]);
+    expect(rows.find((r) => r.kind === "fragment")!.callers).toEqual(["src/repositories/c.ts#read#1"]);
   });
 });
 
@@ -403,7 +514,22 @@ describe("the real audit — docs/security/query-audit.md against apps/api/src",
   it("AC31 — the header counts every category and lists every anchored statement with its anchor", () => {
     const md = readFileSync(AUDIT_PATH, "utf8");
     expect(md).toMatch(/^\d+ statements: /m);
-    for (const r of rows.filter((x) => x.category === "anchored")) expect(md).toContain(`- \`${r.key}\` relies on \`${r.anchor.replace(/`/g, "")}\``);
+    for (const r of rows.filter((x) => x.category === "anchored")) {
+      expect(md).toContain(`- \`${r.key}\` relies on ${anchorsOf(r).map((a) => `\`${a}\``).join(", ")}`);
+    }
+  });
+
+  it("minor 391 — the rows used on the delete path too name both workout locks", () => {
+    for (const k of ["src/repositories/workout.prisma.ts#countExercises#1", "src/repositories/personal-record.prisma.ts#rootsForWorkout#1"]) {
+      expect([k, anchorsOf(rows.find((r) => r.key === k)!)]).toEqual([k, ["src/repositories/workout.prisma.ts#updateWorkout#1", "src/repositories/workout.prisma.ts#deleteWorkout#1"]]);
+    }
+  });
+
+  it("minor 398 — the header says what the fingerprint can't see, and that ties are checked only for the listed rows", () => {
+    const md = readFileSync(AUDIT_PATH, "utf8");
+    expect(md).toContain("a fragment chosen outside the template");
+    expect(md).toContain("so review the variable's definition too");
+    for (const key of Object.keys(TIES)) expect(md).toContain(`\`${key}\``);
   });
 });
 

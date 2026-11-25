@@ -150,6 +150,10 @@ describe.skipIf(!shouldRunIntegration())("Spec 07.6 — History counts lifts (HT
         const records = await l.records(workoutId);
         expect(await l.recordCount(workoutId)).toBe(liftsWithBeatenRecords(records));
         expect(await l.recordCount(workoutId)).toBe(expected);
+        // Minor 674 (07.0 D16, which 07.6 D4 relies on): a previous value means the record was beaten, so it rose.
+        for (const r of records.filter((x) => x.previousValue !== null)) {
+          expect(r.value, `${name}: ${r.recordType} has a previous value`).toBeGreaterThan(r.previousValue!);
+        }
         if (name === "lone-rounded-zero-e1rm" || name === "lb-equal-weights") {
           // The fixture is what it claims: every beaten non-volume row rose by a sliver, never an ordinary rise.
           const beaten = records.filter((r) => r.recordType !== "best_set_volume" && r.previousValue !== null);

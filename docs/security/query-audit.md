@@ -6,10 +6,12 @@ extracts the statements from the TypeScript syntax tree, and a unit test fails w
 without its row changing here. After any SQL change run `pnpm --filter @sin/api run audit:queries --write`, then set the category of every row it marks
 `needs review` (the test refuses that status).
 
+What the check can't see. The fingerprint covers each statement's text and every `${…}` in it by name; a fragment chosen outside the template (`const g = c ? Prisma.sql… : Prisma.empty`) changes the statement without changing its fingerprint, so review the variable's definition too. An anchored statement keyed by an id from the request must also tie itself to the locked row (`AND workout_id = ${…}`); the check reads that tie only for the rows listed in `TIES` (`apps/api/scripts/lib/query-extract.ts`): `src/repositories/set-entry.prisma.ts#createSet#3`, `src/repositories/workout.prisma.ts#updateWorkoutExercise#2`, `src/repositories/workout.prisma.ts#deleteWorkoutExercise#2`, `src/repositories/workout-section.prisma.ts#removeWorkoutSection#1`, `src/repositories/workout-section.prisma.ts#lockSectionRow#1`. For every other anchored row the tie is the reviewer's to read.
+
 Categories:
 
 - **user-filtered**: the statement itself carries a user predicate (`user_id = $acting`, `owner_user_id IS NULL OR owner_user_id = $acting`, `id = $acting` on `"user"`, an `ownership.ts` helper, or an `INSERT` that writes the acting user's id).
-- **anchored**: keyed by an id with no user predicate, but tied to an *anchor*: a user-filtered locking statement on the root row earlier in the same transaction (named in the Anchor column).
+- **anchored**: keyed by an id with no user predicate, but tied to an *anchor*: a user-filtered locking statement on the root row earlier in the same transaction (named in the Anchor column; a statement used on several paths names each path's anchor, separated by commas).
 - **shared on purpose**: reference data (`muscle_group`, `equipment`, the catalog's `owner_user_id IS NULL` rows), Postgres's own catalogs (`pg_*`), or no table at all.
 - **cross-user maintenance**: the operator scripts that act on many users (`account/purge.ts`, `records/rebuild.ts`, `seed/catalog.ts`).
 - **fragment**: a piece composed into other statements, classified through the callers listed beside it.
@@ -23,7 +25,7 @@ Categories:
 - `src/repositories/hevy-import.prisma.ts#writeImportedWorkout#3` relies on `src/repositories/hevy-import.prisma.ts#writeImportedWorkout#2`: the imported workout's sections, keyed by the workout this transaction just inserted for the user
 - `src/repositories/hevy-import.prisma.ts#writeImportedWorkout#4` relies on `src/repositories/hevy-import.prisma.ts#writeImportedWorkout#2`: the imported workout's exercises, keyed by the workout this transaction just inserted for the user
 - `src/repositories/hevy-import.prisma.ts#writeImportedWorkout#6` relies on `src/repositories/hevy-import.prisma.ts#writeImportedWorkout#2`: the imported sets, keyed by exercises this transaction just inserted
-- `src/repositories/personal-record.prisma.ts#rootsForWorkout#1` relies on `src/repositories/workout.prisma.ts#updateWorkout#1`: a workout's lineage roots (exercise ids, not user data), under the finish/retime/delete workout FOR UPDATE … user_id (§6.7 #20)
+- `src/repositories/personal-record.prisma.ts#rootsForWorkout#1` relies on `src/repositories/workout.prisma.ts#updateWorkout#1`, `src/repositories/workout.prisma.ts#deleteWorkout#1`: a workout's lineage roots (exercise ids, not user data), under the finish/retime/delete workout FOR UPDATE … user_id (§6.7 #20)
 - `src/repositories/personal-record.prisma.ts#rootOfWorkoutExercise#1` relies on `src/repositories/set-entry.prisma.ts#lockedWorkoutSpan#1`: one exercise's lineage root, under the set write's workout lock (or the structure lock for an exercise delete) (§6.7 #20)
 - `src/repositories/personal-record.prisma.ts#repeatedRootOfWorkoutExercise#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutStructure#3`: a moved exercise's lineage root and repeat count, under the structure lock (§6.7 #20)
 - `src/repositories/routine.prisma.ts#insertSections#2` relies on `src/repositories/routine.prisma.ts#create#3`: a routine's sections, keyed by the routine created (or, on PUT, locked by replace#1) for the user (§6.7 #16)
@@ -54,7 +56,7 @@ Categories:
 - `src/repositories/workout-section.prisma.ts#clearSectionRoundTime#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutForRecord#1`: deletes a round of the section lockSectionRow#1 tied to the locked workout (§6.7 #14)
 - `src/repositories/workout-section.prisma.ts#setSectionResult#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutForRecord#1`: sets the result of the section, tied to the locked workout (workout_id = anchor) (§6.7 #13)
 - `src/repositories/workout-section.prisma.ts#clearSectionResult#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutForRecord#1`: clears the result of the section, tied to the locked workout (workout_id = anchor) (§6.7 #13)
-- `src/repositories/workout.prisma.ts#countExercises#1` relies on `src/repositories/workout.prisma.ts#updateWorkout#1`: counts a workout's exercises under the caller's workout lock (finish, delete, or the structure lock) (§6.7 #7)
+- `src/repositories/workout.prisma.ts#countExercises#1` relies on `src/repositories/workout.prisma.ts#updateWorkout#1`, `src/repositories/workout.prisma.ts#deleteWorkout#1`: counts a workout's exercises under the caller's workout lock (finish, delete, or the structure lock) (§6.7 #7)
 - `src/repositories/workout.prisma.ts#countAndLastSection#1` relies on `src/repositories/workout-section.prisma.ts#lockWorkoutStructure#3`: the exercise count and last section of the locked workout (§6.7 #7)
 - `src/repositories/workout.prisma.ts#insertFromRoutine#2` relies on `src/repositories/workout.prisma.ts#insertFromRoutine#1`: copies the routine's sections, under the routine FOR SHARE … user_id (§6.7 #11)
 - `src/repositories/workout.prisma.ts#insertFromRoutine#3` relies on `src/repositories/workout.prisma.ts#insertFromRoutine#1`: reads the routine's items, under the routine FOR SHARE … user_id (§6.7 #11)
@@ -238,7 +240,7 @@ Categories:
 | Key | Kind | Category | Status | Anchor / callers | Fingerprint | Description |
 |---|---|---|---|---|---|---|
 | `src/repositories/personal-record.prisma.ts#lockUserRecords#1` | query | shared on purpose | ok | — | `7cc51da9df99` | Takes a transaction advisory lock (no table) |
-| `src/repositories/personal-record.prisma.ts#rootsForWorkout#1` | query | anchored | ok | src/repositories/workout.prisma.ts#updateWorkout#1 | `0afa4fc95c1a` | a workout's lineage roots (exercise ids, not user data), under the finish/retime/delete workout FOR UPDATE … user_id (§6.7 #20) |
+| `src/repositories/personal-record.prisma.ts#rootsForWorkout#1` | query | anchored | ok | src/repositories/workout.prisma.ts#updateWorkout#1, src/repositories/workout.prisma.ts#deleteWorkout#1 | `0afa4fc95c1a` | a workout's lineage roots (exercise ids, not user data), under the finish/retime/delete workout FOR UPDATE … user_id (§6.7 #20) |
 | `src/repositories/personal-record.prisma.ts#rootOfWorkoutExercise#1` | query | anchored | ok | src/repositories/set-entry.prisma.ts#lockedWorkoutSpan#1 | `0cc4c987046c` | one exercise's lineage root, under the set write's workout lock (or the structure lock for an exercise delete) (§6.7 #20) |
 | `src/repositories/personal-record.prisma.ts#repeatedRootOfWorkoutExercise#1` | query | anchored | ok | src/repositories/workout-section.prisma.ts#lockWorkoutStructure#3 | `b207a6adf22d` | a moved exercise's lineage root and repeat count, under the structure lock (§6.7 #20) |
 | `src/repositories/personal-record.prisma.ts#lineageRangeSql#1` | fragment | fragment | ok | callers: src/repositories/personal-record.prisma.ts#loadLineageSets#1 | `925780b92643` | SQL piece composed into the callers listed |
@@ -388,7 +390,7 @@ Categories:
 | `src/repositories/workout.prisma.ts#loadExercises#1` | query | user-filtered | ok | — | `2b7aa90b02d4` | Reads workout_exercise; filtered on its own user_id (Spec 21.1) |
 | `src/repositories/workout.prisma.ts#loadSectionSnapshot#1` | query | user-filtered | ok | — | `548377d8a4a9` | Reads workout, workout_section, workout_section_round, routine |
 | `src/repositories/workout.prisma.ts#readWorkoutDetail#1` | query | user-filtered | ok | — | `f6f11fd550f1` | Reads workout |
-| `src/repositories/workout.prisma.ts#countExercises#1` | query | anchored | ok | src/repositories/workout.prisma.ts#updateWorkout#1 | `1982892da0bb` | counts a workout's exercises under the caller's workout lock (finish, delete, or the structure lock) (§6.7 #7) |
+| `src/repositories/workout.prisma.ts#countExercises#1` | query | anchored | ok | src/repositories/workout.prisma.ts#updateWorkout#1, src/repositories/workout.prisma.ts#deleteWorkout#1 | `1982892da0bb` | counts a workout's exercises under the caller's workout lock (finish, delete, or the structure lock) (§6.7 #7) |
 | `src/repositories/workout.prisma.ts#countAndLastSection#1` | query | anchored | ok | src/repositories/workout-section.prisma.ts#lockWorkoutStructure#3 | `c5f2bff2caf7` | the exercise count and last section of the locked workout (§6.7 #7) |
 | `src/repositories/workout.prisma.ts#tryInsert#1` | query | user-filtered | ok | — | `696577b3ee00` | Inserts into workout |
 | `src/repositories/workout.prisma.ts#insertFromRoutine#1` | query | user-filtered | ok | — | `3047ac339129` | Reads routine (FOR SHARE) |
