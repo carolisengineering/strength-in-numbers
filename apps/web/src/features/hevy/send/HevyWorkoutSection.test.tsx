@@ -46,9 +46,12 @@ describe("20.2 AC1 / AC2 / AC3 — section rendering", () => {
     const { queryClient } = renderApp(HISTORY);
     await screen.findByRole("heading", { name: "Workout summary" });
     await waitFor(() => expect(s.statusReads()).toBeGreaterThan(0));
-    await waitFor(() =>
-      expect(queryClient.getQueryCache().findAll({ queryKey: HEVY_KEYS.statusAll }).every((q) => q.state.status === "error")).toBe(true),
-    );
+    // Minor 706: an empty list would pass `every`, so the status read must be in the cache first.
+    await waitFor(() => {
+      const qs = queryClient.getQueryCache().findAll({ queryKey: HEVY_KEYS.statusAll });
+      expect(qs.length).toBeGreaterThan(0);
+      expect(qs.every((q) => q.state.status === "error")).toBe(true);
+    });
     expect(screen.queryByRole("region", { name: "Hevy" })).toBeNull();
     expect(s.link.log).toEqual([]);
   });

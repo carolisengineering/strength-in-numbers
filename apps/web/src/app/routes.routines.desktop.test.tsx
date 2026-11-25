@@ -17,12 +17,14 @@ import { resetDesktop, setDesktop } from "../test/desktop";
 import { catalog, pushA } from "../test/routineFixtures";
 import { makeRoutine, makeSet, makeWorkoutDetail, routineId } from "../test/workoutFixtures";
 import { createWorkoutFake, problemResponse } from "../test/workoutFake";
-import { cleanupApp, prepareApp, renderApp } from "../test/workoutHarness";
+import { cleanupApp, deferred, prepareApp, renderApp } from "../test/workoutHarness";
+import { http } from "msw";
+import { server } from "../test/msw/server";
 import { GONE_NOTICE, RESUMED_NOTICE, ROUTINE_GONE_NOTICE } from "../features/workouts/WorkoutsScreen";
 import { GONE_TITLE } from "../features/workouts/messages";
 import { outboxKey } from "../features/workouts/outbox/outbox";
 import { localStorageAdapter } from "../storage/storage";
-import { USER_ID } from "../test/catalogHarness";
+import { API_BASE_URL, USER_ID } from "../test/catalogHarness";
 import { optionsButton } from "../test/sessionHelpers";
 
 afterEach(() => {
@@ -151,6 +153,40 @@ describe("17.12 AC26 — a live workout keeps its single column", () => {
   });
 });
 
+describe("minor 672 — a start from the list pane beside an open routine", () => {
+  it("a resumed start beside an open routine shows the notice on Workouts", async () => {
+    const { fake, router, user } = await setup(previewPath(A));
+    await panesReady();
+    await within(detailPane()).findByRole("heading", { level: 1, name: "Push A" });
+    fake.state.active = makeWorkoutDetail(); // started on another device after this screen loaded
+    await user.click(within(listPane()).getByRole("button", { name: "Start empty workout" }));
+    expect(await screen.findByText(RESUMED_NOTICE)).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/app/workouts");
+    expect(startPosts(fake)).toHaveLength(1);
+  });
+
+  it("minor 666 beside a routine: a start that resolves after leaving doesn't navigate back", async () => {
+    const { router, user } = await setup(previewPath(A));
+    await panesReady();
+    await within(detailPane()).findByRole("heading", { level: 1, name: "Push A" });
+    const held = deferred<void>();
+    let posted = false;
+    // Held, then let through to the fake's own handler.
+    server.use(
+      http.post(`${API_BASE_URL}/v1/workouts`, async () => {
+        posted = true;
+        await held.promise;
+      }),
+    );
+    await user.click(within(listPane()).getByRole("button", { name: "Start empty workout" }));
+    await waitFor(() => expect(posted).toBe(true));
+    await act(() => router.navigate("/app/history"));
+    held.resolve();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(router.state.location.pathname).toBe("/app/history");
+  });
+});
+
 describe("17.12 AC27 — the leave guard covers the pane", () => {
   it("another row and a rail item ask; the open row doesn't; a resize keeps the draft", async () => {
     const { router, user } = await setup(editPath(A));
@@ -199,6 +235,9 @@ describe("17.12 AC27 — the leave guard covers the pane", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Workout" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/app/workouts");
     await waitFor(() => expect(startPosts(fake)).toHaveLength(1));
+    // Minor 672: still one once the session has settled (the wait above passes as soon as the first is sent).
+    await new Promise((r) => setTimeout(r, 100));
+    expect(startPosts(fake)).toHaveLength(1);
     expect(router.state.location.state).toBeNull();
   });
 

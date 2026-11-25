@@ -18,7 +18,7 @@ describe("18.2 AC57 — disabled choice", () => {
   // Re-recorded for Spec 17.7 AC7: Primary muscle and Equipment are drawn by the shared Select (a span, the select
   // and a chevron); nothing else in this markup changed.
   // Re-recorded for Spec 17.13 AC16: the type radios are RadioChips (only their label's class changed).
-  it("with no new props the markup is exactly what it was before Phase B", () => {
+  it("with no new props the markup matches the snapshot (re-recorded for 17.7 AC7 and 17.13 AC16)", () => {
     const { container } = render(
       <div data-testid="root">
         <ExerciseFields {...base} />
@@ -28,7 +28,7 @@ describe("18.2 AC57 — disabled choice", () => {
     expect(markupOf(container.firstElementChild!)).toMatchSnapshot();
   });
 
-  it("a disabled type is disabled, keeps its label, and its label is muted", () => {
+  it("a disabled type is disabled and keeps its label; an enabled one is not (the mute is RadioChip's CSS)", () => {
     const disabled = new Set<Modality>(["calories", "duration"]);
     render(<ExerciseFields {...base} disabledModalities={disabled} modalityNotice={<p>Locked note</p>} />);
     const calories = screen.getByRole("radio", { name: "Calories" });

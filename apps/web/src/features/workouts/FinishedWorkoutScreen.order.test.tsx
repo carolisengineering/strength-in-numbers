@@ -214,9 +214,12 @@ describe("17.6 AC24 — the Hevy block moves unchanged", () => {
     const { queryClient } = renderApp(`/app/history/${WORKOUT_ID}`);
     const last = await screen.findByRole("region", { name: "Row" });
     await waitFor(() => expect(s.statusReads()).toBeGreaterThan(0));
-    await waitFor(() =>
-      expect(queryClient.getQueryCache().findAll({ queryKey: HEVY_KEYS.statusAll }).every((q) => q.state.status === "error")).toBe(true),
-    );
+    // Minor 706: an empty list would pass `every`, so the status read must be in the cache first.
+    await waitFor(() => {
+      const qs = queryClient.getQueryCache().findAll({ queryKey: HEVY_KEYS.statusAll });
+      expect(qs.length).toBeGreaterThan(0);
+      expect(qs.every((q) => q.state.status === "error")).toBe(true);
+    });
     expect(s.detail.routineNotes ?? null).toBeNull();
     const after = Array.from(screen.getByRole("main").querySelectorAll("*")).filter((el) => !last.contains(el) && follows(last, el));
     expect(after).toEqual([]);

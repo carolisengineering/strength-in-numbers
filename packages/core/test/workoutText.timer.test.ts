@@ -463,6 +463,9 @@ describe("#279 — only a label colon ends the run (owner ruling 2026-11-05)", (
     ["TIME", "Time Cap 15-Min.", timeCap(900)],
     ["TIME", "Time Cap 12:00", timeCap(720)],
     ["TIME", "Time Cap - 12:00", timeCap(720)],
+    // Minor 374: a bulleted cap inside the run, and one with a trailing period.
+    ["TIME", "- Time Cap 12:00", timeCap(720)],
+    ["TIME", "Time Cap 12:00.", timeCap(720)],
     ["ROUNDS/REPS", "12 Min.AMRAP", amrap(720)],
     ["ROUNDS/REPS", "AMRAP 12:00", amrap(720)],
   ])("%s / 21-15-9 / Thrusters / %s / Pull-ups → one run, the line in the note", (badge, line, timer) => {
