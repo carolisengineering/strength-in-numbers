@@ -90,6 +90,17 @@ describe("minor 763 — Delete workout from an edit opened off History's summary
     await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/workouts"));
   });
 
+  it("final review: after Delete workout from Edit, Forward twice lands on the list, not Not found", async () => {
+    const app = await openFromHistory();
+    await deleteWholeFromEdit(app);
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
+    await act(() => app.router.navigate(1)); // the summary: gone, so it goes on to its list (minors 716, 770)
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
+    await act(() => app.router.navigate(1)); // the edit entry left ahead by the Back
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
+    expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
+  });
+
   it("Review Focus 1: Edit from a summary opened by a direct link, then Delete workout: replaces with History", async () => {
     prepareApp({ auth, fake: createWorkoutFake({ finished: [OLDER, NEWER], active: null }) });
     const app = renderApp(`/app/history/${NEWER.id}`);

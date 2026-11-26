@@ -5,7 +5,7 @@ import { ROUTINE_SECTIONS_MAX, canLinkRule, type Exercise, type SessionOp, type 
 
 import { track } from "../../../observability/track";
 import { useWaitingFinish } from "../useWaitingFinish";
-import { isFromHome, isFromSummary } from "../summaryEntry";
+import { deletedHere, isFromHome, isFromSummary } from "../summaryEntry";
 import { NotFound } from "../../../screens/NotFound";
 import { ActionBar, ActionBarHint } from "../../../ui/ActionBar";
 import { BackLink } from "../../../ui/BackLink";
@@ -92,6 +92,7 @@ export function EditWorkoutScreen({ section }: { section: SummarySection }) {
 function EditWorkoutBody({ section }: { section: SummarySection }) {
   const home = SECTION_HOME[section];
   const { id = "" } = useParams();
+  const location = useLocation();
   // #160: set while Delete workout is in flight. The detail stops reading (a focus refetch would find it, or 404 once
   // the delete has removed it from the cache), and once it is gone the screen draws nothing until the navigation lands.
   const [leaving, setLeaving] = useState(false);
@@ -126,7 +127,9 @@ function EditWorkoutBody({ section }: { section: SummarySection }) {
   }
 
   if (detail.data === undefined) {
-    if (gone) return <NotFound />;
+    // Minor 763's Back leaves this edit entry ahead; Forward to it after this tab deleted the workout goes on to the
+    // list, as the summary's entry does (minors 716, 770). Any other way in still says Not found.
+    if (gone) return isFromHome(location.state) && deletedHere(id) ? <Navigate to={home.to} replace /> : <NotFound />;
     return (
       <Screen title="Edit workout" lead={<BackLink to={home.to} label={home.label} />}>
         <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void detail.refetch()}>

@@ -60,6 +60,7 @@ describe("19.1 AC14 — AC1–AC14 each have a tagged core test", () => {
   });
 
   it("minor 758: a title with an apostrophe is read", () => {
-    expect([...'describe("19.1 AC1 — it doesn\'t", () => {})'.matchAll(TITLES)]).toHaveLength(1);
+    // AC99, a number the gate doesn't want: this file is scanned too, so a wanted number here would tag itself.
+    expect([...'describe("19.1 AC99 — it doesn\'t", () => {})'.matchAll(TITLES)]).toHaveLength(1);
   });
 });
