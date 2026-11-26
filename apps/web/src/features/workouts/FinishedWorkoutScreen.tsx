@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
-import { FROM_HOME, FROM_SUMMARY, isFromHome } from "./summaryEntry";
+import { FROM_HOME, deletedHere, editEntryState, isFromHome } from "./summaryEntry";
 import type { WorkoutDetail } from "@sin/core";
 
 import { BackLink } from "../../ui/BackLink";
@@ -90,9 +90,12 @@ export function FinishedWorkoutScreen({ section = "workouts", workoutId }: { sec
   // Minors 235, 238: the load error is classified once, as on the edit screen. A gone workout is gone even with a
   // cached copy.
   const failure = detail.isError ? classifyWorkoutError(detail.error, { op: "load-workout" }) : null;
-  // Minor 716: a summary opened from its list (`fromHome`) whose workout is gone is the entry a delete left behind when
-  // it went Back (minor 696), so Forward lands on the list. A summary reached any other way still says Not found.
-  if (failure?.kind === "not-found") return isFromHome(location.state) ? <Navigate to={home.to} replace /> : <NotFound />;
+  // Minor 716: a summary opened from its list (`fromHome`) whose workout this tab deleted is the entry the delete left
+  // behind when it went Back (minor 696), so Forward lands on the list. Minor 770: a workout gone for another reason
+  // (deleted on another device), or a summary reached any other way, still says Not found.
+  if (failure?.kind === "not-found") {
+    return isFromHome(location.state) && deletedHere(id) ? <Navigate to={home.to} replace /> : <NotFound />;
+  }
   // Spec 18.0 (final review #1): a failed *refresh* keeps the cached workout on screen (the edit screen's re-reads on
   // focus make that common); only a failure with nothing cached replaces the summary.
   if (failure !== null && detail.data === undefined) {
@@ -128,6 +131,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
   // The tap's reason is read once and then cleared: a browser router keeps it in history state, so a reload or Back
   // would otherwise say "no signal" again and move focus again (final review). Later wording comes from the outbox.
   const location = useLocation();
+  const routeId = useParams().id;
   const [tapped] = useState(() => (location.state as { saved?: "offline" | "slow" } | null)?.saved);
   const titleRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -154,7 +158,12 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
             <>
               {/* Spec 17.6 AC22 (D7): Edit workout is a menu item above Delete; navigation only, no request. */}
               {open ? (
-                <Button variant="secondary" onClick={() => void navigate(`/app/${section}/${workout.id}/edit`, { state: FROM_SUMMARY })}>
+                <Button variant="secondary" onClick={() =>
+                    void navigate(`/app/${section}/${workout.id}/edit`, {
+                      state: editEntryState(routeId === workout.id, location.state),
+                    })
+                  }
+                >
                   Edit workout
                 </Button>
               ) : null}

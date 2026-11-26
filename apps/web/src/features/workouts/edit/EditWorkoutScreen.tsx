@@ -5,7 +5,7 @@ import { ROUTINE_SECTIONS_MAX, canLinkRule, type Exercise, type SessionOp, type 
 
 import { track } from "../../../observability/track";
 import { useWaitingFinish } from "../useWaitingFinish";
-import { isFromSummary } from "../summaryEntry";
+import { isFromHome, isFromSummary } from "../summaryEntry";
 import { NotFound } from "../../../screens/NotFound";
 import { ActionBar, ActionBarHint } from "../../../ui/ActionBar";
 import { BackLink } from "../../../ui/BackLink";
@@ -220,7 +220,10 @@ function EditBody({
     try {
       await deleteWorkout.mutateAsync({ id: workoutId, phase: "finished", setCount });
       setLastSetOpen(false);
-      void navigate(home, { replace: true });
+      // Minor 763: an edit opened from a summary that came from its list goes Back past that summary (now gone) to the
+      // list, as a delete on the summary does (minor 696). Any other way in, it replaces with the list as before.
+      if (isFromSummary(location.state) && isFromHome(location.state)) void navigate(-2);
+      else void navigate(home, { replace: true });
     } catch (error) {
       onLeaving(false);
       setLastSetOpen(false);
