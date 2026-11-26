@@ -126,13 +126,43 @@ export interface UpdateTarget {
   columns: string[] | null;
 }
 
+/**
+ * The text with its `-- …` and `/* … *\/` comments blanked, outside string literals (final review: an apostrophe in a
+ * comment would otherwise open a quote that hides every column after it).
+ */
+function withoutComments(text: string): string {
+  let out = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (ch === "'") quoted = !quoted;
+    if (!quoted && text.startsWith("--", i)) {
+      const end = text.indexOf("\n", i);
+      i = end === -1 ? text.length : end - 1;
+      out += " ";
+      continue;
+    }
+    if (!quoted && text.startsWith("/*", i)) {
+      const end = text.indexOf("*/", i + 2);
+      i = end === -1 ? text.length : end + 1;
+      out += " ";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 /** Minor 412: every table a statement updates, with the columns it sets. */
-export function updateTargets(text: string): UpdateTarget[] {
+export function updateTargets(sql: string): UpdateTarget[] {
+  const text = withoutComments(sql);
   const out: UpdateTarget[] = [];
   for (const head of [UPDATE_HEAD, UPSERT_HEAD]) {
     for (const m of text.matchAll(head)) {
       const setList = setListAt(text, m.index + m[0].length);
-      const readable = splitTopLevel(setList).every((part) => READABLE_PART.test(part));
+      // A quote still open at the end of the list (an odd count; `''` counts two) fails closed: the list can't be read.
+      const balanced = (setList.match(/'/g)?.length ?? 0) % 2 === 0;
+      const readable = balanced && splitTopLevel(setList).every((part) => READABLE_PART.test(part));
       out.push({ table: m[2]!.toLowerCase(), columns: readable ? setColumns(setList) : null });
     }
   }
@@ -200,6 +230,15 @@ describe("Spec 21.1 Review Focus 2 — every column the API updates is granted t
   it("minor 737 — a FROM or WHERE inside a string literal doesn't end the SET list", () => {
     expect(updateTargets("UPDATE \"user\" SET note = 'from where, here', display_name = ? WHERE id = ?")).toEqual([{ table: "user", columns: ["note", "display_name"] }]);
     expect(updateTargets("UPDATE \"user\" SET note = 'it''s, from (here', display_name = ? WHERE id = ?")).toEqual([{ table: "user", columns: ["note", "display_name"] }]);
+  });
+
+  it("minor 737 (final review) — an apostrophe in a SQL comment doesn't hide the columns after it", () => {
+    expect(updateTargets("UPDATE \"user\" SET display_name = ?, -- the lifter's name\n email = ? WHERE id = ?")).toEqual([{ table: "user", columns: ["display_name", "email"] }]);
+    expect(updateTargets("UPDATE \"user\" SET display_name = ?, /* the lifter's name */ email = ? WHERE id = ?")).toEqual([{ table: "user", columns: ["display_name", "email"] }]);
+  });
+
+  it("minor 737 (final review) — a quote left open fails closed: the SET list can't be read", () => {
+    expect(updateTargets("UPDATE \"user\" SET note = 'unclosed, email = ? WHERE id = ?")).toEqual([{ table: "user", columns: null }]);
   });
 
   it("minor 737 — a schema-qualified table is read", () => {

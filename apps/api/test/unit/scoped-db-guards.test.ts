@@ -47,6 +47,8 @@ const SCOPED_FILE = /[\\/]src[\\/]db[\\/]scoped\.ts$/;
 const PRISMA_CLIENT_FILE = /[\\/]\.?prisma[\\/]client[\\/]/;
 const declaredIn = (sym: ts.Symbol | undefined, file: RegExp) => (sym?.getDeclarations() ?? []).some((d) => file.test(d.getSourceFile().fileName));
 const UTILITY_NARROWS = new Set(["Pick", "Omit"]);
+/** Prisma 6's `ITXClientDenyList` (`@prisma/client/runtime/library.d.ts`): what a transaction client lacks. */
+const ITX_DENY_LIST = ["$connect", "$disconnect", "$on", "$transaction", "$extends"];
 
 /**
  * AC14: each property access on a bare client (any union member), as `file:line text`. A union member is bare when:
@@ -54,7 +56,7 @@ const UTILITY_NARROWS = new Set(["Pick", "Omit"]);
  *   `$extends` client is one too, unless it is one of the scoped handle's types declared in `src/db/scoped.ts`
  *   (minor 738);
  * - (minor 741) it has a member typed as a Prisma model `*Delegate`, no `$transaction`, and isn't a transaction client
- *   (`Prisma.TransactionClient`, or the `Omit<PrismaClient, …"$transaction"…>` Prisma hands a `$transaction` callback),
+ *   (`Prisma.TransactionClient`, or the `Omit<PrismaClient, ITXClientDenyList>` Prisma hands a `$transaction` callback),
  *   so `Pick<PrismaClient, "workout">` and an alias of it are bare.
  * An inline `Pick<X, …>` / `Omit<X, …>` is judged by `X`: `Pick<Prisma.TransactionClient, "workout">` is the same type
  * as `Pick<PrismaClient, "workout">` structurally, and only the type it narrows tells them apart.
@@ -67,11 +69,16 @@ export function bareClientUses(p: ts.Program, files: readonly string[]): string[
       const sym = m.aliasSymbol ?? m.getSymbol();
       return sym !== undefined && sym.getName().endsWith("Delegate") && declaredIn(sym, PRISMA_CLIENT_FILE);
     });
-  const omitsTransaction = (keys: ts.Type | undefined) =>
-    keys !== undefined && (keys.isUnion() ? keys.types : [keys]).some((k) => k.isStringLiteral() && k.value === "$transaction");
+  // Prisma's transaction client is `Omit<PrismaClient, ITXClientDenyList>`: it drops all five of these. An `Omit` that
+  // drops fewer (only `$transaction`, say) is a hand-narrowed bare client (final review).
+  const omitsDenyList = (keys: ts.Type | undefined) => {
+    if (keys === undefined) return false;
+    const omitted = new Set((keys.isUnion() ? keys.types : [keys]).flatMap((k) => (k.isStringLiteral() ? [k.value] : [])));
+    return ITX_DENY_LIST.every((k) => omitted.has(k));
+  };
   const isTransactionClient = (x: ts.Type) =>
     (x.aliasSymbol?.getName() === "TransactionClient" && declaredIn(x.aliasSymbol, PRISMA_CLIENT_FILE)) ||
-    (x.aliasSymbol?.getName() === "Omit" && omitsTransaction(x.aliasTypeArguments?.[1]));
+    (x.aliasSymbol?.getName() === "Omit" && omitsDenyList(x.aliasTypeArguments?.[1]));
   const bareType = (x: ts.Type, depth = 0): boolean => {
     const name = (x.aliasSymbol ?? x.getSymbol())?.getName();
     if (name !== undefined && SCOPED_TYPES.has(name) && declaredIn(x.aliasSymbol ?? x.getSymbol(), SCOPED_FILE)) return false;
@@ -191,6 +198,16 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
       usesIn(
         'import type { Prisma } from "@prisma/client";\nexport const f = (t: Prisma.TransactionClient, n: Pick<Prisma.TransactionClient, "workout">) => Promise.all([t.workout.findMany(), n.workout.findMany()]);\n',
       ),
+    ).toEqual([]);
+  });
+
+  it("21.1 AC14 — minor 741 (final review): an Omit that drops only $transaction is a narrowed bare client, not a transaction client", () => {
+    const uses = usesIn(`${head}export const f = (p: Omit<PrismaClient, "$transaction">) => p.workout.findMany();\n`);
+    expect(uses).toHaveLength(1);
+    expect(uses[0]).toMatch(/:2 p\.workout/);
+    // Prisma's own transaction-client shape drops its whole deny list, and stays not bare.
+    expect(
+      usesIn(`${head}export const g = (t: Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">) => t.workout.findMany();\n`),
     ).toEqual([]);
   });
 
