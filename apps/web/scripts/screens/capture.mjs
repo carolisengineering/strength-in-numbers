@@ -543,6 +543,21 @@ const DEVICES = {
   desktop: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
 };
 
+/**
+ * Every outbox file: one per account since Spec 06.7 AC8, plus the legacy single file. The app is left first (for a
+ * static file on the same origin), because a page that unloads writes its outbox back, and the next page would adopt
+ * the held writes (the logging loop; minor 750: the 92 step too).
+ */
+async function clearOutboxFiles(page) {
+  await page.goto(`${BASE}/manifest.webmanifest`);
+  await page.evaluate(() => {
+    try {
+      const keys = Object.keys(window.localStorage).filter((k) => k === "sin:workout:outbox" || k.startsWith("sin:workout:outbox:"));
+      for (const k of keys) window.localStorage.removeItem(k);
+    } catch { /* storage blocked */ }
+  });
+}
+
 async function settle(page) {
   try { await page.waitForLoadState("networkidle", { timeout: 8000 }); } catch { /* settle anyway */ }
   await page.waitForFunction(() => !document.querySelector('[aria-busy="true"]') && !/Starting…|Loading/.test(document.body.innerText.slice(0, 200)), null, { timeout: 8000 }).catch(() => {});
@@ -1752,18 +1767,6 @@ try {
       state.trackLogged = {};
       const violations = [];
       const steps = [];
-      // Every outbox file: one per account since Spec 06.7 AC8, plus the legacy single file.
-      // The app is left first (for a static file on the same origin), because a page that unloads writes its outbox
-      // back, and the next page would adopt the held writes.
-      const clearOutbox = async () => {
-        await page.goto(`${BASE}/manifest.webmanifest`);
-        await page.evaluate(() => {
-          try {
-            const keys = Object.keys(window.localStorage).filter((k) => k === "sin:workout:outbox" || k.startsWith("sin:workout:outbox:"));
-            for (const k of keys) window.localStorage.removeItem(k);
-          } catch { /* storage blocked */ }
-        });
-      };
       const refuseSetCreate = (u) => isSinApi(u) && /^\/v1\/workout-exercises\/[^/]+\/sets$/.test(u.pathname);
       try {
       await go("/app/workouts");
@@ -1890,7 +1893,7 @@ try {
       // the next set's create is answered 422, so the screen locks Finish in its own words.
       state.hangWrites = false;
       await page.setViewportSize(opts.viewport);
-      await clearOutbox();
+      await clearOutboxFiles(page);
       await page.route(refuseSetCreate, (route) => (route.request().method() === "POST" ? route.fulfill(problem(422, "validation-failed", "Validation failed")) : route.fallback()));
       await go("/app/workouts");
       const beforeRefusal = await measureLoggingLoop(page);
@@ -1903,13 +1906,18 @@ try {
       } catch (e) {
         violations.push(`the step stopped early: ${e.message.split("\n")[0]}`);
       } finally {
-        state.hangWrites = false;
-        await page.unroute(refuseSetCreate);
-        await page.evaluate(() => { document.documentElement.removeAttribute("data-keyboard"); });
-        await page.setViewportSize(opts.viewport);
-        await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:rest"); } catch { /* storage blocked */ } });
-        await clearOutbox();
+        // Minor 756: the state resets go first, and a cleanup that throws is reported, so the report below always runs.
         state.trackLogged = null;
+        state.hangWrites = false;
+        try {
+          await page.unroute(refuseSetCreate);
+          await page.evaluate(() => { document.documentElement.removeAttribute("data-keyboard"); });
+          await page.setViewportSize(opts.viewport);
+          await page.evaluate(() => { try { window.localStorage.removeItem("sin:workout:rest"); } catch { /* storage blocked */ } });
+          await clearOutboxFiles(page);
+        } catch (e) {
+          violations.push(`cleanup failed: ${e.message.split("\n")[0]}`);
+        }
       }
       loggingLoop.push({ theme, device, steps, violations });
       for (const v of violations) console.error(`  LOGGING LOOP ${theme}/${device}: ${v}`);
@@ -2034,6 +2042,8 @@ try {
           await go(`/app/history/${D.ids.plankOnly}/edit`);
           await page.getByRole("button", { name: /^Add set to Plank/ }).first().click();
           await page.waitForSelector("dialog[open]", { timeout: 4000 });
+          // Minor 757: measure only Plank's own sheet (SetEditSheet's title, `New set · ${exerciseName}`).
+          if ((await page.getByRole("dialog", { name: "New set · Plank" }).count()) !== 1) violations.push(`${at} Plank sheet: the open sheet isn't Plank's`);
           const plankSheet = await measureEntryPanel(page, "dialog[open] form");
           checkPanel(`${at} Plank sheet`, plankSheet);
           if (plankSheet.duration === null || plankSheet.duration === undefined) violations.push(`${at} Plank sheet: no Minutes and Seconds in a stepper row`);
@@ -2047,6 +2057,7 @@ try {
           await go(`/app/history/${D.ids.conditioning}/edit`);
           await page.getByRole("button", { name: /^Add set to Farmer Carry/ }).first().click();
           await page.waitForSelector("dialog[open]", { timeout: 4000 });
+          if ((await page.getByRole("dialog", { name: "New set · Farmer Carry" }).count()) !== 1) violations.push(`${at} carry sheet: the open sheet isn't Farmer Carry's`);
           checkPanel(`${at} carry sheet`, await measureEntryPanel(page, "dialog[open] form"));
           if (size.width === 320) {
             const units = await measureSegments(page, "dialog[open]", "Distance unit");
@@ -2117,7 +2128,9 @@ try {
             if (Math.abs(m.slotWidth - none.slotWidth) > 0.5) violations.push(`AC10${tag}: the rest slot is ${m.slotWidth}px with ${name}, ${none.slotWidth}px with no rest`);
             if (Math.abs(m.labelRowHeight - none.labelRowHeight) > 0.5) violations.push(`AC10${tag}: label row is ${m.labelRowHeight}px with ${name}, ${none.labelRowHeight}px with no rest`);
             if (Math.abs(m.firstRowOffset - none.firstRowOffset) > 0.5) violations.push(`AC10${tag}: steppers start ${m.firstRowOffset}px down with ${name}, ${none.firstRowOffset}px with no rest`);
-            if (m.nameLines !== none.nameLines) violations.push(`AC10${tag}: the name is on ${m.nameLines} lines with ${name}, ${none.nameLines} with no rest`);
+            // Minor 762: a missing name element says so, rather than comparing (or passing on) two nulls.
+            if (m.nameLines === null || none.nameLines === null) violations.push(`AC10${tag}: no exercise name in the label row (${name})`);
+            else if (m.nameLines !== none.nameLines) violations.push(`AC10${tag}: the name is on ${m.nameLines} lines with ${name}, ${none.nameLines} with no rest`);
           }
           return { none, savedRest };
         };
@@ -2138,7 +2151,8 @@ try {
           try {
             const { none } = await ac10(" long name", /^Bench/, false);
             if (none.panel !== `Log a set of ${AC10_LONG_NAME}`) violations.push(`AC10 long name: measured "${none.panel}", not the long name`);
-            if (none.nameLines < 2) violations.push(`AC10 long name: the name is on ${none.nameLines} line`);
+            if (none.nameLines === null) violations.push("AC10 long name: no exercise name in the label row");
+            else if (none.nameLines < 2) violations.push(`AC10 long name: the name is on ${none.nameLines} line`);
           } finally {
             state.almostDone = null;
           }
@@ -2464,14 +2478,9 @@ try {
       await page.getByRole("region", { name: "Main" }).getByText("Not saved yet").waitFor({ timeout: 4000 });
       await page.getByRole("region", { name: "Main" }).scrollIntoViewIfNeeded();
       await shoot(page, device, "92-session-timed-heading", "Live timed section: the plan with its total, the round times, Log result, and Not saved yet for a queued entry (Spec 10.7 AC19, AC39)");
-      // Drop the held entry so no later page sends it to a workout the harness no longer serves.
-      // Every outbox file: one per account since Spec 06.7 AC8, plus the legacy single file.
-      await page.evaluate(() => {
-        try {
-          const keys = Object.keys(window.localStorage).filter((k) => k === "sin:workout:outbox" || k.startsWith("sin:workout:outbox:"));
-          for (const k of keys) window.localStorage.removeItem(k);
-        } catch { /* storage blocked */ }
-      });
+      // Drop the held entry so no later page sends it to a workout the harness no longer serves. Minor 750: from a
+      // static page, since the app page unloading would write its outbox back.
+      await clearOutboxFiles(page);
     });
     state.hangWrites = false;
     await tryStep("log result sheets", async () => {
