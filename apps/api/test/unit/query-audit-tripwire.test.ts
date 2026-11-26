@@ -61,7 +61,22 @@ describe("minor 393 — raw SQL only in spellings the audit lists", () => {
     ],
     ["minor 732 — an assignment pattern inside an array", "let q: unknown;\n[{ $queryRaw: q }] = [tx];\nvoid q;\n", 1],
     ["minor 732 — an assignment pattern as a for…of head", "let q: unknown;\nfor ({ $queryRaw: q } of [tx]) void q;\n", 1],
-    ["minor 732 — Reflect[\"get\"]", 'export const a = Reflect["get"](tx, "$queryRaw");\n', 1],
+    [
+      "minor 732 (code review) — a for…of head over an array variable of narrowed clients",
+      'declare const list: Pick<Prisma.TransactionClient, "workout">[];\nlet w: unknown;\nfor ({ workout: w } of list) void w;\n',
+      4,
+    ],
+    [
+      "minor 732 (code review) — an array pattern off an array variable of narrowed clients",
+      'declare const clients: Pick<Prisma.TransactionClient, "workout">[];\nlet w: unknown;\n[{ workout: w }] = clients;\nvoid w;\n',
+      4,
+    ],
+    [
+      "minor 732 (code review) — a nested pattern reaching a narrowed client's delegate",
+      'declare const ctx: { deps: Pick<Prisma.TransactionClient, "workout"> };\nlet w: unknown;\n({ deps: { workout: w } } = ctx);\nvoid w;\n',
+      4,
+    ],
+    ["minor 732 — Reflect[\"get\"]",'export const a = Reflect["get"](tx, "$queryRaw");\n', 1],
     ["minor 732 — a destructured Reflect.get", 'const { get } = Reflect;\nexport const a = get(tx, "$queryRaw");\n', 1],
   ] as [string, string, number, string?][])("%s fails with its rule", (_name, body, rule, head) => {
     const issues = issuesFor(body, head ?? HEAD);
