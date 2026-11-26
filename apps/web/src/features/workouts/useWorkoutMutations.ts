@@ -29,6 +29,7 @@ import { withExerciseNotes, withSetRemoved, withSetUpserted } from "./cache";
 import { WORKOUT_KEYS, useWorkoutClient } from "./queries";
 import { guardReads, rereadIfStale, type ReadGuard, rereadUntilLanded } from "./readGuard";
 import { reportUnexpected } from "./reportUnexpected";
+import { markDeletedHere } from "./summaryEntry";
 import type { FinishOutcome, WorkoutClient, WorkoutExercisePatch } from "./workoutClient";
 
 /**
@@ -160,6 +161,7 @@ export function useDeleteWorkout(): UseMutationResult<
     networkMode: "always",
     mutationFn: ({ id }) => ignoreNotFound(() => client.deleteWorkout(id)),
     onSuccess: (_void, { id, phase, setCount }) => {
+      markDeletedHere(id); // minor 770: the summary this delete leaves behind may send Forward on to its list
       drafts?.clearWorkout(id); // Spec 06.5 AC10
       rest?.clearWorkout(id); // Spec 17.1 AC47
       outbox?.dropWorkout(id); // Spec 18.0 AC25: an op for a workout the lifter just deleted must not be sent

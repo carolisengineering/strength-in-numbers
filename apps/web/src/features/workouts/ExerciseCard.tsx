@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import type { SetEntry, WorkoutExerciseDetail, WorkoutSection } from "@sin/core";
 
 import { Button } from "../../ui/Button";
@@ -17,6 +17,7 @@ import { useSetExerciseNote } from "./useWorkoutMutations";
 import type { SectionSegment } from "./sectionSegments";
 import styles from "./ExerciseCard.module.css";
 import { SetText, WarmupMark } from "./WarmupMark";
+import { useReportOpen } from "./useReportOpen";
 
 export interface ExerciseCardProps {
   exercise: WorkoutExerciseDetail;
@@ -169,13 +170,8 @@ export function ExerciseCard({
   const setNote = useSetExerciseNote();
   const [noteSheet, setNoteSheet] = useState<{ session: number; open: boolean } | null>(null);
   const sheetOpen = editing !== null || adding || noteSheet?.open === true;
-  // Minor 711: open and closed both reported, so the screen counts this sheet as an overlay for as long as it's open
-  // (the cleanup reports a close, an unmount with the sheet open included).
-  useEffect(() => {
-    if (!sheetOpen) return;
-    onOverlayChange?.(true);
-    return () => onOverlayChange?.(false);
-  }, [sheetOpen, onOverlayChange]);
+  // Minors 711, 768: the screen counts this sheet as an overlay for as long as it's open, from before the paint.
+  useReportOpen(sheetOpen, onOverlayChange);
   const noteSync = sync.get(exercise.id);
   const hasNote = Boolean(exercise.notes);
   function saveNote(notes: string | null) {

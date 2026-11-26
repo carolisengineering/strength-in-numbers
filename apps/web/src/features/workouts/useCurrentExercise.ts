@@ -13,7 +13,8 @@ export interface CurrentExercise {
   /**
    * Minors 710, 713: how many choices `select` and `selectWhenAdded` have made, counted the moment they're called (so
    * a gate set in the same tick sees it). `advanceFrom` and the fallback never count: a reveal is dropped only when
-   * the lifter chose since it was set.
+   * the lifter chose since it was set. The count lives in a ref read during render; it's right only because `select`
+   * and `selectWhenAdded` also set state. A bump without a state update would be missed until the next render (minor 766).
    */
   choiceNow(): number;
 }

@@ -12,6 +12,7 @@ import { catalogKey } from "../features/catalog/constants";
 import { clearUserData } from "../storage/clearUserData";
 import { localStorageAdapter } from "../storage/storage";
 import { EditWorkoutClientContext, WorkoutClientContext } from "../features/workouts/queries";
+import { resetDeletedHereForTests } from "../features/workouts/summaryEntry";
 import type { WorkoutClient } from "../features/workouts/workoutClient";
 import { API_BASE_URL, USER_ID, stubWebEnv } from "./catalogHarness";
 import { server } from "./msw/server";
@@ -137,6 +138,7 @@ export function prepareApp({ auth, fake, catalog = [], unitPreference = "kg" }: 
 export function cleanupApp(): void {
   clearUserData(localStorageAdapter());
   resetConfigCache();
+  resetDeletedHereForTests(); // minor 770's set lives for the page load, which in tests is the whole file
   vi.unstubAllEnvs();
 }
 

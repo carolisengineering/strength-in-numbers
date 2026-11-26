@@ -183,6 +183,8 @@ const movementTextOf = (line: string): string => BULLETED_BOLD.exec(line)?.[2] ?
 /**
  * #264, #265, #276: a note line as the timer rules read it: collapsed, with its leading bullets off, and a whole-text
  * bold pair after them as a movement line loses it (AC71; minor 597: `- **12 Minute Cap**`). The note keeps its text (D10).
+ * Inside a run the caller has already stripped the bullets (`bare`, the run branch); stripping again is harmless, and
+ * the shared helper is what minor 374's test pins (minor 749).
  */
 const timerLine = (line: string) => movementTextOf(collapseLine(line));
 

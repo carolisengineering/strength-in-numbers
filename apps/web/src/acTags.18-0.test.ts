@@ -12,7 +12,7 @@ describe("18.0 AC47 — every unit-tested criterion has a tagged test", () => {
   it("each wanted AC appears in a describe title as '18.0 ACn'", () => {
     const tagged = new Set<number>();
     for (const source of Object.values(tests)) {
-      for (const title of source.matchAll(/describe\(\s*(["'`])((?:(?!\1).)*)\1/g)) {
+      for (const title of source.matchAll(/describe\(\s*(["'`])((?:(?!\1)[\s\S])*)\1/g)) {
         for (const group of title[2]!.matchAll(/18\.0 ((?:AC\d+(?:\s*(?:,|\/|and)\s*)?)+)/g)) {
           for (const ac of group[1]!.matchAll(/AC(\d+)/g)) tagged.add(Number(ac[1]));
         }

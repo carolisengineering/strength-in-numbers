@@ -11,7 +11,7 @@ describe("10.4 AC41 — AC1–AC18 and AC42–AC54 each have a tagged core test"
     const tagged = new Set<number>();
     for (const f of readdirSync(DIR).filter((n) => n.endsWith(".test.ts"))) {
       const source = readFileSync(join(DIR, f), "utf8");
-      for (const title of source.matchAll(/describe\(\s*(["'`])([^"'`]*)\1/g)) {
+      for (const title of source.matchAll(/describe\(\s*(["'`])((?:(?!\1)[\s\S])*)\1/g)) {
         for (const ac of title[2]!.matchAll(/10\.4 AC(\d+)/g)) tagged.add(Number(ac[1]));
       }
     }
