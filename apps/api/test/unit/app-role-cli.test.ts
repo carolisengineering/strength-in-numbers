@@ -124,6 +124,19 @@ describe("minor 414 — the local password is refused on a remote host", () => {
     expect(connected).toBe(true);
   });
 
+  it("minor 724 — the local password on a local host gets a notice", async () => {
+    const notice = "using the repo's local password: for the compose database only (through a tunnel to another database, use openssl rand -hex 24)\n";
+    const t = io({ isTTY: false });
+    const makePrisma = (): PrismaClient => {
+      throw new Error("stop here");
+    };
+    expect(await main([], { OWNER_DATABASE_URL: OWNER, APP_ROLE_PASSWORD: LOCAL_APP_ROLE_PASSWORD }, { io: t.io, makePrisma })).toBe(1);
+    expect(t.lines.err.startsWith(notice)).toBe(true);
+    const remote = io({ isTTY: false });
+    await main([], { OWNER_DATABASE_URL: REMOTE, APP_ROLE_PASSWORD: LOCAL_APP_ROLE_PASSWORD }, { io: remote.io, makePrisma: neverConnect });
+    expect(remote.lines.err).not.toContain(notice);
+  });
+
   it("the repo's files use the one local password", () => {
     for (const file of ["../../../../docker-compose.yml", "../../.env.example", "../../.env.owner.example", "../../docs/manual-testing.md"]) {
       expect(readFileSync(new URL(file, import.meta.url), "utf8"), file).toContain(LOCAL_APP_ROLE_PASSWORD);

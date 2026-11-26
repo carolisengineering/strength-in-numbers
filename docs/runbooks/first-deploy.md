@@ -637,7 +637,8 @@ pnpm --filter @sin/api exec node scripts/owner-env.mjs prisma migrate resolve --
 
 **S4 — give `sin_app` its login.** Never create or edit this role in the Neon Console: Console roles are members of
 `neon_superuser`, which bypasses row-level security. Use a hex password, so it needs no escaping in a URL, and keep it in
-your password manager.
+your password manager. A tunnel or proxy on `localhost` to any other database counts as remote here: the command can't
+tell, so use a generated password there too.
 
 ```bash
 export APP_ROLE_PASSWORD="$(openssl rand -hex 24)"

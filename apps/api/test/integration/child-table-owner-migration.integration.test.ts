@@ -248,57 +248,57 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 Phase A — migration 0019 (
 
     /**
      * Minor 401: for each child table, a fresh row of A's (key 7, which B's parent doesn't hold, so the table's own
-     * unique key can't refuse first) and the `UPDATE` that moves it under B's parent of the same kind.
+     * unique key can't refuse first) and the `UPDATE` that moves it under B's parent of the same kind. Minor 734: the
+     * insert runs on its own, so a failing setup fails the test instead of passing as the expected 23503.
      */
-    const moveUnderB: Record<ChildTable, () => Promise<unknown>> = {
-      workout_exercise: async () => {
-        const id = uuidv7();
-        await sql(
-          `INSERT INTO "workout_exercise" (id, workout_id, position, exercise_id, exercise_name_snapshot, modality_snapshot) VALUES ($1::uuid, $2::uuid, 7, $3::uuid, 'Bench', 'weight_reps')`,
-          id,
-          a.workout,
-          exercise,
-        );
-        return sql(`UPDATE "workout_exercise" SET workout_id = $1::uuid WHERE id = $2::uuid`, b.workout, id);
-      },
-      workout_section: async () => {
-        const id = uuidv7();
-        await sql(`INSERT INTO "workout_section" (id, workout_id, position, name) VALUES ($1::uuid, $2::uuid, 7, 'Moved')`, id, a.workout);
-        return sql(`UPDATE "workout_section" SET workout_id = $1::uuid WHERE id = $2::uuid`, b.workout, id);
-      },
-      set_entry: async () => {
-        const id = uuidv7();
-        await insertSet(id, a.workoutExercise, 7);
-        return sql(`UPDATE "set_entry" SET workout_exercise_id = $1::uuid WHERE id = $2::uuid`, b.workoutExercise, id);
-      },
-      workout_planned_set: async () => {
-        const id = uuidv7();
-        await sql(`INSERT INTO "workout_planned_set" (id, workout_exercise_id, position) VALUES ($1::uuid, $2::uuid, 7)`, id, a.workoutExercise);
-        return sql(`UPDATE "workout_planned_set" SET workout_exercise_id = $1::uuid WHERE id = $2::uuid`, b.workoutExercise, id);
-      },
-      workout_section_round: async () => {
-        await sql(`INSERT INTO "workout_section_round" (workout_section_id, round_no, seconds) VALUES ($1::uuid, 7, 60)`, a.workoutSection);
-        return sql(`UPDATE "workout_section_round" SET workout_section_id = $1::uuid WHERE workout_section_id = $2::uuid AND round_no = 7`, b.workoutSection, a.workoutSection);
-      },
-      routine_item: async () => {
-        const id = uuidv7();
-        await sql(`INSERT INTO "routine_item" (id, routine_id, position, exercise_id) VALUES ($1::uuid, $2::uuid, 7, $3::uuid)`, id, a.routine, exercise);
-        return sql(`UPDATE "routine_item" SET routine_id = $1::uuid WHERE id = $2::uuid`, b.routine, id);
-      },
-      routine_section: async () => {
-        const id = uuidv7();
-        await sql(`INSERT INTO "routine_section" (id, routine_id, position, name) VALUES ($1::uuid, $2::uuid, 7, 'Moved')`, id, a.routine);
-        return sql(`UPDATE "routine_section" SET routine_id = $1::uuid WHERE id = $2::uuid`, b.routine, id);
-      },
-      routine_item_set: async () => {
-        const id = uuidv7();
-        await sql(`INSERT INTO "routine_item_set" (id, routine_item_id, position) VALUES ($1::uuid, $2::uuid, 7)`, id, a.routineItem);
-        return sql(`UPDATE "routine_item_set" SET routine_item_id = $1::uuid WHERE id = $2::uuid`, b.routineItem, id);
-      },
+    const step = (insert: (id: string) => Promise<unknown>, move: (id: string) => Promise<unknown>) => {
+      const id = uuidv7();
+      return { insert: async () => void (await insert(id)), move: () => move(id) };
+    };
+    const moveUnderB: Record<ChildTable, { insert(): Promise<void>; move(): Promise<unknown> }> = {
+      workout_exercise: step(
+        (id) =>
+          sql(
+            `INSERT INTO "workout_exercise" (id, workout_id, position, exercise_id, exercise_name_snapshot, modality_snapshot) VALUES ($1::uuid, $2::uuid, 7, $3::uuid, 'Bench', 'weight_reps')`,
+            id,
+            a.workout,
+            exercise,
+          ),
+        (id) => sql(`UPDATE "workout_exercise" SET workout_id = $1::uuid WHERE id = $2::uuid`, b.workout, id),
+      ),
+      workout_section: step(
+        (id) => sql(`INSERT INTO "workout_section" (id, workout_id, position, name) VALUES ($1::uuid, $2::uuid, 7, 'Moved')`, id, a.workout),
+        (id) => sql(`UPDATE "workout_section" SET workout_id = $1::uuid WHERE id = $2::uuid`, b.workout, id),
+      ),
+      set_entry: step(
+        (id) => insertSet(id, a.workoutExercise, 7),
+        (id) => sql(`UPDATE "set_entry" SET workout_exercise_id = $1::uuid WHERE id = $2::uuid`, b.workoutExercise, id),
+      ),
+      workout_planned_set: step(
+        (id) => sql(`INSERT INTO "workout_planned_set" (id, workout_exercise_id, position) VALUES ($1::uuid, $2::uuid, 7)`, id, a.workoutExercise),
+        (id) => sql(`UPDATE "workout_planned_set" SET workout_exercise_id = $1::uuid WHERE id = $2::uuid`, b.workoutExercise, id),
+      ),
+      workout_section_round: step(
+        () => sql(`INSERT INTO "workout_section_round" (workout_section_id, round_no, seconds) VALUES ($1::uuid, 7, 60)`, a.workoutSection),
+        () => sql(`UPDATE "workout_section_round" SET workout_section_id = $1::uuid WHERE workout_section_id = $2::uuid AND round_no = 7`, b.workoutSection, a.workoutSection),
+      ),
+      routine_item: step(
+        (id) => sql(`INSERT INTO "routine_item" (id, routine_id, position, exercise_id) VALUES ($1::uuid, $2::uuid, 7, $3::uuid)`, id, a.routine, exercise),
+        (id) => sql(`UPDATE "routine_item" SET routine_id = $1::uuid WHERE id = $2::uuid`, b.routine, id),
+      ),
+      routine_section: step(
+        (id) => sql(`INSERT INTO "routine_section" (id, routine_id, position, name) VALUES ($1::uuid, $2::uuid, 7, 'Moved')`, id, a.routine),
+        (id) => sql(`UPDATE "routine_section" SET routine_id = $1::uuid WHERE id = $2::uuid`, b.routine, id),
+      ),
+      routine_item_set: step(
+        (id) => sql(`INSERT INTO "routine_item_set" (id, routine_item_id, position) VALUES ($1::uuid, $2::uuid, 7)`, id, a.routineItem),
+        (id) => sql(`UPDATE "routine_item_set" SET routine_item_id = $1::uuid WHERE id = $2::uuid`, b.routineItem, id),
+      ),
     };
 
     it.each(CHILD_LINKS.map((l) => l.child))("21.1 AC3 — minor 401: moving A's %s row under B's parent fails 23503", async (child) => {
-      await expect(moveUnderB[child]()).rejects.toThrow(/23503/);
+      await moveUnderB[child].insert();
+      await expect(moveUnderB[child].move()).rejects.toThrow(/23503/);
       // The row stayed where it was: every child still carries its own parent's owner.
       expect((await ownerMismatches(db))[child]).toBe(0);
     });

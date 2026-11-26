@@ -414,21 +414,45 @@ describe("AC21 — minor 390: a listed tie can't be removed without failing the 
   const rows = parseAudit(readFileSync(AUDIT_PATH, "utf8"));
   const CREATE_SET = "src/repositories/set-entry.prisma.ts#createSet#3";
 
-  it("TIES lists the five statements keyed by a request id and tied to the locked workout", () => {
+  it("minor 740 — TIES lists the eleven statements keyed by a request id and tied to the locked workout", () => {
     expect(Object.keys(TIES).sort()).toEqual([
       "src/repositories/set-entry.prisma.ts#createSet#3",
+      "src/repositories/workout-section.prisma.ts#clearSectionResult#1",
       "src/repositories/workout-section.prisma.ts#lockSectionRow#1",
+      "src/repositories/workout-section.prisma.ts#lockSectionThenRead#1",
       "src/repositories/workout-section.prisma.ts#removeWorkoutSection#1",
+      "src/repositories/workout-section.prisma.ts#removeWorkoutSection#3",
+      "src/repositories/workout-section.prisma.ts#setSectionResult#1",
+      "src/repositories/workout-section.prisma.ts#updateWorkoutSection#2",
       "src/repositories/workout.prisma.ts#deleteWorkoutExercise#2",
       "src/repositories/workout.prisma.ts#updateWorkoutExercise#2",
+      "src/repositories/workout.prisma.ts#updateWorkoutExercise#3",
     ]);
   });
 
   it("removing a tie fails the audit, even with the row re-approved", () => {
     const untied = extracted.map((s) => (s.key === CREATE_SET ? { ...s, text: s.text.replace(" AND workout_id = ${parent.workout_id}::uuid", "") } : s));
     expect(untied.find((s) => s.key === CREATE_SET)!.text).not.toContain("workout_id =");
-    expect(sanityIssues(rows, untied)).toEqual([`${CREATE_SET}: its tie ("${TIES[CREATE_SET]}") is gone`]);
+    expect(sanityIssues(rows, untied)).toEqual([`${CREATE_SET}: its tie ("${TIES[CREATE_SET]!.tie}") is gone`]);
     expect(sanityIssues(rows, extracted)).toEqual([]);
+  });
+
+  it("minor 744 — a tie bound to another value fails", () => {
+    const rebound = extracted.map((s) => (s.key === CREATE_SET ? { ...s, text: s.text.replace("${parent.workout_id}", "${body.workoutId}") } : s));
+    expect(rebound.find((s) => s.key === CREATE_SET)!.text).toContain("AND workout_id = ${body.workoutId}");
+    expect(sanityIssues(rows, rebound)).toEqual([`${CREATE_SET}: its tie ("AND workout_id = \${parent.workout_id}") is gone`]);
+  });
+
+  it("minor 744 — a statement added to a tied statement's function fails until TIES is checked", () => {
+    const fn = "src/repositories/set-entry.prisma.ts#createSet";
+    const inFn = extracted.filter((s) => `${s.file}#${s.fn}` === fn);
+    expect(inFn).toHaveLength(5);
+    const others = extracted.filter((s) => `${s.file}#${s.fn}` !== fn);
+    // The extractor numbers a function's statements in source order, so a statement added above shifts every key below it.
+    const renumbered = (list: typeof inFn) => list.map((s, i) => ({ ...s, ordinal: i + 1, key: `${fn}#${i + 1}` }));
+    const issue = `${CREATE_SET}: ${fn} now has 6 statements, not 5: check the key still names the tied statement, then update TIES`;
+    expect(sanityIssues(rows, [...others, ...renumbered([...inFn, inFn[0]!])])).toEqual([issue]);
+    expect(sanityIssues(rows, [...others, ...renumbered([inFn[0]!, ...inFn])])).toContain(issue);
   });
 
   it("every TIES key is a statement in src (a renamed file or function can't switch its tie off; final review)", () => {
@@ -464,6 +488,37 @@ describe("minor 399 — an alias's callers list under its target", () => {
     const rows = extractStatements([OWNERSHIP, USER]);
     expect(rows.find((r) => r.key === "src/repositories/ownership.ts#ownedA#1")!.callers).toEqual(["src/repositories/b.ts#read#1"]);
     expect(rows.filter((r) => r.kind === "fragment")).toHaveLength(1);
+  });
+
+  const OWNED_A = 'export const ownedA: Owned = (u, ref) => Prisma.sql`EXISTS (SELECT 1 FROM "a" WHERE a.id = ${ref} AND a.user_id = ${u}::uuid)`;';
+
+  it("minor 736 — a same-named const in another file is not an alias", () => {
+    const rows = extractStatements([
+      src("src/repositories/ownership.ts", OWNED_A),
+      src("src/repositories/other.ts", "const ownedA = 1;\nexport const X = ownedA;\nexport async function read(db: unknown) { return db.$queryRaw`SELECT ${X}`; }"),
+    ]);
+    expect(rows.find((r) => r.key === "src/repositories/ownership.ts#ownedA#1")!.callers).toEqual([]);
+  });
+
+  it("minor 736 — an alias of an imported fragment is followed through the import", () => {
+    const rows = extractStatements([
+      src("src/repositories/ownership.ts", OWNED_A),
+      src(
+        "src/repositories/other.ts",
+        'import { ownedA as base } from "./ownership.js";\nexport const mine = base;\nexport async function read(db: unknown, u: string) { return db.$queryRaw`SELECT 1 FROM "b" WHERE ${mine(u, Prisma.sql`b.a_id`)}`; }',
+      ),
+    ]);
+    expect(rows.find((r) => r.key === "src/repositories/ownership.ts#ownedA#1")!.callers).toEqual(["src/repositories/other.ts#read#1"]);
+  });
+
+  it("minor 743 — a caller reaching a user-filtered fragment through an alias is user-filtered", () => {
+    const extracted = extractStatements([
+      src("src/repositories/ownership.ts", `${OWNED_A}\nexport const byOwner: Owned = ownedA;`),
+      src("src/repositories/b.ts", 'import { byOwner } from "./ownership.js";\nexport async function read(db: unknown, u: string) { return db.$queryRaw`SELECT 1 FROM "b" WHERE ${byOwner(u, Prisma.sql`b.a_id`)}`; }'),
+    ]);
+    const rows = parseAudit(writeAudit([], extracted)).map((r) => ({ ...r, status: "ok", category: r.kind === "fragment" ? "fragment" : "user-filtered" }));
+    expect(rows.map((r) => r.key)).toEqual(["src/repositories/ownership.ts#ownedA#1", "src/repositories/b.ts#read#1"]);
+    expect(sanityIssues(rows, extracted, {})).toEqual([]);
   });
 
   it("an alias of something that isn't a fragment adds no caller", () => {
@@ -521,8 +576,14 @@ describe("the real audit — docs/security/query-audit.md against apps/api/src",
 
   it("minor 391 — the rows used on the delete path too name both workout locks", () => {
     for (const k of ["src/repositories/workout.prisma.ts#countExercises#1", "src/repositories/personal-record.prisma.ts#rootsForWorkout#1"]) {
-      expect([k, anchorsOf(rows.find((r) => r.key === k)!)]).toEqual([k, ["src/repositories/workout.prisma.ts#updateWorkout#1", "src/repositories/workout.prisma.ts#deleteWorkout#1"]]);
+      expect(anchorsOf(rows.find((r) => r.key === k)!).slice(0, 2), k).toEqual(["src/repositories/workout.prisma.ts#updateWorkout#1", "src/repositories/workout.prisma.ts#deleteWorkout#1"]);
     }
+  });
+
+  it("minor 731 — countExercises#1 names the structure lock as its third anchor", () => {
+    expect(anchorsOf(rows.find((r) => r.key === "src/repositories/workout.prisma.ts#countExercises#1")!)).toContain(
+      "src/repositories/workout-section.prisma.ts#lockWorkoutStructure#3",
+    );
   });
 
   it("minor 398 — the header says what the fingerprint can't see, and that ties are checked only for the listed rows", () => {

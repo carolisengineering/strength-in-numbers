@@ -15,14 +15,16 @@ import { isUserId, type UserId } from "@sin/core";
  * The setting is always transaction-local (`is_local = true`): it ends with the transaction, so a pooled connection
  * never carries one user's id into another's call. `shared()` is the root client, only for the shared reference tables
  * and statements that read no table; `crossUserMaintenance()` is the same root client for the operator commands'
- * listings across users (minor 404). The query audit (Spec 21.0) holds both lists.
+ * listings across users (minor 404), on the owner's handle only (it throws on the API's, minor 723). The query audit
+ * (Spec 21.0) holds both lists.
  *
  * The row-level security policies read `app.user_id` / `app.auth_sub` (Spec 21.1 Phase D, minor 437).
  */
 
 /**
  * The raw half of a Prisma client: what every SQL helper takes (moved here from `set-entry.prisma.ts`). Its calls return
- * a plain `Promise` (minor 405): a scoped call has already started, so it can never be an entry of Prisma's batch
+ * a plain `Promise` (minor 405): a scoped call may already have started (on the API's handle it has; the owner
+ * pass-through still returns Prisma's lazy promise; minor 739), so it can never be an entry of Prisma's batch
  * `$transaction([...])`, which takes lazy `PrismaPromise`s. A `PrismaClient` and a transaction client still fit.
  */
 export interface RawClient {
@@ -58,7 +60,8 @@ export interface UserScopedDb {
   shared(): RawClient;
   /**
    * The same root client, for listings across users in the operator commands (`records:rebuild`, `account:purge`), on the
-   * owner login only (minor 404). Spec 21.1 AC16's scan pins its call sites.
+   * owner login only (minor 404). Spec 21.1 AC16's scan pins its call sites. On the API's own handle (`createScopedDb`) it
+   * throws (minor 723): there a listing would read nothing under row-level security and still succeed.
    */
   crossUserMaintenance(): RawClient;
   /** False for a bare `PrismaClient` wrapped by `toScoped` (tests and maintenance scripts on the owner login). */
@@ -135,7 +138,10 @@ export function createScopedDb(prisma: PrismaClient): UserScopedDb {
     as: (userId) => scopedClient(prisma, USER_SETTING, checkedUserId(userId)),
     forAuthSub: (authSub) => scopedClient(prisma, AUTH_SUB_SETTING, checkedAuthSub(authSub)),
     shared: () => prisma,
-    crossUserMaintenance: () => prisma,
+    // Minor 723: on the API's login a cross-user listing would read nothing under row-level security and "succeed".
+    crossUserMaintenance: () => {
+      throw new Error("crossUserMaintenance() is for the owner login's maintenance commands; the API's handle has no cross-user listing");
+    },
     scoped: true,
   };
 }

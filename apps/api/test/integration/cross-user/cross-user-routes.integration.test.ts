@@ -11,6 +11,7 @@ import { checkCoverage } from "./gate.js";
 import { LeakScanner, freshIdFor, normalizeResponse } from "./compare.js";
 import { CASES, type CaseApi, type CrossUserCase } from "./cases.js";
 import { crossUserRequester, mustAnswer, type CrossUserRequest } from "./request.js";
+import { runThenClean } from "./run-then-clean.js";
 
 const PROBLEM_BASE = "https://strengthinnumbers.app/problems/";
 
@@ -116,7 +117,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route sui
         // When C acts, A is a bystander too and must not change either (minor 382).
         const a0 = c.actor === "A" ? undefined : await snapshot(db, world.a.userId);
 
-        try {
+        // Minor 383: a failing case still cleans up, so one bug doesn't show as several failures. Minor 735: a cleanup
+        // error never hides the case's own failure.
+        await runThenClean(async () => {
           const withB = await call(c.actor, c.call(world, foreign), `${c.route} with B's id`);
           const withFresh = await call(c.actor, c.call(world, fresh), `${c.route} with a fresh id`);
 
@@ -144,10 +147,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route sui
           const scratch = c.disposable ? await c.disposable(world, api) : undefined;
           await runControl(c, scratch);
           expect(await snapshot(db, world.b.userId), "B's rows changed by the control").toBe(b0);
-        } finally {
-          // Minor 383: a failing case still cleans up, so one bug doesn't show as several failures.
-          await c.cleanup?.(world, api);
-        }
+        }, c.cleanup && (() => c.cleanup!(world, api)));
       });
     }
   });
@@ -160,7 +160,8 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route sui
         const b0 = await snapshot(db, world.b.userId);
         // When C acts, A is a bystander too and must not change either.
         const a0 = c.actor === "A" ? undefined : await snapshot(db, world.a.userId);
-        try {
+        // Minors 383, 735: the cleanup always runs, and the case's own failure is the one reported.
+        await runThenClean(async () => {
           const res = await call(c.actor, c.call(world, scratch), `${c.route} (${c.name})`);
           expect(res.status, res.body).toBe(c.expect.status);
           await c.check?.(world, res, api);
@@ -168,9 +169,7 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.0 — the cross-user route sui
           if (a0 !== undefined) expect(await snapshot(db, world.a.userId), "A's rows changed").toBe(a0);
           await runControl(c, scratch);
           expect(await snapshot(db, world.b.userId), "B's rows changed by the control").toBe(b0);
-        } finally {
-          await c.cleanup?.(world, api);
-        }
+        }, c.cleanup && (() => c.cleanup!(world, api)));
       });
     }
   });

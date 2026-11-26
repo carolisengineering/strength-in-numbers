@@ -12,7 +12,8 @@ import { APP_GRANTS } from "../integration/app-grants.js";
  *
  * Minor 412: the statement may carry an alias, an unquoted name, `SET … FROM`, or be an `INSERT … ON CONFLICT … DO UPDATE
  * SET`. A `SET` list the scan can't read (a `${fragment}` where a column should be) fails on these two tables unless
- * `UPDATE_COLUMN_OVERRIDES` lists its columns. A table named by a `${…}` is not seen.
+ * `UPDATE_COLUMN_OVERRIDES` lists its columns. Minor 737: string literals (`'from where, here'`) and a schema in front
+ * of the table (`public."user"`) are read; a table named by a `${…}` still isn't seen.
  */
 
 const SRC = fileURLToPath(new URL("../../src", import.meta.url));
@@ -55,15 +56,20 @@ function templates(file: string): Template[] {
   return out;
 }
 
-/** A `SET` list split on its top-level commas. */
+/**
+ * A `SET` list split on its top-level commas. Minor 737: nothing inside a single-quoted literal counts (an escaped `''`
+ * closes and reopens it, which reads the same).
+ */
 function splitTopLevel(setList: string): string[] {
   const parts: string[] = [];
   let depth = 0;
+  let quoted = false;
   let current = "";
   for (const ch of setList) {
-    if (ch === "(") depth += 1;
-    if (ch === ")") depth -= 1;
-    if (ch === "," && depth === 0) {
+    if (ch === "'") quoted = !quoted;
+    if (!quoted && ch === "(") depth += 1;
+    if (!quoted && ch === ")") depth -= 1;
+    if (!quoted && ch === "," && depth === 0) {
       parts.push(current);
       current = "";
     } else {
@@ -81,22 +87,30 @@ export function setColumns(setList: string): string[] {
     .filter((c) => c !== "");
 }
 
-/** `UPDATE [ONLY] <table> [[AS] alias] SET `, the table quoted or not. `FOR UPDATE` has no `SET` and never matches. */
-const UPDATE_HEAD = /\bUPDATE\s+(?:ONLY\s+)?("?)(\w+)\1(?:\s+(?:AS\s+)?(?!SET\b)\w+)?\s+SET\s+/gi;
+/** A schema in front of the table (`public."user"`, `"public".exercise`; minor 737): read past, not captured. */
+const SCHEMA = String.raw`(?:"?\w+"?\.)?`;
+/** `UPDATE [ONLY] [schema.]<table> [[AS] alias] SET `, the table quoted or not. `FOR UPDATE` has no `SET` and never matches. */
+const UPDATE_HEAD = new RegExp(String.raw`\bUPDATE\s+(?:ONLY\s+)?${SCHEMA}("?)(\w+)\1(?:\s+(?:AS\s+)?(?!SET\b)\w+)?\s+SET\s+`, "gi");
 /**
  * `INSERT INTO <table> … ON CONFLICT … DO UPDATE SET `. Neither gap may cross another `INSERT INTO`, so in a statement
  * with two inserts (a CTE) the upsert belongs to the insert it follows, not to the first one.
  */
 const NO_INSERT = String.raw`(?:(?!\bINSERT\s+INTO\b)[\s\S])*?`;
-const UPSERT_HEAD = new RegExp(String.raw`\bINSERT\s+INTO\s+("?)(\w+)\1${NO_INSERT}\bON\s+CONFLICT\b${NO_INSERT}\bDO\s+UPDATE\s+SET\s+`, "gi");
+const UPSERT_HEAD = new RegExp(String.raw`\bINSERT\s+INTO\s+${SCHEMA}("?)(\w+)\1${NO_INSERT}\bON\s+CONFLICT\b${NO_INSERT}\bDO\s+UPDATE\s+SET\s+`, "gi");
 const SET_END = /^(?:FROM|WHERE|RETURNING)\b/i;
 
-/** The `SET` list that starts at `from`: up to the first `FROM` / `WHERE` / `RETURNING` outside parentheses, or the end. */
+/**
+ * The `SET` list that starts at `from`: up to the first `FROM` / `WHERE` / `RETURNING` outside parentheses and string
+ * literals (minor 737), or the end.
+ */
 function setListAt(text: string, from: number): string {
   let depth = 0;
+  let quoted = false;
   for (let i = from; i < text.length; i += 1) {
     const ch = text[i]!;
-    if (ch === "(") depth += 1;
+    if (ch === "'") quoted = !quoted;
+    else if (quoted) continue;
+    else if (ch === "(") depth += 1;
     else if (ch === ")") depth -= 1;
     else if (depth === 0 && /\W/.test(text[i - 1] ?? " ") && SET_END.test(text.slice(i, i + 10))) return text.slice(from, i);
   }
@@ -112,13 +126,43 @@ export interface UpdateTarget {
   columns: string[] | null;
 }
 
+/**
+ * The text with its `-- …` and `/* … *\/` comments blanked, outside string literals (final review: an apostrophe in a
+ * comment would otherwise open a quote that hides every column after it).
+ */
+function withoutComments(text: string): string {
+  let out = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (ch === "'") quoted = !quoted;
+    if (!quoted && text.startsWith("--", i)) {
+      const end = text.indexOf("\n", i);
+      i = end === -1 ? text.length : end - 1;
+      out += " ";
+      continue;
+    }
+    if (!quoted && text.startsWith("/*", i)) {
+      const end = text.indexOf("*/", i + 2);
+      i = end === -1 ? text.length : end + 1;
+      out += " ";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 /** Minor 412: every table a statement updates, with the columns it sets. */
-export function updateTargets(text: string): UpdateTarget[] {
+export function updateTargets(sql: string): UpdateTarget[] {
+  const text = withoutComments(sql);
   const out: UpdateTarget[] = [];
   for (const head of [UPDATE_HEAD, UPSERT_HEAD]) {
     for (const m of text.matchAll(head)) {
       const setList = setListAt(text, m.index + m[0].length);
-      const readable = splitTopLevel(setList).every((part) => READABLE_PART.test(part));
+      // A quote still open at the end of the list (an odd count; `''` counts two) fails closed: the list can't be read.
+      const balanced = (setList.match(/'/g)?.length ?? 0) % 2 === 0;
+      const readable = balanced && splitTopLevel(setList).every((part) => READABLE_PART.test(part));
       out.push({ table: m[2]!.toLowerCase(), columns: readable ? setColumns(setList) : null });
     }
   }
@@ -181,6 +225,29 @@ describe("Spec 21.1 Review Focus 2 — every column the API updates is granted t
     expect(updateTargets(cte)).toEqual([{ table: "user", columns: ["display_name"] }]);
     const both = 'WITH a AS (INSERT INTO "hevy_account" (user_id) VALUES (?) ON CONFLICT DO NOTHING) INSERT INTO "user" (id) VALUES (?) ON CONFLICT (id) DO UPDATE SET email = ?';
     expect(updateTargets(both)).toEqual([{ table: "user", columns: ["email"] }]);
+  });
+
+  it("minor 737 — a FROM or WHERE inside a string literal doesn't end the SET list", () => {
+    expect(updateTargets("UPDATE \"user\" SET note = 'from where, here', display_name = ? WHERE id = ?")).toEqual([{ table: "user", columns: ["note", "display_name"] }]);
+    expect(updateTargets("UPDATE \"user\" SET note = 'it''s, from (here', display_name = ? WHERE id = ?")).toEqual([{ table: "user", columns: ["note", "display_name"] }]);
+  });
+
+  it("minor 737 (final review) — an apostrophe in a SQL comment doesn't hide the columns after it", () => {
+    expect(updateTargets("UPDATE \"user\" SET display_name = ?, -- the lifter's name\n email = ? WHERE id = ?")).toEqual([{ table: "user", columns: ["display_name", "email"] }]);
+    expect(updateTargets("UPDATE \"user\" SET display_name = ?, /* the lifter's name */ email = ? WHERE id = ?")).toEqual([{ table: "user", columns: ["display_name", "email"] }]);
+  });
+
+  it("minor 737 (final review) — a quote left open fails closed: the SET list can't be read", () => {
+    expect(updateTargets("UPDATE \"user\" SET note = 'unclosed, email = ? WHERE id = ?")).toEqual([{ table: "user", columns: null }]);
+  });
+
+  it("minor 737 — a schema-qualified table is read", () => {
+    expect(updateTargets('UPDATE public."user" SET display_name = ? WHERE id = ?')).toEqual([{ table: "user", columns: ["display_name"] }]);
+    expect(updateTargets("UPDATE public.exercise SET name = ? WHERE id = ?")).toEqual([{ table: "exercise", columns: ["name"] }]);
+    expect(updateTargets('UPDATE "public"."exercise" e SET name = ? WHERE e.id = ?')).toEqual([{ table: "exercise", columns: ["name"] }]);
+    expect(updateTargets('INSERT INTO public."user" (id, display_name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name')).toEqual([
+      { table: "user", columns: ["display_name"] },
+    ]);
   });
 
   it("minor 412 — a SET list with a fragment in a column's place can't be read", () => {

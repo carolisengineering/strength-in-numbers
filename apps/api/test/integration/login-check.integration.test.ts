@@ -98,6 +98,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 21.1 AC24 — the boot check on r
       const raw = await client.$queryRaw`SELECT 1`.catch((e: unknown) => e);
       expect(raw).toBeInstanceOf(Prisma.PrismaClientInitializationError);
       expect((raw as Error).message).toMatch(PRISMA_TEXT[kind]);
+      // Minor 725: Prisma 6.19 sets no errorCode on these two init errors, so the text is the boot check's only key.
+      // Pinned, so an upgrade that starts setting P1003 / P1013 fails here and the check can read the code instead.
+      expect((raw as { errorCode?: unknown }).errorCode).toBeUndefined();
       const started = Date.now();
       const err = await assertLoginCannotBypassRls(client).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(DatabaseMisconfiguredError);

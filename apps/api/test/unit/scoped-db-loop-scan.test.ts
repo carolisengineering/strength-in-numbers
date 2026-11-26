@@ -7,21 +7,24 @@ import { apiProgram, overlayPath, rel, srcFiles, srcProgram } from "./helpers/ts
  * Spec 21.1 Review Focus 2 — a bare scoped call is 4 statements (BEGIN, set_config, the statement, COMMIT), so one inside
  * a loop or a `Promise.all` multiplies a request's cost. This scan reads all of `src` and lists:
  * - every call made on, or handed, a `ScopedClient` (never a transaction's client) inside a `for` / `while` / `do` body,
- *   an array callback (`map`, `forEach`, …) or the arguments of `Promise.all`, keyed `file#function: what is called`;
+ *   an array callback (`map`, `forEach`, …) or the arguments of `Promise.all`, keyed `file#function: what is called`.
+ *   A `$transaction` opened on a scoped client counts like a raw call (minor 742);
  * - minor 407: every call that hands a `ScopedClient` to a looping helper, keyed `file#helper←calling function`. A
- *   looping helper is a function with a `RawClient` / `ScopedClient` parameter that, inside a loop, runs `$queryRaw` /
- *   `$executeRaw` on it or passes it to another function. Handing it a transaction's client is one transaction, so
- *   that is not flagged.
+ *   looping helper is a function with a client parameter (any type, union or `Pick` with `$queryRaw` or `$executeRaw`
+ *   among its members; minor 745) that, inside a loop, runs `$queryRaw` / `$executeRaw` on it or passes it to another
+ *   function. Handing it a transaction's client is one transaction, so that is not flagged.
  * Each one is either moved into one transaction or listed below with its bound and reason.
  *
  * Limits: a call through a closure defined outside the loop is not seen (the scan reads where the call is written), and
  * helpers are followed one level only: a helper that hands its client, outside any loop, to a second helper that loops
- * is not seen.
+ * is not seen. A looping method called through an interface-typed repository object is not resolved to its
+ * implementation (minor 745).
  */
 
 const ARRAY_CALLBACKS = new Set(["map", "forEach", "flatMap", "filter", "reduce", "some", "every"]);
 const RAW_CALL = /^\$(queryRaw|executeRaw)$/;
-const CLIENT_PARAM_TYPES = new Set(["RawClient", "ScopedClient"]);
+/** Minor 742: on a scoped client, a `$transaction` is a round of BEGIN … COMMIT as well. */
+const SCOPED_ROUND = /^\$(queryRaw|executeRaw|transaction)$/;
 
 /** `file#enclosing function: what is called`, or `file#helper←calling function` → why it may stay. */
 const ALLOWED: Record<string, string> = {
@@ -31,6 +34,8 @@ const ALLOWED: Record<string, string> = {
     "the same bounded retry, only for a guarded type change that missed (≤ 2)",
   "src/repositories/hevy-import.prisma.ts#importBatch: findCandidates":
     "one duplicate-candidate read per workout of a batch (≤ 25 workouts × ≤ 2 attempts); it sits between the per-workout write transactions and also serves the dry run, which opens none",
+  "src/records/rebuild.ts#rebuildRecords: $transaction":
+    "records:rebuild, an operator command on the owner login: one transaction per user on purpose (Spec 07.0 §6.5, D11), so each user's records lock is short and memory stays bounded; on the owner login as() sends no setting",
 };
 
 interface Finding {
@@ -49,6 +54,14 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
     return (t.aliasSymbol ?? t.getSymbol())?.getName();
   };
   const isScoped = (node: ts.Node) => typeName(node) === "ScopedClient";
+  /** Minor 745: a client parameter is known by its members (any union member has `$queryRaw` or `$executeRaw`), not its type's name. */
+  const isClientParam = (node: ts.Node) => {
+    const t = checker.getTypeAtLocation(node);
+    return (t.isUnion() ? t.types : [t]).some((m) => {
+      const apparent = checker.getApparentType(m);
+      return apparent.getProperty("$queryRaw") !== undefined || apparent.getProperty("$executeRaw") !== undefined;
+    });
+  };
   const findings: Finding[] = [];
   const resolved = (sym: ts.Symbol | undefined) => (sym && sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym);
 
@@ -60,7 +73,7 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
         const nameNode = ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) ? node.name : ts.isVariableDeclaration(node.parent) || ts.isPropertyAssignment(node.parent) ? node.parent.name : undefined;
         const fn = nameNode && checker.getSymbolAtLocation(nameNode);
         const params = node.parameters.flatMap((param, i) => {
-          if (!ts.isIdentifier(param.name) || !CLIENT_PARAM_TYPES.has(typeName(param.name) ?? "")) return [];
+          if (!ts.isIdentifier(param.name) || !isClientParam(param.name)) return [];
           const paramSymbol = checker.getSymbolAtLocation(param.name);
           let loops = false;
           const walk = (n: ts.Node) => {
@@ -96,7 +109,7 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
       if (ts.isCallExpression(node) || ts.isTaggedTemplateExpression(node)) {
         const callee = ts.isCallExpression(node) ? node.expression : node.tag;
         const args = ts.isCallExpression(node) ? [...node.arguments] : [];
-        const onScoped = ts.isPropertyAccessExpression(callee) && RAW_CALL.test(callee.name.text) && isScoped(callee.expression);
+        const onScoped = ts.isPropertyAccessExpression(callee) && SCOPED_ROUND.test(callee.name.text) && isScoped(callee.expression);
         const handedScoped = args.some((a) => isScoped(a));
         const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
         if ((onScoped || handedScoped) && inLoop(node)) {
@@ -166,7 +179,13 @@ async function once(c: RawClient, id: string) {
 async function viaOnce(c: RawClient, list: string[]) {
   for (const id of list) await once(c, id);
 }
-void each; void mapped; void once; void viaOnce;
+async function eachU(c: RawClient | Prisma.TransactionClient, list: string[]) {
+  for (const id of list) await c.$executeRaw\`SELECT \${id}\`;
+}
+async function eachP(c: Pick<Prisma.TransactionClient, "$executeRaw">, list: string[]) {
+  for (const id of list) await c.$executeRaw\`SELECT \${id}\`;
+}
+void each; void mapped; void once; void viaOnce; void eachU; void eachP;
 export type Tx = Prisma.TransactionClient;
 `;
   const keysFor = (body: string) => scan(apiProgram([], { [FIXTURE]: HEAD + body }), [overlayPath(FIXTURE)]).map((f) => f.key);
@@ -186,6 +205,19 @@ export type Tx = Prisma.TransactionClient;
   it("a helper whose loop hands its client to another function is flagged too (final review)", () => {
     expect(keysFor("export async function run() {\n  await viaOnce(db.as(u), ids);\n}\n")).toEqual([`${FIXTURE}#viaOnce←run`]);
     expect(keysFor("export async function run() {\n  await db.as(u).$transaction((tx) => viaOnce(tx, ids));\n}\n")).toEqual([]);
+  });
+
+  it("minor 742 — a scoped $transaction per round is flagged", () => {
+    expect(keysFor("export async function run() {\n  for (const id of ids) await db.as(u).$transaction(async (tx) => tx.$executeRaw`SELECT ${id}`);\n}\n")).toEqual([
+      `${FIXTURE}#run: $transaction`,
+    ]);
+  });
+
+  it("minor 745 — a helper whose client parameter is a union or a Pick is found", () => {
+    expect(keysFor("export async function run() {\n  await eachU(db.as(u), ids);\n  await eachP(db.as(u), ids);\n}\n")).toEqual([
+      `${FIXTURE}#eachU←run`,
+      `${FIXTURE}#eachP←run`,
+    ]);
   });
 
   it("a helper that doesn't loop is not flagged for a scoped client", () => {

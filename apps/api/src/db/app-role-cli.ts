@@ -23,6 +23,10 @@ export const MIN_PASSWORD_LENGTH = 12;
  */
 export const LOCAL_APP_ROLE_PASSWORD = "sin_app_local";
 
+/** Minor 724: written (stderr) whenever the local password is accepted, since a tunnel's host reads as local. */
+export const LOCAL_PASSWORD_NOTICE =
+  "using the repo's local password: for the compose database only (through a tunnel to another database, use openssl rand -hex 24)\n";
+
 export interface AppRoleIo {
   prompt(question: string): Promise<string>;
   out(s: string): void;
@@ -96,6 +100,9 @@ export async function main(
     io.err("that is the repo's local password; use a generated one on a remote database (runbook: openssl rand -hex 24)\n");
     return 1;
   }
+  // Minor 724: a tunnel on localhost to another database looks local here, and the command can't tell; say what the
+  // local password is for.
+  if (password === LOCAL_APP_ROLE_PASSWORD) io.err(LOCAL_PASSWORD_NOTICE);
 
   const secrets = [password, ...owner.secrets];
   const url = owner.url;
