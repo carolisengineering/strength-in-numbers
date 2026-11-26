@@ -42,17 +42,24 @@ describe("19.1 AC14 — no clock, Intl, randomness or DOM in the import modules"
   });
 });
 
+/** A describe title, read up to its own closing quote (minor 758: an apostrophe inside a double-quoted title is kept). */
+const TITLES = /describe\(\s*(["'`])((?:(?!\1)[\s\S])*)\1/g;
+
 /** Spec 19.1 Phase A: AC1–AC14 each appear in a describe title as "19.1 ACn". */
 describe("19.1 AC14 — AC1–AC14 each have a tagged core test", () => {
   it("each Phase A criterion is tagged", () => {
     const tagged = new Set<number>();
     for (const f of readdirSync(DIR).filter((n) => n.endsWith(".test.ts"))) {
       const source = readFileSync(join(DIR, f), "utf8");
-      for (const title of source.matchAll(/describe\(\s*(["'`])([^"'`]*)\1/g)) {
+      for (const title of source.matchAll(TITLES)) {
         for (const ac of title[2]!.matchAll(/19\.1 AC(\d+)/g)) tagged.add(Number(ac[1]));
       }
     }
     const wanted = Array.from({ length: 14 }, (_, i) => i + 1);
     expect(wanted.filter((n) => !tagged.has(n))).toEqual([]);
+  });
+
+  it("minor 758: a title with an apostrophe is read", () => {
+    expect([...'describe("19.1 AC1 — it doesn\'t", () => {})'.matchAll(TITLES)]).toHaveLength(1);
   });
 });

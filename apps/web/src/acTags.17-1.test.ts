@@ -8,8 +8,8 @@ const tests = import.meta.glob(["./**/*.test.ts", "./**/*.test.tsx", "!./acTags.
  * Untagged by design: AC6 (CI path check), AC8 (docs review); AC55–AC59 are review, CI or manual (§10).
  */
 const WANTED = [1, 2, 3, 4, 5, 7, ...Array.from({ length: 46 }, (_, i) => i + 9)];
-/** A describe title in any quote; the other two quote marks may appear inside it (minor 419). */
-const PATTERN = /describe\(\s*(["'`])((?:(?!\1).)*)\1/g;
+/** A describe title in any quote; the other two quote marks may appear inside it (minor 419), and it may run over lines (minor 759). */
+const PATTERN = /describe\(\s*(["'`])((?:(?!\1)[\s\S])*)\1/g;
 
 describe("17.1 AC56 — every behavioral criterion has a committed, tagged test", () => {
   it("each wanted AC appears in a describe title as '17.1 ACn'", () => {
@@ -26,5 +26,9 @@ describe("17.1 AC56 — every behavioral criterion has a committed, tagged test"
 
   it("minor 419: a title with an apostrophe is read", () => {
     expect([...'describe("17.1 AC5 — it doesn\'t x", () => {})'.matchAll(PATTERN)]).toHaveLength(1);
+  });
+
+  it("minor 759: a backtick title over two lines is read", () => {
+    expect([..."describe(`17.1 AC5 — a\n  b`, () => {})".matchAll(PATTERN)]).toHaveLength(1);
   });
 });

@@ -21,7 +21,7 @@ describe("10.7 AC65 — every behavioral criterion has a committed, tagged test"
     expect(Object.keys(core).length).toBeGreaterThan(0);
     const tagged = new Set<number>();
     for (const source of [...Object.values(web), ...Object.values(core)]) {
-      for (const title of source.matchAll(/describe\(\s*(["'`])((?:(?!\1).)*10\.7(?:(?!\1).)*)\1/g)) {
+      for (const title of source.matchAll(/describe\(\s*(["'`])((?:(?!\1)[\s\S])*10\.7(?:(?!\1)[\s\S])*)\1/g)) {
         for (const ac of title[2]!.matchAll(/AC(\d+)/g)) tagged.add(Number(ac[1]));
       }
     }

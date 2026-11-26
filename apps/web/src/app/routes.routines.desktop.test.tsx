@@ -166,7 +166,7 @@ describe("minor 672 — a start from the list pane beside an open routine", () =
   });
 
   it("minor 666 beside a routine: a start that resolves after leaving doesn't navigate back", async () => {
-    const { router, user } = await setup(previewPath(A));
+    const { fake, queryClient, router, user } = await setup(previewPath(A));
     await panesReady();
     await within(detailPane()).findByRole("heading", { level: 1, name: "Push A" });
     const held = deferred<void>();
@@ -182,7 +182,9 @@ describe("minor 672 — a start from the list pane beside an open routine", () =
     await waitFor(() => expect(posted).toBe(true));
     await act(() => router.navigate("/app/history"));
     held.resolve();
-    await new Promise((r) => setTimeout(r, 100));
+    // Minor 760: the fake answered, then the start mutation settled (its onSuccess ran), then the location is read.
+    await waitFor(() => expect(startPosts(fake)).toHaveLength(1));
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
     expect(router.state.location.pathname).toBe("/app/history");
   });
 });

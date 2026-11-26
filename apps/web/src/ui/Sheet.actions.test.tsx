@@ -474,10 +474,14 @@ describe("17.10 AC1 — closing and reopening (Review Focus 3)", () => {
 
 const sources = import.meta.glob(["../**/*.tsx", "!../**/*.test.tsx"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 /**
- * A Cancel a sheet could draw (AC16, minor 499): any copy constant named CANCEL, any `X.cancel` copy key (`\b` keeps out
- * `cancelQueries` / `cancelRemove`), and the literal word as a string or as a JSX text child.
+ * A Cancel a sheet could draw (AC16, minor 499): any copy constant named CANCEL, a `.cancel` key on an ALL-CAPS copy
+ * object, nested keys allowed (`C.cancel`, `MESSAGES.cancel`, `EDIT_COPY.lastSet.cancel`; minor 751: a method
+ * reference such as `controller.cancel` is not copy, and `\b` keeps out `cancelQueries` / `cancelRemove`), and the
+ * literal word as a string or as a JSX text child.
  */
-const CANCEL_CONSTANTS = /\b[A-Z_]*CANCEL[A-Z_]*\b|\b[A-Za-z_]+\.cancel\b|"Cancel"|>\s*Cancel\s*</g;
+const CANCEL_CONSTANTS = /\b[A-Z_]*CANCEL[A-Z_]*\b|\b[A-Z][A-Z_]*(?:\.[A-Za-z_]+)*\.cancel\b|"Cancel"|>\s*Cancel\s*</g;
+/** The text before a match that makes it a `dismissLabel` (minor 751: spaces allowed around `=` and inside `{`). */
+const DISMISS_LABEL_BEFORE = /dismissLabel\s*=\s*\{?\s*$/;
 /** Cancels that act on part of the body, not the sheet (AC7): Match for Hevy's in-card Cancel, in pick and create modes. */
 const IN_BODY_CANCELS: Record<string, number> = { "../features/hevy/send/MatchForHevySheet.tsx": 2 };
 /** Uses of a Cancel in a file that aren't a `dismissLabel` (import lists name the constants too; only uses count). */
@@ -485,11 +489,14 @@ function strayCancels(raw: string): number {
   const source = raw.replace(/^import\b[\s\S]*?\bfrom\s+"[^"]+";$/gm, "");
   let others = 0;
   for (const match of source.matchAll(CANCEL_CONSTANTS)) {
-    if (!/dismissLabel=\{?$/.test(source.slice(Math.max(0, match.index - "dismissLabel={".length), match.index))) others += 1;
+    if (!DISMISS_LABEL_BEFORE.test(source.slice(Math.max(0, match.index - 24), match.index))) others += 1;
   }
   return others;
 }
-/** A file that renders a Sheet, and each component it imports from its own folder (one hop): a Cancel drawn by a child is the sheet's too. */
+/**
+ * A file that renders a Sheet, and each file it imports from its own folder (one hop): a Cancel drawn by a child is
+ * the sheet's too. Every same-folder import is read, whether or not it renders anything (minor 751).
+ */
 function sheetFiles(): string[] {
   const files = new Set<string>();
   for (const [path, raw] of Object.entries(sources)) {
@@ -509,7 +516,7 @@ describe("17.10 AC15, AC7 — every sheet uses the row", () => {
     expect(Object.keys(sources).filter((path) => sources[path]!.includes("noActionRow"))).toEqual([]);
   });
 
-  it("in a sheet or a component it renders, Cancel is only the sheet's dismissLabel (minor 499)", () => {
+  it("in a sheet or a file it imports from its folder, Cancel is only the sheet's dismissLabel (minor 499)", () => {
     const stray: string[] = [];
     for (const path of sheetFiles()) {
       const others = strayCancels(sources[path]!);
@@ -524,6 +531,16 @@ describe("17.10 AC15, AC7 — every sheet uses the row", () => {
 
   it("minor 499: a literal Cancel or a Cancel constant in a sheet or its child is found", () => {
     for (const sample of ["<Button>{C.cancel}</Button>", "<button>\n  Cancel\n</button>"]) {
+      expect([...sample.matchAll(CANCEL_CONSTANTS)], sample).not.toEqual([]);
+    }
+  });
+
+  it("minor 751: a method reference isn't a Cancel, and a spaced dismissLabel is", () => {
+    for (const sample of ["onCancel={controller.cancel}", "leave.cancel"]) {
+      expect([...sample.matchAll(CANCEL_CONSTANTS)], sample).toEqual([]);
+    }
+    expect(strayCancels("<Sheet dismissLabel = { C.cancel } />")).toBe(0);
+    for (const sample of ["EDIT_COPY.lastSet.cancel", "MESSAGES.cancel"]) {
       expect([...sample.matchAll(CANCEL_CONSTANTS)], sample).not.toEqual([]);
     }
   });

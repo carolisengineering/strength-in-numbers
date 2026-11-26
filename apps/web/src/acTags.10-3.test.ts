@@ -11,7 +11,7 @@ describe("10.3 AC40 — every behavioral criterion has a committed, tagged test"
   it("AC1–AC37 each appear in a describe title that names Spec 10.3", () => {
     const tagged = new Set<number>();
     for (const source of Object.values(tests)) {
-      for (const title of source.matchAll(/describe\(\s*(["'`])((?:(?!\1).)*10\.3(?:(?!\1).)*)\1/g)) {
+      for (const title of source.matchAll(/describe\(\s*(["'`])((?:(?!\1)[\s\S])*10\.3(?:(?!\1)[\s\S])*)\1/g)) {
         for (const ac of title[2]!.matchAll(/AC(\d+)/g)) tagged.add(Number(ac[1]));
       }
     }

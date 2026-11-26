@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 import { act, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -135,24 +136,33 @@ describe("17.2 AC32 / 07.6 AC17 — the web never re-derives recordCount", () =>
 
   it("the copy helpers print the count without arithmetic (minor 676)", () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    /** The body of `export function name(…) {…}` in a file, comments stripped; "" when it isn't there. */
-    const bodyOf = (file: string, name: string): string => {
-      const code = readFileSync(join(here, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-      const start = code.indexOf(`export function ${name}(`);
-      if (start < 0) return "";
-      // The brace that ends the signature's line (a return type such as `{ visible: string }` comes before it).
-      const open = code.indexOf("{\n", start);
-      let depth = 0;
-      for (let i = open; i < code.length; i += 1) {
-        if (code[i] === "{") depth += 1;
-        else if (code[i] === "}" && --depth === 0) return code.slice(open, i + 1);
-      }
-      return "";
-    };
     for (const [file, name] of [["historyCopy.ts", "historyBadgeText"], ["../records/recordLedger.ts", "liftCountText"]] as const) {
-      const body = bodyOf(file, name);
-      expect(body, `${file} ${name}`).not.toBe("");
-      expect(body, `${file} ${name}`).not.toMatch(/\bn\s*[-+*/%]|[-+*/%]\s*n\b|Math\./);
+      const parts = functionParts(readFileSync(join(here, file), "utf8"), name);
+      expect(parts, `${file} ${name}`).not.toBeNull();
+      expect(parts!.body, `${file} ${name}`).toContain(parts!.param);
+      expect(parts!.body, `${file} ${name}`).not.toMatch(arithmeticOn(parts!.param));
     }
   });
+
+  it("minor 753: a renamed parameter and a multi-line return type are still read", () => {
+    const sample = "export function f(count: number): {\n  visible: string;\n} {\n  return { visible: `${count + 1}` };\n}";
+    const parts = functionParts(sample, "f");
+    expect(parts?.param).toBe("count");
+    expect(parts?.body).toMatch(arithmeticOn("count"));
+  });
 });
+
+/**
+ * Minor 753: a top-level function's first parameter's name and its body's text, read with the TypeScript compiler (so a
+ * multi-line return type and any parameter name are read right); null when there's no such function.
+ */
+function functionParts(code: string, name: string): { param: string; body: string } | null {
+  const file = ts.createSourceFile(name, code, ts.ScriptTarget.Latest, true);
+  const fn = file.statements.find((s): s is ts.FunctionDeclaration => ts.isFunctionDeclaration(s) && s.name?.text === name);
+  const param = fn?.parameters[0]?.name;
+  if (fn?.body === undefined || param === undefined) return null;
+  return { param: param.getText(file), body: fn.body.getText(file) };
+}
+
+/** Arithmetic on `param`, or any `Math.` call: the count must be printed as given. */
+const arithmeticOn = (param: string) => new RegExp(`\\b${param}\\s*[-+*/%]|[-+*/%]\\s*${param}\\b|Math\\.`);

@@ -95,11 +95,12 @@ describe("07.5 AC1 — unknown record types are dropped from record lists", () =
       isOnline: () => true,
       onFinishSynced,
     });
-    outbox.start();
+    const stop = outbox.start(); // minor 754: stopped below, so its listeners don't outlive the test
     const meta = { startedAt: detail.startedAt, exerciseCount: 1, setCount: 1, endedEarly: false, unloggedPlannedSets: 0, hadPlannedDuration: false };
     outbox.enqueueFinish({ workoutId: detail.id, body: { endedAt: "2026-10-02T11:00:00.000Z" }, meta });
     await vi.waitFor(() => expect(onFinishSynced).toHaveBeenCalled());
     expect(onFinishSynced.mock.calls[0]![1]).toMatchObject({ outcome: "landed", updated: { newRecords: [known] } });
+    stop();
   });
 
   it("a production build parses the finish without falling back to the raw body", async () => {
