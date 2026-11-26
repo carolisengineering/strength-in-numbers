@@ -20,11 +20,10 @@ import { createWorkoutFake } from "../test/workoutFake";
 import { cleanupApp, prepareApp, renderApp } from "../test/workoutHarness";
 import { EDIT_COPY } from "../features/workouts/edit/editCopy";
 import { WORKOUT_KEYS } from "../features/workouts/queries";
-import { resetDeletedHereForTests } from "../features/workouts/summaryEntry";
+import { deletedHere, markDeletedHere } from "../features/workouts/summaryEntry";
 
 afterEach(() => {
-  cleanupApp();
-  resetDeletedHereForTests();
+  cleanupApp(); // clears the deleted-here set too
   resetDesktop();
 });
 
@@ -108,6 +107,14 @@ describe("minor 763 — Delete workout from an edit opened off History's summary
     await deleteWholeFromEdit(app);
     await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
     expect(app.router.state.historyAction).toBe("REPLACE");
+  });
+});
+
+describe("code review — the deleted-here set doesn't outlive a test", () => {
+  it("the shared cleanupApp clears it, so no other file's delete changes a later 404", () => {
+    markDeletedHere(OLDER.id);
+    cleanupApp();
+    expect(deletedHere(OLDER.id)).toBe(false);
   });
 });
 

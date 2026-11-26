@@ -15,8 +15,11 @@ export interface UndoLastLogInput {
   /** A sheet, dialog or picker is open. While it is, any offer ends, one made under it included (Spec 17.5 AC8, minor 430). */
   overlayOpen: boolean;
   select: (exerciseId: string) => void;
-  /** The current exercise at the moment of the call. Undo moves only if it is unchanged since the tap (minor 767). */
-  currentNow: () => string | null;
+  /**
+   * How many choices the lifter has made (`useCurrentExercise().choiceNow`). Undo moves only if none was made since the
+   * tap (minor 767); an auto-advance isn't a choice, and a tap away and back is two (code review).
+   */
+  choiceNow: () => number;
   /** Would making this exercise current collapse the card that holds focus? */
   focusLeavesWith: (exerciseId: string) => boolean;
   /** Show the current panel once the undone row has left the list (17.4's reveal; minor 428, `setListed`). */
@@ -55,7 +58,7 @@ export function useUndoLastLog({
   rest,
   overlayOpen,
   select,
-  currentNow,
+  choiceNow,
   focusLeavesWith,
   revealPanel,
   onFailure,
@@ -124,10 +127,10 @@ export function useUndoLastLog({
     if (button === document.activeElement || focusLeavesWith(target.offer.exerciseId)) {
       button.closest("[data-session-bar]")?.querySelector<HTMLElement>(":scope > button")?.focus({ preventScroll: true });
     }
-    void run({ ...target, currentAtTap: currentNow() });
+    void run({ ...target, choiceAtTap: choiceNow() });
   }
 
-  async function run({ offer, row: set, currentAtTap }: { offer: UndoOffer; row: SetEntry; currentAtTap: string | null }) {
+  async function run({ offer, row: set, choiceAtTap }: { offer: UndoOffer; row: SetEntry; choiceAtTap: number }) {
     try {
       await del.mutateAsync({ id: set.id, modality: offer.modality, viaUndo: true });
     } catch (error) {
@@ -137,9 +140,9 @@ export function useUndoLastLog({
     }
     setUndoing((current) => (current?.row === set ? { row: set, settled: true } : current));
     if (offer.restStartedAt !== null && rest?.get()?.startedAt === offer.restStartedAt) rest.clear();
-    // Minor 767: a lifter who moved to another card while the delete was out stays there, with that card's panel as
-    // they left it. The restore still waits on the undone card's draft.
-    if (currentNow() === currentAtTap) {
+    // Minor 767: a lifter who chose a card while the delete was out stays there, with that card's panel as they left
+    // it. The restore still waits on the undone card's draft.
+    if (choiceNow() === choiceAtTap) {
       select(offer.exerciseId);
       revealPanel(set);
     }

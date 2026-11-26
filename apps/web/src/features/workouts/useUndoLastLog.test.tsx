@@ -16,7 +16,7 @@ function setup(
     onRender?: (r: ReturnType<typeof useUndoLastLog>) => void;
     select?: (exerciseId: string) => void;
     revealPanel?: () => void;
-    currentNow?: () => string | null;
+    choiceNow?: () => number;
     deleteSet?: () => Promise<void>;
   } = {},
 ) {
@@ -28,7 +28,7 @@ function setup(
   const wrapper = wrapperWith(makeQueryClient(), fakeClient({ deleteSet: options.deleteSet ?? (async () => {}) }));
   const select = options.select ?? vi.fn();
   const revealPanel = options.revealPanel ?? vi.fn();
-  const currentNow = options.currentNow ?? (() => exerciseId);
+  const choiceNow = options.choiceNow ?? (() => 0);
   const props = { exercises: exercises as readonly WorkoutExerciseDetail[], overlayOpen: options.overlayOpen ?? false };
   const hook = renderHook(
     ({ exercises: list, overlayOpen }: typeof props) => {
@@ -41,7 +41,7 @@ function setup(
         select,
         focusLeavesWith: vi.fn(() => false),
         revealPanel,
-        currentNow,
+        choiceNow,
         onFailure: vi.fn(),
         announce: vi.fn(),
       });
@@ -59,12 +59,39 @@ describe("minor 767 — Undo moves only if the lifter hasn't since the tap", () 
     const held = deferred<void>();
     const select = vi.fn();
     const revealPanel = vi.fn();
-    let current = "";
-    const { result, first, event, tap, exerciseId } = setup({ select, revealPanel, currentNow: () => current, deleteSet: () => held.promise });
-    current = exerciseId;
+    let choices = 0;
+    const { result, first, event, tap } = setup({ select, revealPanel, choiceNow: () => choices, deleteSet: () => held.promise });
     act(() => result.current.offerFrom(event(first), EXERCISE, null));
     act(() => result.current.undo(tap()));
-    current = "B";
+    choices = 1; // a tap on B's card
+    await act(async () => held.resolve());
+    await waitFor(() => expect(result.current.restore?.set.id).toBe(first.id));
+    expect(select).not.toHaveBeenCalled();
+    expect(revealPanel).not.toHaveBeenCalled();
+  });
+
+  it("code review: a late auto-advance isn't the lifter's choice: Undo still moves", async () => {
+    const held = deferred<void>();
+    const select = vi.fn();
+    const revealPanel = vi.fn();
+    const { result, first, event, tap, exerciseId } = setup({ select, revealPanel, deleteSet: () => held.promise });
+    act(() => result.current.offerFrom(event(first), EXERCISE, null));
+    act(() => result.current.undo(tap()));
+    // An earlier log's advanceFrom lands here: the current card changes, but no choice is counted.
+    await act(async () => held.resolve());
+    await waitFor(() => expect(revealPanel).toHaveBeenCalled());
+    expect(select).toHaveBeenCalledWith(exerciseId);
+  });
+
+  it("code review: the lifter tapped away and back during the delete: Undo doesn't move", async () => {
+    const held = deferred<void>();
+    const select = vi.fn();
+    const revealPanel = vi.fn();
+    let choices = 0;
+    const { result, first, event, tap } = setup({ select, revealPanel, choiceNow: () => choices, deleteSet: () => held.promise });
+    act(() => result.current.offerFrom(event(first), EXERCISE, null));
+    act(() => result.current.undo(tap()));
+    choices = 2; // A, then back to the card that was current at the tap
     await act(async () => held.resolve());
     await waitFor(() => expect(result.current.restore?.set.id).toBe(first.id));
     expect(select).not.toHaveBeenCalled();
