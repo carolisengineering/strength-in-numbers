@@ -103,11 +103,12 @@ describe("Spec 21.1 AC9 — one handle, two entry points", () => {
     expect(fake.txOptions).toEqual([]);
   });
 
-  it("minor 404 — crossUserMaintenance() is the root client too: no transaction, no setting, in both factories", async () => {
+  it("minor 723 — crossUserMaintenance() throws on the API's handle, and is the root client on the owner's", () => {
     const fake = new FakePrisma();
-    await createScopedDb(asPrisma(fake)).crossUserMaintenance().$queryRaw`SELECT 1`;
-    expect(fake.log).toEqual([{ sql: "SELECT 1", values: [] }]);
+    expect(() => createScopedDb(asPrisma(fake)).crossUserMaintenance()).toThrow(/owner login's maintenance commands/);
+    expect(fake.log).toEqual([]);
     expect(fake.txOptions).toEqual([]);
+    // Review Focus 4: runPurge and rebuildRecords get the owner's bare client, through toScoped.
     const bare = asPrisma(new FakePrisma());
     expect(toScoped(bare).crossUserMaintenance()).toBe(bare);
   });

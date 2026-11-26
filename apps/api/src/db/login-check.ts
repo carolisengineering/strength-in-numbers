@@ -93,6 +93,8 @@ const REJECTED_LOGIN_TEXT = /Authentication failed against database server|User 
  * Minor 411: Prisma 6.19's init errors through $queryRaw, pinned on the compose Postgres by login-check.integration.test.ts
  * ("Database `sin_missing_411` does not exist"; "The provided database string is invalid. Error parsing connection
  * string: invalid port number …"). A TLS failure stays retried: only Neon can show its wording, so nothing pins it here.
+ * Minor 725: Prisma 6.19 sets no `errorCode` on either (no P1003 / P1013), so the text is the only key; the integration
+ * test pins the missing code, and an upgrade that adds one fails there first.
  */
 const MISSING_DATABASE_TEXT = /Database `[^`]*` does not exist/;
 const INVALID_URL_TEXT = /The provided database string is invalid/;
