@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { posix } from "node:path";
 import ts from "typescript";
 
 /**
@@ -40,6 +41,8 @@ export interface Extracted {
   unsafe: string[];
   /** Fragments only: the name callers refer to it by (its variable, else its function). */
   label?: string;
+  /** Fragments only (minor 743): the other names it is called by, aliases of aliases and renamed imports included. */
+  aliases?: string[];
 }
 
 export type Category =
@@ -229,35 +232,58 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
   });
 
   // Minor 399: a module-level `export const ownedSectionRound: Owned = ownedWorkoutSection` is a second name for the
-  // same fragment. `namesOf(target)` is the target's name and every alias of it (aliases of aliases included), so a
-  // caller of the alias is listed under the target's row; the alias gets no row of its own.
+  // same fragment. `namesOf(file, target)` is the target's name and every alias of it (aliases of aliases included), so
+  // a caller of the alias is listed under the target's row; the alias gets no row of its own. Minor 736: the map is
+  // keyed `file#name` → `file#name`. `const X = Y` registers only when `Y` is a top-level declaration of the same file
+  // or a named import from a relative path, so a same-named const in another file is not taken for the fragment. A
+  // named import is itself a second name (`import { ownedA as base }`). Callers are still matched by bare name.
   const aliasTarget = new Map<string, string>();
-  for (const { sf } of parsed) {
+  for (const { file, sf } of parsed) {
+    const topLevel = new Set<string>();
+    const imported = new Map<string, string>();
+    for (const statement of sf.statements) {
+      if (ts.isVariableStatement(statement)) {
+        for (const d of statement.declarationList.declarations) if (ts.isIdentifier(d.name)) topLevel.add(d.name.text);
+      } else if (ts.isFunctionDeclaration(statement) && statement.name) {
+        topLevel.add(statement.name.text);
+      } else if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text.startsWith(".")) {
+        const from = posix.join(posix.dirname(file), statement.moduleSpecifier.text).replace(/\.js$/, ".ts");
+        const named = statement.importClause?.namedBindings;
+        if (named && ts.isNamedImports(named)) {
+          for (const el of named.elements) imported.set(el.name.text, `${from}#${(el.propertyName ?? el.name).text}`);
+        }
+      }
+    }
+    for (const [local, target] of imported) aliasTarget.set(`${file}#${local}`, target);
     for (const statement of sf.statements) {
       if (!ts.isVariableStatement(statement)) continue;
       for (const d of statement.declarationList.declarations) {
-        if (ts.isIdentifier(d.name) && d.initializer && ts.isIdentifier(d.initializer)) aliasTarget.set(d.name.text, d.initializer.text);
+        if (!ts.isIdentifier(d.name) || !d.initializer || !ts.isIdentifier(d.initializer)) continue;
+        const to = d.initializer.text;
+        const target = imported.get(to) ?? (topLevel.has(to) ? `${file}#${to}` : undefined);
+        if (target !== undefined) aliasTarget.set(`${file}#${d.name.text}`, target);
       }
     }
   }
-  const namesOf = (target: string): string[] => {
-    const names = [target];
+  const bare = (key: string) => key.slice(key.lastIndexOf("#") + 1);
+  const namesOf = (file: string, target: string): string[] => {
+    const keys = [`${file}#${target}`];
     for (let grew = true; grew; ) {
       grew = false;
       for (const [alias, to] of aliasTarget) {
-        if (names.includes(to) && !names.includes(alias)) {
-          names.push(alias);
+        if (keys.includes(to) && !keys.includes(alias)) {
+          keys.push(alias);
           grew = true;
         }
       }
     }
-    return names;
+    return [...new Set(keys.map(bare))];
   };
 
   // Second pass: a call of a fragment-building function (`plannedSetsJson(…)`) outside every statement composes SQL
   // that would otherwise reach a query only as a name; it is a fragment row of its own, so its arguments are
   // fingerprinted (final review #2: decorrelating `WE_PLANNED_SETS` must fail the check).
-  const builders = new Set(pending.filter((p) => p.name && !p.name.local).flatMap((p) => namesOf(p.name!.name)));
+  const builders = new Set(pending.filter((p) => p.name && !p.name.local).flatMap((p) => namesOf(p.file, p.name!.name)));
   const inside = (file: string, pos: number) => covered.some((c) => c.file === file && pos >= c.pos && pos < c.end);
   parsed.forEach(({ file, sf }, fileIndex) => {
     const visit = (node: ts.Node): void => {
@@ -301,7 +327,9 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
   // Fragment callers: every other statement whose text names the fragment (a local one only within its function).
   pending.forEach((p, i) => {
     if (!p.name) return;
-    const names = p.name.local ? [p.name.name] : namesOf(p.name.name);
+    const names = p.name.local ? [p.name.name] : namesOf(p.file, p.name.name);
+    const aliases = names.filter((n) => n !== rows[i]!.label);
+    if (aliases.length > 0) rows[i]!.aliases = aliases;
     const res = names.map((name) => new RegExp(`(?<![\\w$])${name.replace(/[$]/g, "\\$")}(?![\\w$])`));
     rows[i]!.callers = rows
       .filter((r, j) => j !== i && res.some((re) => re.test(r.text)) && (!p.name!.local || (r.file === p.file && r.fn === p.fn)))
@@ -388,15 +416,26 @@ export function reconcile(existing: readonly AuditRow[], extracted: readonly Ext
 /**
  * Minor 390 — the ties the check reads. Each of these anchored statements is keyed by an id from the request, so the
  * anchor's lock proves nothing about it unless its own text ties it to the locked workout. Removing the tie changes
- * the fingerprint, but a reviewer could approve the row again; `sanityIssues` refuses that. Key → the text the
- * statement must hold. Only these rows are checked (the audit's header says so); a tie elsewhere is the reviewer's.
+ * the fingerprint, but a reviewer could approve the row again; `sanityIssues` refuses that. Only these rows are checked
+ * (the audit's header says so); a tie elsewhere is the reviewer's.
+ *
+ * Key → `tie`, the full bound expression the statement must hold (minor 744: `AND workout_id = ${parent.workout_id}`,
+ * so a tie rebound to a value from the request fails), and `statements`, how many statements the key's function has.
+ * A key's ordinal shifts when a statement is added above it, so a changed count fails until the key is re-checked
+ * (minor 744). Minor 740 added the six tied statements the first list missed.
  */
-export const TIES: Readonly<Record<string, string>> = {
-  "src/repositories/set-entry.prisma.ts#createSet#3": "AND workout_id = ${",
-  "src/repositories/workout.prisma.ts#updateWorkoutExercise#2": "AND workout_id = ${",
-  "src/repositories/workout.prisma.ts#deleteWorkoutExercise#2": "AND workout_id = ${",
-  "src/repositories/workout-section.prisma.ts#removeWorkoutSection#1": "AND workout_id = ${",
-  "src/repositories/workout-section.prisma.ts#lockSectionRow#1": "AND workout_id = ${",
+export const TIES: Readonly<Record<string, { tie: string; statements: number }>> = {
+  "src/repositories/set-entry.prisma.ts#createSet#3": { tie: "AND workout_id = ${parent.workout_id}", statements: 5 },
+  "src/repositories/workout.prisma.ts#updateWorkoutExercise#2": { tie: "AND workout_id = ${workoutId}", statements: 6 },
+  "src/repositories/workout.prisma.ts#updateWorkoutExercise#3": { tie: "AND workout_id = ${workoutId}", statements: 6 },
+  "src/repositories/workout.prisma.ts#deleteWorkoutExercise#2": { tie: "AND workout_id = ${current.workout_id}", statements: 5 },
+  "src/repositories/workout-section.prisma.ts#removeWorkoutSection#1": { tie: "AND workout_id = ${pre.workout_id}", statements: 5 },
+  "src/repositories/workout-section.prisma.ts#removeWorkoutSection#3": { tie: "AND workout_id = ${pre.workout_id}", statements: 5 },
+  "src/repositories/workout-section.prisma.ts#updateWorkoutSection#2": { tie: "AND workout_id = ${pre.workout_id}", statements: 2 },
+  "src/repositories/workout-section.prisma.ts#setSectionResult#1": { tie: "AND workout_id = ${pre.workout_id}", statements: 1 },
+  "src/repositories/workout-section.prisma.ts#clearSectionResult#1": { tie: "AND workout_id = ${pre.workout_id}", statements: 1 },
+  "src/repositories/workout-section.prisma.ts#lockSectionRow#1": { tie: "AND workout_id = ${workoutId}", statements: 1 },
+  "src/repositories/workout-section.prisma.ts#lockSectionThenRead#1": { tie: "AND workout_id = ${workoutId}", statements: 1 },
 };
 
 /** Minor 391: an anchored row's anchors. The Anchor column holds one key, or several separated by commas. */
@@ -420,7 +459,7 @@ without its row changing here. After any SQL change run \`${WRITE_COMMAND}\`, th
 
 What the check can't see. The fingerprint covers each statement's text and every \`\${…}\` in it by name; a fragment chosen outside the template (\`const g = c ? Prisma.sql… : Prisma.empty\`) changes the statement without changing its fingerprint, so review the variable's definition too. An anchored statement keyed by an id from the request must also tie itself to the locked row (\`AND workout_id = \${…}\`); the check reads that tie only for the rows listed in \`TIES\` (\`apps/api/scripts/lib/query-extract.ts\`): ${Object.keys(TIES)
   .map((k) => `\`${k}\``)
-  .join(", ")}. For every other anchored row the tie is the reviewer's to read.
+  .join(", ")}. Each is checked for its exact bound expression, and a statement added to one of their functions fails until its key is re-checked. For every other anchored row the tie is the reviewer's to read.
 
 Categories:
 
@@ -552,12 +591,18 @@ function tablesOf(text: string): { tables: string[]; delegates: string[] } {
  * - fragment: lists its callers, each classified, and a fragment over owned tables only has callers that are
  *   user-filtered, anchored, maintenance or fragments themselves (§6.7 #17).
  */
-export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extracted[], ties: Readonly<Record<string, string>> = TIES): string[] {
+export function sanityIssues(
+  rows: readonly AuditRow[],
+  extracted: readonly Extracted[],
+  ties: Readonly<Record<string, { tie: string; statements: number }>> = TIES,
+): string[] {
   const issues: string[] = [];
   const byKey = new Map(rows.map((r) => [r.key, r]));
   const textOf = new Map(extracted.map((s) => [s.key, s.text]));
-  const fragments = new Map(extracted.filter((s) => s.kind === "fragment").map((s) => [fragmentLabel(s), s.text]));
-  const userFragments = extracted.filter((s) => s.kind === "fragment" && hasUserPredicate(s.text)).map(fragmentLabel);
+  // Minor 743: a fragment is also known by its aliases, so a caller through an alias is read like a direct caller.
+  const fragmentRows = extracted.filter((s) => s.kind === "fragment");
+  const fragments = new Map(fragmentRows.flatMap((s) => [fragmentLabel(s), ...(s.aliases ?? [])].map((name) => [name, s.text] as const)));
+  const userFragments = fragmentRows.filter((s) => hasUserPredicate(s.text)).flatMap((s) => [fragmentLabel(s), ...(s.aliases ?? [])]);
   const ownsData = (text: string) => {
     const { tables, delegates } = tablesOf(expandFragments(text, fragments));
     return tables.some((t) => !isSharedTable(t) && !(t === "exercise" && /owner_user_id IS NULL/i.test(text))) || delegates.some((d) => !SHARED_DELEGATES.has(d));
@@ -599,9 +644,15 @@ export function sanityIssues(rows: readonly AuditRow[], extracted: readonly Extr
       }
     }
   }
-  for (const [key, tie] of Object.entries(ties)) {
-    if (byKey.get(key)?.category !== "anchored") issues.push(`${key}: listed in TIES, but it is not an anchored row`);
-    else if (!(textOf.get(key) ?? "").includes(tie)) issues.push(`${key}: its tie ("${tie}") is gone`);
+  for (const [key, { tie, statements }] of Object.entries(ties)) {
+    if (byKey.get(key)?.category !== "anchored") {
+      issues.push(`${key}: listed in TIES, but it is not an anchored row`);
+      continue;
+    }
+    if (!(textOf.get(key) ?? "").includes(tie)) issues.push(`${key}: its tie ("${tie}") is gone`);
+    const fn = key.slice(0, key.lastIndexOf("#"));
+    const n = extracted.filter((s) => `${s.file}#${s.fn}` === fn).length;
+    if (n !== statements) issues.push(`${key}: ${fn} now has ${n} statements, not ${statements}: check the key still names the tied statement, then update TIES`);
   }
   return issues;
 }
