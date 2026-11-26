@@ -38,28 +38,56 @@ export const BARE_CLIENT_ALLOWED: Readonly<Record<string, string>> = {
 
 const NO_STATEMENT = new Set(["$connect", "$disconnect", "$metrics", "$on"]);
 
-/** The scoped handle's own types: they run statements with the acting user's setting, so they are never "bare". */
+/**
+ * The scoped handle's own types: they run statements with the acting user's setting, so they are never "bare". Minor
+ * 738: excused only when declared in `src/db/scoped.ts`, so a `type RawClient = PrismaClient` elsewhere is still bare.
+ */
 const SCOPED_TYPES = new Set(["ScopedClient", "UserScopedDb", "RawClient"]);
+const SCOPED_FILE = /[\\/]src[\\/]db[\\/]scoped\.ts$/;
+const PRISMA_CLIENT_FILE = /[\\/]\.?prisma[\\/]client[\\/]/;
+const declaredIn = (sym: ts.Symbol | undefined, file: RegExp) => (sym?.getDeclarations() ?? []).some((d) => file.test(d.getSourceFile().fileName));
+const UTILITY_NARROWS = new Set(["Pick", "Omit"]);
 
 /**
- * AC14: each property access on a bare client (any union member), as `file:line text`. Minor 567: a bare client is
- * known by its members, `$transaction` plus at least one model delegate, so an intersection (`PrismaClient & {…}`) or
- * an `$extends` client is one too. A transaction client has no `$transaction`, and the scoped handle's types have no
- * model delegate (and are excluded by name as well).
+ * AC14: each property access on a bare client (any union member), as `file:line text`. A union member is bare when:
+ * - (minor 567) it has `$transaction` plus at least one model delegate, so an intersection (`PrismaClient & {…}`) or an
+ *   `$extends` client is one too, unless it is one of the scoped handle's types declared in `src/db/scoped.ts`
+ *   (minor 738);
+ * - (minor 741) it has a member typed as a Prisma model `*Delegate`, no `$transaction`, and isn't a transaction client
+ *   (`Prisma.TransactionClient`, or the `Omit<PrismaClient, …"$transaction"…>` Prisma hands a `$transaction` callback),
+ *   so `Pick<PrismaClient, "workout">` and an alias of it are bare.
+ * An inline `Pick<X, …>` / `Omit<X, …>` is judged by `X`: `Pick<Prisma.TransactionClient, "workout">` is the same type
+ * as `Pick<PrismaClient, "workout">` structurally, and only the type it narrows tells them apart.
  */
 export function bareClientUses(p: ts.Program, files: readonly string[]): string[] {
   const checker = p.getTypeChecker();
   const out: string[] = [];
+  const isDelegateType = (t: ts.Type) =>
+    (t.isUnion() ? t.types : [t]).some((m) => {
+      const sym = m.aliasSymbol ?? m.getSymbol();
+      return sym !== undefined && sym.getName().endsWith("Delegate") && declaredIn(sym, PRISMA_CLIENT_FILE);
+    });
+  const omitsTransaction = (keys: ts.Type | undefined) =>
+    keys !== undefined && (keys.isUnion() ? keys.types : [keys]).some((k) => k.isStringLiteral() && k.value === "$transaction");
+  const isTransactionClient = (x: ts.Type) =>
+    (x.aliasSymbol?.getName() === "TransactionClient" && declaredIn(x.aliasSymbol, PRISMA_CLIENT_FILE)) ||
+    (x.aliasSymbol?.getName() === "Omit" && omitsTransaction(x.aliasTypeArguments?.[1]));
+  const bareType = (x: ts.Type, depth = 0): boolean => {
+    const name = (x.aliasSymbol ?? x.getSymbol())?.getName();
+    if (name !== undefined && SCOPED_TYPES.has(name) && declaredIn(x.aliasSymbol ?? x.getSymbol(), SCOPED_FILE)) return false;
+    if (isTransactionClient(x)) return false;
+    const narrowed = x.aliasSymbol !== undefined && UTILITY_NARROWS.has(x.aliasSymbol.getName()) ? x.aliasTypeArguments?.[0] : undefined;
+    if (narrowed !== undefined && depth < 4) return bareType(narrowed, depth + 1);
+    const apparent = checker.getApparentType(x);
+    const props = apparent.getProperties();
+    if (apparent.getProperty("$transaction") !== undefined) return props.some((m) => MODEL_DELEGATES.has(m.getName()));
+    return props.some((m) => MODEL_DELEGATES.has(m.getName()) && isDelegateType(checker.getTypeOfSymbol(m)));
+  };
   for (const file of files) {
     const sf = p.getSourceFile(file)!;
     const bare = (receiver: ts.Node) => {
       const t = checker.getTypeAtLocation(receiver);
-      return (t.isUnion() ? t.types : [t]).some((x) => {
-        const name = (x.aliasSymbol ?? x.getSymbol())?.getName();
-        if (name !== undefined && SCOPED_TYPES.has(name)) return false;
-        const apparent = checker.getApparentType(x);
-        return apparent.getProperty("$transaction") !== undefined && apparent.getProperties().some((m) => MODEL_DELEGATES.has(m.getName()));
-      });
+      return (t.isUnion() ? t.types : [t]).some((x) => bareType(x));
     };
     const flag = (node: ts.Node) => out.push(`${relPath(file)}:${lineOf(sf, node)} ${node.getText(sf).slice(0, 60)}`);
     const visit = (node: ts.Node) => {
@@ -149,6 +177,31 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
       `import type { RawClient, ScopedClient, UserScopedDb } from "../../db/scoped.js";\nexport async function f(db: UserScopedDb, c: ScopedClient, r: RawClient) {\n  await db.as("u").$queryRaw\`SELECT 1\`;\n  await c.$transaction(async (tx) => tx.$queryRaw\`SELECT 1\`);\n  await r.$executeRaw\`SELECT 1\`;\n}\n`,
     );
     expect(uses).toEqual([]);
+  });
+
+  it("21.1 AC14 — minor 741: a bare client narrowed to one model is bare", () => {
+    const inline = usesIn(`${head}export const f = (p: Pick<PrismaClient, "workout">) => p.workout.findMany();\n`);
+    expect(inline).toHaveLength(1);
+    expect(inline[0]).toMatch(/:2 p\.workout/);
+    expect(usesIn(`${head}type W = Pick<PrismaClient, "workout">;\nexport const g = (w: W) => w.workout.findMany();\n`)).toHaveLength(1);
+  });
+
+  it("21.1 AC14 — minor 741: a transaction client, whole or narrowed, is not bare", () => {
+    expect(
+      usesIn(
+        'import type { Prisma } from "@prisma/client";\nexport const f = (t: Prisma.TransactionClient, n: Pick<Prisma.TransactionClient, "workout">) => Promise.all([t.workout.findMany(), n.workout.findMany()]);\n',
+      ),
+    ).toEqual([]);
+  });
+
+  it("21.1 AC14 — minor 741: an object with a member named like a model is not a client", () => {
+    expect(usesIn("declare const row: { user: { id: string }; workout: string };\nexport const a = [row.user.id, row.workout];\n")).toEqual([]);
+  });
+
+  it("21.1 AC14 — minor 738: a scoped type's name declared elsewhere doesn't excuse a bare client", () => {
+    const uses = usesIn(`${head}type RawClient = PrismaClient;\ndeclare const r: RawClient;\nexport const a = r.workout.findMany();\n`);
+    expect(uses).toHaveLength(1);
+    expect(uses[0]).toMatch(/:4 r\.workout/);
   });
 
   it("a model call on the transaction client is not a bare use (Review Focus 5)", () => {
