@@ -4,19 +4,31 @@ import { describe, expect, it, vi } from "vitest";
 import type { WorkoutExerciseDetail } from "@sin/core";
 
 import { makeSet, makeWorkoutDetail } from "../../test/workoutFixtures";
-import { fakeClient, makeQueryClient, wrapperWith } from "../../test/workoutHarness";
+import { deferred, fakeClient, makeQueryClient, wrapperWith } from "../../test/workoutHarness";
 import type { LoggedEvent } from "./EntryRow";
 import { useUndoLastLog } from "./useUndoLastLog";
 
 const EXERCISE = { name: "Bench Press", modality: "weight_reps" as const };
 
-function setup(options: { overlayOpen?: boolean; onRender?: (r: ReturnType<typeof useUndoLastLog>) => void } = {}) {
+function setup(
+  options: {
+    overlayOpen?: boolean;
+    onRender?: (r: ReturnType<typeof useUndoLastLog>) => void;
+    select?: (exerciseId: string) => void;
+    revealPanel?: () => void;
+    currentNow?: () => string | null;
+    deleteSet?: () => Promise<void>;
+  } = {},
+) {
   const first = makeSet({ setNumber: 1 });
   const second = makeSet({ setNumber: 2, weight: 62.5, weightKg: 62.5 });
   const exercises = makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: EXERCISE.name, sets: [first, second] }] }).exercises;
   const exerciseId = exercises[0]!.id;
   const event = (set: typeof first): LoggedEvent => ({ exerciseId, set, advance: true, wasExtra: false, value: `${set.weight} × ${set.reps}` });
-  const wrapper = wrapperWith(makeQueryClient(), fakeClient({ deleteSet: async () => {} }));
+  const wrapper = wrapperWith(makeQueryClient(), fakeClient({ deleteSet: options.deleteSet ?? (async () => {}) }));
+  const select = options.select ?? vi.fn();
+  const revealPanel = options.revealPanel ?? vi.fn();
+  const currentNow = options.currentNow ?? (() => exerciseId);
   const props = { exercises: exercises as readonly WorkoutExerciseDetail[], overlayOpen: options.overlayOpen ?? false };
   const hook = renderHook(
     ({ exercises: list, overlayOpen }: typeof props) => {
@@ -26,9 +38,10 @@ function setup(options: { overlayOpen?: boolean; onRender?: (r: ReturnType<typeo
         idMap: {},
         rest: null,
         overlayOpen,
-        select: vi.fn(),
+        select,
         focusLeavesWith: vi.fn(() => false),
-        revealPanel: vi.fn(),
+        revealPanel,
+        currentNow,
         onFailure: vi.fn(),
         announce: vi.fn(),
       });
@@ -38,8 +51,38 @@ function setup(options: { overlayOpen?: boolean; onRender?: (r: ReturnType<typeo
     { initialProps: props, wrapper },
   );
   const tap = () => ({ currentTarget: document.createElement("button") }) as unknown as MouseEvent<HTMLButtonElement>;
-  return { ...hook, props, first, second, event, tap };
+  return { ...hook, props, first, second, event, tap, exerciseId };
 }
+
+describe("minor 767 — Undo moves only if the lifter hasn't since the tap", () => {
+  it("minor 767: the lifter moved to another card before the delete landed: Undo neither selects nor reveals, and still restores", async () => {
+    const held = deferred<void>();
+    const select = vi.fn();
+    const revealPanel = vi.fn();
+    let current = "";
+    const { result, first, event, tap, exerciseId } = setup({ select, revealPanel, currentNow: () => current, deleteSet: () => held.promise });
+    current = exerciseId;
+    act(() => result.current.offerFrom(event(first), EXERCISE, null));
+    act(() => result.current.undo(tap()));
+    current = "B";
+    await act(async () => held.resolve());
+    await waitFor(() => expect(result.current.restore?.set.id).toBe(first.id));
+    expect(select).not.toHaveBeenCalled();
+    expect(revealPanel).not.toHaveBeenCalled();
+  });
+
+  it("Review Focus 3: with no move since the tap, Undo selects its card and reveals its panel", async () => {
+    const select = vi.fn();
+    const revealPanel = vi.fn();
+    const { result, first, event, tap, exerciseId } = setup({ select, revealPanel });
+    act(() => result.current.offerFrom(event(first), EXERCISE, null));
+    act(() => result.current.undo(tap()));
+    await waitFor(() => expect(revealPanel).toHaveBeenCalledWith(expect.objectContaining({ id: first.id })));
+    expect(select).toHaveBeenCalledWith(exerciseId);
+    expect(select.mock.invocationCallOrder[0]!).toBeLessThan(revealPanel.mock.invocationCallOrder[0]!);
+    expect(result.current.restore?.set.id).toBe(first.id);
+  });
+});
 
 describe("minor 432 — useUndoLastLog on its own", () => {
   it("offerFrom offers the logged row", () => {

@@ -14,8 +14,9 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-// A held log, so a test can act between the tap and the log's success. Everything else about the mutation is real.
-const hold = vi.hoisted(() => ({ gate: null as Promise<void> | null }));
+// A held log, so a test can act between the tap and the log's success, and a held delete, so one can act between an
+// Undo tap and its delete reaching the queue (minor 767). Everything else about the mutations is real.
+const hold = vi.hoisted(() => ({ gate: null as Promise<void> | null, deleteGate: null as Promise<void> | null }));
 vi.mock("./useWorkoutMutations", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./useWorkoutMutations")>();
   return {
@@ -26,6 +27,16 @@ vi.mock("./useWorkoutMutations", async (importOriginal) => {
         ...real,
         mutateAsync: async (variables: Parameters<typeof real.mutateAsync>[0]) => {
           if (hold.gate) await hold.gate;
+          return real.mutateAsync(variables);
+        },
+      };
+    },
+    useDeleteSet: () => {
+      const real = actual.useDeleteSet();
+      return {
+        ...real,
+        mutateAsync: async (variables: Parameters<typeof real.mutateAsync>[0]) => {
+          if (hold.deleteGate) await hold.deleteGate;
           return real.mutateAsync(variables);
         },
       };
@@ -48,6 +59,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = scroll;
   scroll.mockReset();
   hold.gate = null;
+  hold.deleteGate = null;
 });
 afterEach(() => cleanupApp());
 
@@ -72,6 +84,24 @@ describe("minor 713 — an Undo's reveal belongs to the lifter's last choice", (
     scroll.mockClear();
     await user.click(undo);
     await waitFor(() => expect(scrolled()).toContain(panel(/^A/)));
+  });
+});
+
+describe("minor 767 — Undo doesn't pull the lifter back from a card they moved to", () => {
+  it("minor 767: Undo on A, then a tap on B before the delete lands: B stays current", async () => {
+    const { fake, user } = await setup([ex("A", { plannedSets: planned(3) }), ex("B", { plannedSets: planned(3) })]);
+    await user.click(logButton("A"));
+    const undo = await screen.findByRole("button", { name: /^Undo set 1/ });
+    const gate = deferred<void>();
+    hold.deleteGate = gate.promise;
+    await user.click(undo);
+    await makeCurrent(user, "B");
+    gate.resolve();
+    // The DELETE is sent once the delete is queued, which is after the point where Undo would move.
+    await waitFor(() => expect(fake.requests.some((r) => r.method === "DELETE" && r.path.startsWith("/v1/sets/"))).toBe(true));
+    await new Promise((r) => setTimeout(r, 50)); // let a wrong move render if one is coming
+    expect(within(card(/^B/)).getByRole("form", { name: "Log a set of B" })).toBeInTheDocument();
+    expect(within(card(/^A/)).queryByRole("form")).toBeNull();
   });
 });
 

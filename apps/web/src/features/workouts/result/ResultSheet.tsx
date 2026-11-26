@@ -42,7 +42,6 @@ export interface ResultSheetProps {
   onSave(draft: ResultDraft): void;
 }
 
-
 const step = (text: string, by: 1 | -1, max: number): string => {
   const n = text === "" ? 0 : Number(text);
   if (text === "" && by === -1) return text;

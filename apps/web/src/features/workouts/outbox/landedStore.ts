@@ -99,6 +99,8 @@ export function createLandedStore({ storage, userId, report: reportDep }: Landed
     if (writable) return file ?? items;
     if (file === null) return items;
     // A line this tab removed while the file couldn't be written is still in the file; it stays gone (code review).
+    // Accepted (minor 765): entries carry no landing time, so this tab's entries go first and another tab's newest can
+    // be cut at `LANDED_MAX`. The one-time line may then show once more, which the store's doc allows.
     const fresh = file.filter((f) => !items.some((i) => i.workoutId === f.workoutId) && !removedUnwritten.has(f.workoutId));
     return [...items, ...fresh].slice(0, LANDED_MAX);
   };

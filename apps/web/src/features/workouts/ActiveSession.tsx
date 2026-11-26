@@ -465,11 +465,13 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
     rest,
     overlayOpen,
     select: selectCurrent,
+    currentNow: () => currentIdRef.current,
     focusLeavesWith: (id) => {
       const leaving = current.currentId;
       return leaving !== null && leaving !== id && (headingRefs.current.get(leaving)?.closest("article")?.contains(document.activeElement) ?? false);
     },
-    // Minor 713: Undo selects its card first, so the count read here already includes that choice.
+    // Minor 767: Undo moves only if the lifter hasn't since the tap. Minor 713: when it does, it selects its card first,
+    // so the gate's count, read here, already includes that choice.
     revealPanel: (set) => setRevealGate({ kind: "gone", set, choice: current.choiceNow() }),
     onFailure: (error) => void handleFailure("delete-set", error),
     announce: setAnnouncement,

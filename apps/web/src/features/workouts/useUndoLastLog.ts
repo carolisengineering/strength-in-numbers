@@ -15,6 +15,8 @@ export interface UndoLastLogInput {
   /** A sheet, dialog or picker is open. While it is, any offer ends, one made under it included (Spec 17.5 AC8, minor 430). */
   overlayOpen: boolean;
   select: (exerciseId: string) => void;
+  /** The current exercise at the moment of the call. Undo moves only if it is unchanged since the tap (minor 767). */
+  currentNow: () => string | null;
   /** Would making this exercise current collapse the card that holds focus? */
   focusLeavesWith: (exerciseId: string) => boolean;
   /** Show the current panel once the undone row has left the list (17.4's reveal; minor 428, `setListed`). */
@@ -46,7 +48,19 @@ interface Undoing {
  * has been seen and then left ends it. Undo is the same delete Delete set uses (D1), so the outbox's cancel-or-delete
  * rules apply and it works offline.
  */
-export function useUndoLastLog({ exercises, ops, idMap, rest, overlayOpen, select, focusLeavesWith, revealPanel, onFailure, announce }: UndoLastLogInput): UndoLastLog {
+export function useUndoLastLog({
+  exercises,
+  ops,
+  idMap,
+  rest,
+  overlayOpen,
+  select,
+  currentNow,
+  focusLeavesWith,
+  revealPanel,
+  onFailure,
+  announce,
+}: UndoLastLogInput): UndoLastLog {
   const del = useDeleteSet();
   const [held, setHeld] = useState<{ offer: UndoOffer; seen: boolean } | null>(null);
   const [undoing, setUndoing] = useState<Undoing | null>(null);
@@ -110,10 +124,10 @@ export function useUndoLastLog({ exercises, ops, idMap, rest, overlayOpen, selec
     if (button === document.activeElement || focusLeavesWith(target.offer.exerciseId)) {
       button.closest("[data-session-bar]")?.querySelector<HTMLElement>(":scope > button")?.focus({ preventScroll: true });
     }
-    void run(target);
+    void run({ ...target, currentAtTap: currentNow() });
   }
 
-  async function run({ offer, row: set }: { offer: UndoOffer; row: SetEntry }) {
+  async function run({ offer, row: set, currentAtTap }: { offer: UndoOffer; row: SetEntry; currentAtTap: string | null }) {
     try {
       await del.mutateAsync({ id: set.id, modality: offer.modality, viaUndo: true });
     } catch (error) {
@@ -123,8 +137,12 @@ export function useUndoLastLog({ exercises, ops, idMap, rest, overlayOpen, selec
     }
     setUndoing((current) => (current?.row === set ? { row: set, settled: true } : current));
     if (offer.restStartedAt !== null && rest?.get()?.startedAt === offer.restStartedAt) rest.clear();
-    select(offer.exerciseId);
-    revealPanel(set);
+    // Minor 767: a lifter who moved to another card while the delete was out stays there, with that card's panel as
+    // they left it. The restore still waits on the undone card's draft.
+    if (currentNow() === currentAtTap) {
+      select(offer.exerciseId);
+      revealPanel(set);
+    }
     nextToken.current += 1;
     setRestore({ token: nextToken.current, exerciseId: offer.exerciseId, set });
   }

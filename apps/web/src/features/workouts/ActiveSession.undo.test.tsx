@@ -442,7 +442,7 @@ describe("17.5 AC9 — the rest", () => {
     const exercise = makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "A", sets: [set] }] }).exercises[0]!;
     const rest = { get: () => ({ startedAt: 2000, durationS: 60 }), start: vi.fn(), clear: vi.fn(), subscribe: vi.fn() } as unknown as RestStore;
     const { result } = renderHook(
-      () => useUndoLastLog({ exercises: [exercise], ops: [], idMap: {}, rest, overlayOpen: false, select: vi.fn(), focusLeavesWith: () => false, revealPanel: vi.fn(), onFailure: vi.fn(), announce: vi.fn() }),
+      () => useUndoLastLog({ exercises: [exercise], ops: [], idMap: {}, rest, overlayOpen: false, select: vi.fn(), currentNow: () => exercise.id, focusLeavesWith: () => false, revealPanel: vi.fn(), onFailure: vi.fn(), announce: vi.fn() }),
       { wrapper: wrapperWith(makeQueryClient(), fakeClient({ deleteSet: () => Promise.resolve() })) },
     );
     act(() => result.current.offerFrom({ exerciseId: exercise.id, set, advance: true, wasExtra: false, value: "60 × 8" }, { name: "A", modality: "weight_reps" }, 1000));
