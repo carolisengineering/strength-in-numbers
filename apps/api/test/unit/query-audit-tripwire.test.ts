@@ -54,11 +54,28 @@ describe("minor 393 — raw SQL only in spellings the audit lists", () => {
     ["minor 566 — Reflect.get", 'export const a = Reflect.get(tx, "$queryRaw");\n', 1],
     ["minor 566 — an index on a Record cast", 'export const a = (tx as unknown as Record<string, Function>)["$executeRaw"];\n', 1],
     ["minor 566 — $queryRawTyped indexed on a Record cast", 'export const a = (tx as unknown as Record<string, Function>)["$queryRawTyped"];\n', 2],
+    [
+      "minor 732 — assignment destructuring off a narrowed client",
+      'declare const d: Pick<Prisma.TransactionClient, "workout">;\nlet w: unknown;\n({ workout: w } = d);\nvoid w;\n',
+      4,
+    ],
+    ["minor 732 — an assignment pattern inside an array", "let q: unknown;\n[{ $queryRaw: q }] = [tx];\nvoid q;\n", 1],
+    ["minor 732 — an assignment pattern as a for…of head", "let q: unknown;\nfor ({ $queryRaw: q } of [tx]) void q;\n", 1],
+    ["minor 732 — Reflect[\"get\"]", 'export const a = Reflect["get"](tx, "$queryRaw");\n', 1],
+    ["minor 732 — a destructured Reflect.get", 'const { get } = Reflect;\nexport const a = get(tx, "$queryRaw");\n', 1],
   ] as [string, string, number, string?][])("%s fails with its rule", (_name, body, rule, head) => {
     const issues = issuesFor(body, head ?? HEAD);
     expect(issues).toHaveLength(1);
     expect(issues[0]).toContain(`rule ${rule}:`);
     expect(issues[0]).toMatch(/^src\/repositories\/tripwire-fixture\.ts:\d+ /);
+  });
+
+  it("minor 733 — rule 1 says a plain read wasn't called, and an index was indexed", () => {
+    const read = issuesFor('export const f = typeof tx.$queryRaw === "function";\n');
+    expect(read).toHaveLength(1);
+    expect(read[0]).toContain("$queryRaw read without being called");
+    const indexed = issuesFor("export const a = tx[\"$queryRaw\"]`SELECT 1`;\n");
+    expect(indexed[0]).toContain("$queryRaw indexed on a client");
   });
 
   it("minor 566 — a raw method's name in a string or a comment is not an access (Review Focus 1)", () => {
