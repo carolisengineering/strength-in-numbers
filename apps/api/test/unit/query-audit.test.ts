@@ -521,6 +521,55 @@ describe("minor 399 — an alias's callers list under its target", () => {
     expect(sanityIssues(rows, extracted, {})).toEqual([]);
   });
 
+  it("minor 773: a renamed import counts only in the file that imports it", () => {
+    const extracted = extractStatements([
+      src("src/repositories/ownership.ts", OWNED_A),
+      src("src/repositories/b.ts", 'import { ownedA as scope } from "./ownership.js";\nexport async function read(db: unknown, u: string) { return db.$queryRaw`SELECT 1 FROM "b" WHERE ${scope(u, Prisma.sql`b.a_id`)}`; }'),
+      src("src/repositories/c.ts", 'const scope = Prisma.sql`TRUE`;\nexport async function other(db: unknown) { return db.$queryRaw`SELECT 1 FROM "c" WHERE ${scope}`; }'),
+    ]);
+    expect(extracted.find((r) => r.key === "src/repositories/ownership.ts#ownedA#1")!.callers).toEqual(["src/repositories/b.ts#read#1"]);
+    const rows = parseAudit(writeAudit([], extracted)).map((r) => ({ ...r, status: "ok", category: r.kind === "fragment" ? "fragment" : "user-filtered" }));
+    const issues = sanityIssues(rows, extracted, {});
+    expect(issues).toContain("src/repositories/c.ts#other#1: user-filtered, but its text has no user predicate");
+    expect(issues.filter((i) => i.startsWith("src/repositories/b.ts#read#1"))).toEqual([]);
+  });
+
+  const OWNED_A_KEY = "src/repositories/ownership.ts#ownedA#1";
+  const readVia = (importLine: string, name: string) =>
+    src("src/repositories/b.ts", `${importLine}\nexport async function read(db: unknown, u: string) { return db.$queryRaw\`SELECT 1 FROM "b" WHERE \${${name}(u, Prisma.sql\`b.a_id\`)}\`; }`);
+
+  it("minor 778: a named re-export is followed", () => {
+    const rows = extractStatements([
+      src("src/repositories/ownership.ts", OWNED_A),
+      src("src/repositories/index.ts", 'export { ownedA as byOwner } from "./ownership.js";'),
+      readVia('import { byOwner } from "./index.js";', "byOwner"),
+    ]);
+    expect(rows.find((r) => r.key === OWNED_A_KEY)!.callers).toEqual(["src/repositories/b.ts#read#1"]);
+  });
+
+  it("minor 778: an export * barrel is followed", () => {
+    const rows = extractStatements([
+      src("src/repositories/ownership.ts", OWNED_A),
+      src("src/repositories/index.ts", 'export * from "./ownership.js";'),
+      readVia('import { ownedA } from "./index.js";', "ownedA"),
+    ]);
+    expect(rows.find((r) => r.key === OWNED_A_KEY)!.callers).toEqual(["src/repositories/b.ts#read#1"]);
+  });
+
+  it("minor 778: a specifier without an extension is read as .ts", () => {
+    const rows = extractStatements([src("src/repositories/ownership.ts", OWNED_A), readVia('import { ownedA as base } from "./ownership";', "base")]);
+    expect(rows.find((r) => r.key === OWNED_A_KEY)!.callers).toEqual(["src/repositories/b.ts#read#1"]);
+  });
+
+  it("minor 778: barrels that export * from each other terminate", { timeout: 5_000 }, () => {
+    const rows = extractStatements([
+      src("src/repositories/ownership.ts", OWNED_A),
+      src("src/repositories/x.ts", 'export * from "./y.js";'),
+      src("src/repositories/y.ts", 'export * from "./x.js";'),
+    ]);
+    expect(rows.find((r) => r.key === OWNED_A_KEY)!.callers).toEqual([]);
+  });
+
   it("an alias of something that isn't a fragment adds no caller", () => {
     const rows = extractStatements([
       src("src/repositories/c.ts", 'const limit = 5;\nexport const cap = limit;\nexport const F = Prisma.sql`x = 1`;\nexport async function read(db: unknown) { return db.$queryRaw`SELECT ${cap} WHERE ${F}`; }'),
