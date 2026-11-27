@@ -534,6 +534,16 @@ describe("minor 399 — an alias's callers list under its target", () => {
     expect(issues.filter((i) => i.startsWith("src/repositories/b.ts#read#1"))).toEqual([]);
   });
 
+  it("minor 773 (code review): a chain of fragments across files is expanded with each fragment's own file's names", () => {
+    const extracted = extractStatements([
+      src("src/repositories/c.ts", 'export const H = Prisma.sql`EXISTS (SELECT 1 FROM "workout" w WHERE w.id = x)`;\nexport const G = Prisma.sql`${H}`;'),
+      src("src/repositories/a.ts", 'import { G } from "./c.js";\nexport const F = Prisma.sql`${G}`;'),
+      src("src/repositories/b.ts", 'import { F } from "./a.js";\nexport async function read(db: unknown) { return db.$queryRaw`SELECT 1 FROM "muscle_group" WHERE ${F}`; }'),
+    ]);
+    const rows = parseAudit(writeAudit([], extracted)).map((r) => ({ ...r, status: "ok", category: r.kind === "fragment" ? "fragment" : "shared on purpose" }));
+    expect(sanityIssues(rows, extracted, {})).toContain("src/repositories/b.ts#read#1: shared on purpose, but it (or a fragment it uses) touches user data");
+  });
+
   const OWNED_A_KEY = "src/repositories/ownership.ts#ownedA#1";
   const readVia = (importLine: string, name: string) =>
     src("src/repositories/b.ts", `${importLine}\nexport async function read(db: unknown, u: string) { return db.$queryRaw\`SELECT 1 FROM "b" WHERE \${${name}(u, Prisma.sql\`b.a_id\`)}\`; }`);

@@ -616,13 +616,20 @@ export function touchesOnlySharedData(text: string): boolean {
 const MODEL_CALL_RE = /\.(\w+)\.(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findMany|create|createMany|createManyAndReturn|update|updateMany|upsert|delete|deleteMany|count|aggregate|groupBy)\(/g;
 const SHARED_DELEGATES = new Set(["muscleGroup", "equipment"]);
 
-/** The statement's text with the text of every fragment it names appended (to a small depth), for table detection. */
-export function expandFragments(text: string, fragments: ReadonlyMap<string, string>, depth = 3): string {
+/**
+ * The statement's text with the text of every fragment it names appended (to a small depth), for table detection.
+ * `fragmentsIn(file)` maps the names `file` knows to each fragment's text and file (minor 773), and a fragment's own
+ * body is read with the names of the file it was written in, so a chain across files is followed (code review).
+ */
+export function expandFragments(
+  text: string,
+  file: string,
+  fragmentsIn: (file: string) => ReadonlyMap<string, { text: string; file: string }>,
+  depth = 3,
+): string {
   let out = text;
-  for (const [name, body] of fragments) {
-    if (new RegExp(`(?<![\\w$])${name.replace(/[$]/g, "\\$")}(?![\\w$])`).test(text)) {
-      out += " " + (depth > 0 ? expandFragments(body, fragments, depth - 1) : body);
-    }
+  for (const [name, body] of fragmentsIn(file)) {
+    if (nameRe(name).test(text)) out += " " + (depth > 0 ? expandFragments(body.text, body.file, fragmentsIn, depth - 1) : body.text);
   }
   return out;
 }
@@ -659,12 +666,12 @@ export function sanityIssues(
   const fileOf = new Map(extracted.map((s) => [s.key, s.file]));
   const fragmentRows = extracted.filter((s) => s.kind === "fragment");
   const keysOfFragment = (s: Extracted) => s.knownAs ?? [`${s.file}#${fragmentLabel(s)}`];
-  const perFile = new Map<string, { fragments: Map<string, string>; userFragments: string[] }>();
+  const perFile = new Map<string, { fragments: Map<string, { text: string; file: string }>; userFragments: string[] }>();
   const namesFor = (file: string) => {
     let known = perFile.get(file);
     if (!known) {
       known = {
-        fragments: new Map(fragmentRows.flatMap((s) => namesIn(file, keysOfFragment(s)).map((name) => [name, s.text] as const))),
+        fragments: new Map(fragmentRows.flatMap((s) => namesIn(file, keysOfFragment(s)).map((name) => [name, { text: s.text, file: s.file }] as const))),
         userFragments: fragmentRows.filter((s) => hasUserPredicate(s.text)).flatMap((s) => namesIn(file, keysOfFragment(s))),
       };
       perFile.set(file, known);
@@ -672,7 +679,7 @@ export function sanityIssues(
     return known;
   };
   const ownsData = (text: string, file: string) => {
-    const { tables, delegates } = tablesOf(expandFragments(text, namesFor(file).fragments));
+    const { tables, delegates } = tablesOf(expandFragments(text, file, (f) => namesFor(f).fragments));
     return tables.some((t) => !isSharedTable(t) && !(t === "exercise" && /owner_user_id IS NULL/i.test(text))) || delegates.some((d) => !SHARED_DELEGATES.has(d));
   };
   for (const r of rows) {
