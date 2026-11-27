@@ -197,7 +197,8 @@ function countUse(code: string, name: string): { names: string[]; used: boolean;
   };
   collect(param);
   const isName = (node: ts.Expression): boolean => {
-    const inner = ts.skipParentheses(node);
+    let inner = node;
+    while (ts.isParenthesizedExpression(inner)) inner = inner.expression;
     return ts.isIdentifier(inner) && names.includes(inner.text);
   };
   let used = false;
