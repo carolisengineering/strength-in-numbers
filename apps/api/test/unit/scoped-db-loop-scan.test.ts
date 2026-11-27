@@ -125,7 +125,7 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
       r = decl.initializer;
     }
     if (!ts.isCallExpression(r) || !ts.isPropertyAccessExpression(r.expression) || !["as", "forAuthSub"].includes(r.expression.name.text)) return false;
-    let target = r.expression.expression;
+    let target: ts.Expression = r.expression.expression;
     if (ts.isCallExpression(target) && ts.isIdentifier(target.expression) && target.expression.text === "toScoped" && target.arguments.length === 1) target = target.arguments[0]!;
     return ts.isIdentifier(target) && checker.getSymbolAtLocation(target) === paramSymbol;
   };
