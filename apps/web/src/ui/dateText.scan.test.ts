@@ -15,19 +15,12 @@ const offenders = (pattern: RegExp) =>
 /**
  * A date built outside ui/dateText.ts (minor 529): any `Intl.DateTimeFormat(` but a zone-only
  * `Intl.DateTimeFormat().resolvedOptions(`, `toLocaleDateString` / `toLocaleTimeString`, any `toLocaleString(`, and a
- * hand-written month table. Minor 752: a pinned `("en-US")` is no exemption by itself, since a date can pin it too; the
- * Hevy screens' number files are listed by path below, and their calls are checked to be counts.
+ * hand-written month table. Minor 752: a pinned `("en-US")` is no exemption by itself, since a date can pin it too.
+ * Minor 780: the Hevy screens' counts go through one helper, the only exemption, which holds that one call.
  */
 const DATE_BUILDERS = /Intl\.DateTimeFormat\((?!\)\.resolvedOptions\()|toLocale(?:Date|Time)String|toLocaleString\(|["']Jan["']\s*,\s*["']Feb["']/;
-/** The Hevy screens' number files: they call `toLocaleString("en-US")` for counts only (checked below). */
-const HEVY_NUMBER_FILES = [
-  "../features/hevy/import/ImportSummaryView.tsx",
-  "../features/hevy/import/importNeeds.ts",
-  "../features/hevy/import/messages.ts",
-  "../features/hevy/send/messages.ts",
-];
-/** A number file with its exact count calls taken out: any date builder left is a date. */
-const withoutCounts = (source: string) => source.replaceAll('toLocaleString("en-US")', "");
+/** The Hevy screens' count helper: `n.toLocaleString("en-US")` and nothing else (checked below). */
+const HEVY_COUNT_FILE = "../features/hevy/formatCount.ts";
 
 describe("17.13 AC1 — one module", () => {
   it("found the sources it is meant to scan", () => {
@@ -44,20 +37,15 @@ describe("17.13 AC1 — one module", () => {
     expect(sources["./dateText.ts"]).not.toMatch(/hourCycle|hour12/);
   });
 
-  it("dates are built only in ui/dateText.ts and the Hevy import's month-year helper (and the Hevy number files' counts)", () => {
-    expect(offenders(DATE_BUILDERS)).toEqual(
-      [...HEVY_NUMBER_FILES, "../features/hevy/import/RunStep.tsx", "./dateText.ts"].sort(),
-    );
+  it("dates are built only in ui/dateText.ts and the Hevy import's month-year helper (and the Hevy count helper)", () => {
+    expect(offenders(DATE_BUILDERS)).toEqual([HEVY_COUNT_FILE, "../features/hevy/import/RunStep.tsx", "./dateText.ts"].sort());
   });
 
-  it("minor 752: the Hevy number files call toLocaleString only as a count: exactly (\"en-US\")", () => {
-    for (const path of HEVY_NUMBER_FILES) {
-      expect(sources[path], path).toBeDefined();
-      expect(withoutCounts(sources[path]!), path).not.toMatch(DATE_BUILDERS);
-    }
-    for (const sample of ['n.toLocaleString("en-US", { month: "short" })', 'n.toLocaleString("en-US"); d.toLocaleDateString()']) {
-      expect(withoutCounts(sample), sample).toMatch(DATE_BUILDERS);
-    }
+  it("minor 780: the count helper holds one toLocaleString, and it is the count", () => {
+    const source = sources[HEVY_COUNT_FILE];
+    expect(source).toBeDefined();
+    expect(source!.match(/toLocaleString\(/g)).toHaveLength(1);
+    expect(source).toContain('n.toLocaleString("en-US")');
   });
 
   it("minor 529: the pattern catches an empty-argument format, toLocaleString and a hand-written month table", () => {

@@ -27,8 +27,8 @@ import {
 } from "./messages";
 import { SummaryList } from "./SummaryList";
 import styles from "./ImportScreen.module.css";
+import { formatCount } from "../formatCount";
 
-const fmt = (n: number) => n.toLocaleString("en-US");
 
 /** Spec 20.1 AC12–AC14, AC16, AC28, §5.5: what an import would do, from the dry run. Nothing is written until Import. */
 export function ImportSummaryView({
@@ -78,8 +78,8 @@ export function ImportSummaryView({
   ];
   const groupLabel = (group: ListGroup, rows: number) =>
     group === "sets_dropped"
-      ? `${LIST_GROUP_LABELS.sets_dropped} (${fmt(agg.setsDropped)} sets in ${fmt(rows)} ${rows === 1 ? "workout" : "workouts"})`
-      : `${LIST_GROUP_LABELS[group]} (${fmt(rows)})`;
+      ? `${LIST_GROUP_LABELS.sets_dropped} (${formatCount(agg.setsDropped)} sets in ${formatCount(rows)} ${rows === 1 ? "workout" : "workouts"})`
+      : `${LIST_GROUP_LABELS[group]} (${formatCount(rows)})`;
 
   return (
     <section className={styles.step} aria-labelledby="hevy-import-step">
@@ -113,7 +113,7 @@ export function ImportSummaryView({
         <ul className={styles.list}>
           {HEVY_IMPORT_DROP_CODES.filter((c) => agg.drops[c] > 0).map((c) => (
             <li key={c}>
-              {DROP_LABELS[c]}: {fmt(agg.drops[c])}
+              {DROP_LABELS[c]}: {formatCount(agg.drops[c])}
             </li>
           ))}
         </ul>

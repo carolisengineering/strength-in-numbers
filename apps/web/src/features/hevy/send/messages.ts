@@ -2,6 +2,7 @@ import type { ExportNotice } from "@sin/core";
 
 import type { HevyErrorKind } from "../client/hevyErrors";
 import { HEVY_COPY } from "../messages";
+import { formatCount } from "../formatCount";
 
 /**
  * Spec 20.2 §6.6, AC19: every sentence of Send to Hevy. Verbatim from the AC that names it; the rest is plan copy
@@ -9,7 +10,6 @@ import { HEVY_COPY } from "../messages";
  * own exercise (`left_out`). American English.
  */
 
-const fmt = (n: number) => n.toLocaleString("en-US");
 
 export const HEVY_SEND_COPY = Object.freeze({
   heading: "Hevy",
@@ -69,7 +69,7 @@ export const HEVY_SEND_COPY = Object.freeze({
 
 /** AC25: shown above Send while auto-push is on and an unsent workout has unmatched exercises. */
 export function needsMatching(n: number): string {
-  return n === 1 ? "1 exercise needs matching before this can go to Hevy." : `${fmt(n)} exercises need matching before this can go to Hevy.`;
+  return n === 1 ? "1 exercise needs matching before this can go to Hevy." : `${formatCount(n)} exercises need matching before this can go to Hevy.`;
 }
 
 /** AC2: "Sent to Hevy · Sat, Oct 24" (and "From Hevy · …", "Matched with a Hevy workout · …"). */
@@ -92,7 +92,7 @@ export function hevyFailureSentence(kind: HevyErrorKind): string {
  */
 export type SendNotice = ExportNotice | { code: "left_out"; name: string } | { code: "earlier_copy" };
 
-const sets = (n: number) => `${fmt(n)} ${n === 1 ? "set" : "sets"}`;
+const sets = (n: number) => `${formatCount(n)} ${n === 1 ? "set" : "sets"}`;
 const quoted = (names: readonly string[]) =>
   names.length <= 1 ? `'${names[0] ?? ""}'` : `${names.slice(0, -1).map((n) => `'${n}'`).join(", ")} and '${names[names.length - 1]}'`;
 

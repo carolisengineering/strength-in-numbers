@@ -126,7 +126,7 @@ export function SectionSheet({ open, mode, section, busy, errors, onSubmit, onCl
           )}
         </Field>
         <TimerFields
-          idPrefix="section-timer"
+          idPrefix={`${formId}-timer`}
           value={timer}
           errors={timerShown.visible}
           onEdit={(field) => timerShown.edit(field)}

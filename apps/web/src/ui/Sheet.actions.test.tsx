@@ -485,12 +485,25 @@ const CANCEL_CONSTANTS = /\b[A-Z_]*CANCEL[A-Z_]*\b|\b[A-Z][A-Z_]*(?:\.[A-Za-z_]+
 const DISMISS_LABEL_BEFORE = /dismissLabel\s*=\s*\{?\s*$/;
 /** Cancels that act on part of the body, not the sheet (AC7): Match for Hevy's in-card Cancel, in pick and create modes. */
 const IN_BODY_CANCELS: Record<string, number> = { "../features/hevy/send/MatchForHevySheet.tsx": 2 };
+/**
+ * Minor 784: a lowercase alias of a copy object (`const copy = EDIT_COPY.lastSet; … {copy.cancel}`) in braces. It is a
+ * Cancel when drawn as a JSX child or given to `label=` / `aria-label=`; after any other `=` it is a handler
+ * (`onClick={controller.cancel}`), not copy.
+ */
+const ALIAS_CANCEL = /\{\s*[a-z]\w*(?:\.\w+)*\.cancel\s*\}/g;
+const ATTRIBUTE_BEFORE = /=\s*$/;
+const LABEL_BEFORE = /(?:^|[^\w-])(?:aria-)?label\s*=\s*$/;
 /** Uses of a Cancel in a file that aren't a `dismissLabel` (import lists name the constants too; only uses count). */
 function strayCancels(raw: string): number {
   const source = raw.replace(/^import\b[\s\S]*?\bfrom\s+"[^"]+";$/gm, "");
+  const before = (index: number) => source.slice(Math.max(0, index - 24), index);
   let others = 0;
   for (const match of source.matchAll(CANCEL_CONSTANTS)) {
-    if (!DISMISS_LABEL_BEFORE.test(source.slice(Math.max(0, match.index - 24), match.index))) others += 1;
+    if (!DISMISS_LABEL_BEFORE.test(before(match.index))) others += 1;
+  }
+  for (const match of source.matchAll(ALIAS_CANCEL)) {
+    const text = before(match.index);
+    if (!ATTRIBUTE_BEFORE.test(text) || LABEL_BEFORE.test(text)) others += 1;
   }
   return others;
 }
@@ -544,6 +557,16 @@ describe("17.10 AC15, AC7 — every sheet uses the row", () => {
     for (const sample of ["EDIT_COPY.lastSet.cancel", "MESSAGES.cancel"]) {
       expect([...sample.matchAll(CANCEL_CONSTANTS)], sample).not.toEqual([]);
     }
+  });
+
+  it("minor 784: a lowercase alias of a copy object is a Cancel; a handler isn't", () => {
+    expect(strayCancels("const copy = EDIT_COPY.lastSet;\n<Button>{copy.cancel}</Button>")).toBe(1);
+    expect(strayCancels("<Chip label={copy.cancel} />")).toBe(1);
+    expect(strayCancels('<Chip aria-label = { copy.cancel } />')).toBe(1);
+    // Review Focus 5: a handler stays uncounted.
+    expect(strayCancels("<Button onClick={copy.cancel}>Go</Button>")).toBe(0);
+    expect(strayCancels("onCancel={controller.cancel}")).toBe(0);
+    expect(strayCancels("<Sheet dismissLabel={copy.cancel} />")).toBe(0);
   });
 });
 

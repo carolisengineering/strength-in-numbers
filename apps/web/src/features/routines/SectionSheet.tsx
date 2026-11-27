@@ -89,7 +89,7 @@ export function SectionSheet({ open, section, messages = {}, onDone, onClose }: 
           )}
         </Field>
         <TimerFields
-          idPrefix="section-timer"
+          idPrefix={`${formId}-timer`}
           value={timer}
           errors={timerShown.visible}
           onEdit={(field) => timerShown.edit(field)}
