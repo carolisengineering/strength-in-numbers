@@ -10,7 +10,6 @@ import { formatCount } from "../formatCount";
  * own exercise (`left_out`). American English.
  */
 
-
 export const HEVY_SEND_COPY = Object.freeze({
   heading: "Hevy",
   // AC2: the section's states.
