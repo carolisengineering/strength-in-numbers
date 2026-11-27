@@ -284,8 +284,13 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
   });
 
   describe("09.3 AC30 — the bounded read with one-offs mixed in", () => {
-    it("50 full routines, 20 of them unexpired one-offs: the probe plus ONE list statement, within the bound", async () => {
-      const u = await insertUser(db);
+    // Minor 746 (as #360 did for 675): the 30,000-row seed runs in this describe's own beforeAll, with a long timeout, so
+    // the `it` holds only the timed read under the default 5 s. Not at the file's top level: the file's afterEach empties
+    // the routine tables after every test.
+    let u: string;
+    beforeAll(async () => {
+      if (!db) return;
+      u = await insertUser(db);
       const ex = await insertExercise(db, { ownerUserId: u });
       await x(`INSERT INTO "routine" (id, user_id, name) SELECT gen_random_uuid(), $1::uuid, 'R' || g FROM generate_series(1, 50) g`, u);
       await x(
@@ -302,6 +307,9 @@ describe.skipIf(!shouldRunIntegration())("Spec 09.3 — the lazy expiry sweep (r
       await x(
         `UPDATE "routine" SET one_off_until = created_at + interval '336 hours'
          WHERE id IN (SELECT id FROM "routine" WHERE user_id = $1::uuid ORDER BY id LIMIT 20)`, u);
+    }, 180_000);
+
+    it("50 full routines, 20 of them unexpired one-offs: the probe plus ONE list statement, within the bound", async () => {
       const seen = await startCapture(db);
       const t0 = Date.now();
       const list = (await routines().list(u)).routines;

@@ -173,6 +173,11 @@ caffeinate -i pnpm --filter @sin/loadtest run loadtest run gym --target staging
 `--lifters N` runs one step of N lifters. Use it for checks only: it can't unlock a push (§6). `--steps` and
 `--hold-scale` are for local checks only. `--no-metrics-output` turns off k6's metrics.
 
+k6 is given the shell's `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` (and their lowercase forms, minor 605), so an
+exported proxy carries the run's traffic, and its latency is in the result. For a clean measurement, unset them unless
+the network needs them (`env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy pnpm --filter @sin/loadtest run
+loadtest run …`, or a fresh shell).
+
 ### Long runs
 
 A full gym run holds each step long enough to collect 200 set saves at real pace, which comes to about 344 minutes.

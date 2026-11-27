@@ -224,13 +224,17 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   // The stop handler, by phase. It registers before the annotation opens (minor 607), so a signal while it opens
   // can't take Node's default and leave it open; it stays until the result is written and the annotation closed
   // (final review), so a later signal still only says to wait.
-  // - Before k6 starts: the first signal stops the run there. k6 never starts, cleanup runs, no result is written.
+  // - Before k6 starts: the first signal stops the run there. k6 never starts, cleanup runs, no result is written, so a
+  //   signal during that cleanup says only that cleanup finishes on its own (minor 700).
   // - While k6 runs: one Ctrl-C can reach the CLI several times (the terminal's process group, tsx's relay), and a
   //   second SIGINT makes k6 abort without writing its summary. Forward one; a deliberate Ctrl-C after
   //   SIGINT_REPEAT_MS aborts. Minor 591: a `kill` (SIGTERM) or a closed terminal (SIGHUP) takes the first Ctrl-C's
   //   path but never sends k6 a second SIGINT: nobody is at the keyboard to mean it (one path, minor 608).
   // - After k6 exited: cleanup always finishes (Node's default would leave accounts half cleaned and no result), so a
-  //   signal only says to wait, and the exit is the run's own (minor 606).
+  //   signal only says to wait, and the exit is the run's own (minor 606). A signal Node handles before it has seen
+  //   k6's exit (k6 has ended, its `exit` event not yet processed) is taken as stopping k6, so a complete run can exit
+  //   143 / 129. `exited` resolves on the child's own `exit` event and `k6Done` is set before any later signal is
+  //   handled, so the window is only that gap, which Node can't close (minor 702, accepted).
   // A SIGTERM / SIGHUP that stopped the run (before or during k6) makes the exit 143 / 129.
   let child: ReturnType<RunDeps["spawnK6"]> | undefined;
   let k6Done = false;
@@ -240,7 +244,7 @@ export async function runLoad(cmd: RunCommand, deps: RunDeps): Promise<number> {
   let stoppedBy: Exclude<StopSignal, "SIGINT"> | undefined;
   const release = deps.onStop((signal) => {
     if (k6Done) {
-      if (!toldToWait) deps.log("cleanup is running and finishes on its own; wait for the result");
+      if (!toldToWait) deps.log(stoppedEarly ? "cleanup is running and finishes on its own" : "cleanup is running and finishes on its own; wait for the result");
       toldToWait = true;
       return;
     }

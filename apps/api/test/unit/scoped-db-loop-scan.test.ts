@@ -10,19 +10,24 @@ import { apiProgram, overlayPath, rel, srcFiles, srcProgram } from "./helpers/ts
  *   an array callback (`map`, `forEach`, …) or the arguments of `Promise.all`, keyed `file#function: what is called`.
  *   A `$transaction` opened on a scoped client counts like a raw call (minor 742);
  * - minor 407: every call that hands a `ScopedClient` to a looping helper, keyed `file#helper←calling function`. A
- *   looping helper is a function with a client parameter (any type, union or `Pick` with `$queryRaw` or `$executeRaw`
- *   among its members; minor 745) that, inside a loop, runs `$queryRaw` / `$executeRaw` on it or passes it to another
- *   function. Handing it a transaction's client is one transaction, so that is not flagged.
+ *   looping helper is a function with a client parameter (any type, union or `Pick` with `$queryRaw`, `$executeRaw` or
+ *   `$transaction` among its members; minors 745, 774) that, inside a loop, runs `$queryRaw` / `$executeRaw` /
+ *   `$transaction` on it or passes it to another function. Handing it a transaction's client is one transaction, so
+ *   that is not flagged;
+ * - minor 775: every call inside a loop that hands a `UserScopedDb` to an opener, keyed `file#calling function: opener`.
+ *   An opener is a function whose own body (not a nested function's) runs a round on `.as(…)` / `.forAuthSub(…)` of
+ *   that parameter, or of `toScoped(parameter)`, directly or through one `const`.
  * Each one is either moved into one transaction or listed below with its bound and reason.
  *
  * Limits: a call through a closure defined outside the loop is not seen (the scan reads where the call is written), and
  * helpers are followed one level only: a helper that hands its client, outside any loop, to a second helper that loops
  * is not seen. A looping method called through an interface-typed repository object is not resolved to its
- * implementation (minor 745).
+ * implementation (minor 745). The known instance of the closure limit (minor 772) is `importBatch`
+ * (`src/repositories/hevy-import.prisma.ts`): its loop calls `writeImportedWorkout(userId, …)`, which opens one scoped
+ * transaction per workout through the repository's own handle, bounded at 25 workouts per batch by the route.
  */
 
 const ARRAY_CALLBACKS = new Set(["map", "forEach", "flatMap", "filter", "reduce", "some", "every"]);
-const RAW_CALL = /^\$(queryRaw|executeRaw)$/;
 /** Minor 742: on a scoped client, a `$transaction` is a round of BEGIN … COMMIT as well. */
 const SCOPED_ROUND = /^\$(queryRaw|executeRaw|transaction)$/;
 
@@ -36,6 +41,8 @@ const ALLOWED: Record<string, string> = {
     "one duplicate-candidate read per workout of a batch (≤ 25 workouts × ≤ 2 attempts); it sits between the per-workout write transactions and also serves the dry run, which opens none",
   "src/records/rebuild.ts#rebuildRecords: $transaction":
     "records:rebuild, an operator command on the owner login: one transaction per user on purpose (Spec 07.0 §6.5, D11), so each user's records lock is short and memory stays bounded; on the owner login as() sends no setting",
+  "src/account/purge.ts#runPurge: purgeAccount":
+    "account:purge, an operator command on the owner login: one transaction per account on purpose (Spec 11 §6.4; D11 rolls back one account and goes on), bounded by the accounts past their grace; on the owner login as() sends no setting",
 };
 
 interface Finding {
@@ -54,12 +61,23 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
     return (t.aliasSymbol ?? t.getSymbol())?.getName();
   };
   const isScoped = (node: ts.Node) => typeName(node) === "ScopedClient";
-  /** Minor 745: a client parameter is known by its members (any union member has `$queryRaw` or `$executeRaw`), not its type's name. */
+  /**
+   * Minor 745: a client parameter is known by its members (any union member has `$queryRaw`, `$executeRaw` or, minor 774,
+   * `$transaction`), not its type's name.
+   */
   const isClientParam = (node: ts.Node) => {
     const t = checker.getTypeAtLocation(node);
     return (t.isUnion() ? t.types : [t]).some((m) => {
       const apparent = checker.getApparentType(m);
-      return apparent.getProperty("$queryRaw") !== undefined || apparent.getProperty("$executeRaw") !== undefined;
+      return ["$queryRaw", "$executeRaw", "$transaction"].some((name) => apparent.getProperty(name) !== undefined);
+    });
+  };
+  /** Minor 775: the handle itself (`UserScopedDb` from `src/db/scoped.ts`, alone or in a union), not a client. */
+  const isUserScopedDb = (node: ts.Node) => {
+    const t = checker.getTypeAtLocation(node);
+    return (t.isUnion() ? t.types : [t]).some((m) => {
+      const sym = m.aliasSymbol ?? m.getSymbol();
+      return sym?.getName() === "UserScopedDb" && (sym.declarations ?? []).some((d) => d.getSourceFile().fileName.endsWith("/src/db/scoped.ts"));
     });
   };
   const findings: Finding[] = [];
@@ -79,7 +97,7 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
           const walk = (n: ts.Node) => {
             if (loops) return;
             const callee = ts.isCallExpression(n) ? n.expression : ts.isTaggedTemplateExpression(n) ? n.tag : undefined;
-            const runsOnIt = callee !== undefined && ts.isPropertyAccessExpression(callee) && RAW_CALL.test(callee.name.text) && checker.getSymbolAtLocation(callee.expression) === paramSymbol;
+            const runsOnIt = callee !== undefined && ts.isPropertyAccessExpression(callee) && SCOPED_ROUND.test(callee.name.text) && checker.getSymbolAtLocation(callee.expression) === paramSymbol;
             // ...or the loop hands the client on: `for (const r of rows) await insertOne(c, r)` is a round per row too.
             const handsItOn = ts.isCallExpression(n) && n.arguments.some((a) => ts.isIdentifier(a) && checker.getSymbolAtLocation(a) === paramSymbol);
             if ((runsOnIt || handsItOn) && inLoop(n, node)) loops = true;
@@ -95,6 +113,52 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
     findHelpers(program.getSourceFile(file)!);
   }
 
+  // Minor 775: the openers, each with the positions of the `UserScopedDb` parameters it opens a round on in its own body.
+  const openers = new Map<ts.Symbol, { name: string; params: number[] }>();
+  /** A `const` binding's initializer, else the expression itself. */
+  const throughConst = (e: ts.Expression): ts.Expression => {
+    if (!ts.isIdentifier(e)) return e;
+    const decl = checker.getSymbolAtLocation(e)?.valueDeclaration;
+    const isConst = decl !== undefined && ts.isVariableDeclaration(decl) && ts.isVariableDeclarationList(decl.parent) && (decl.parent.flags & ts.NodeFlags.Const) !== 0;
+    return isConst && decl.initializer ? decl.initializer : e;
+  };
+  /**
+   * `p.as(…)` / `p.forAuthSub(…)` or the same on `toScoped(p)`, the round's receiver and the handle each directly or
+   * through one `const` binding (`const scoped = toScoped(d); scoped.as(id)…`, the repo's idiom; final review).
+   */
+  const opensOn = (receiver: ts.Expression, paramSymbol: ts.Symbol | undefined): boolean => {
+    const r = throughConst(receiver);
+    if (!ts.isCallExpression(r) || !ts.isPropertyAccessExpression(r.expression) || !["as", "forAuthSub"].includes(r.expression.name.text)) return false;
+    let target = throughConst(r.expression.expression);
+    if (ts.isCallExpression(target) && ts.isIdentifier(target.expression) && target.expression.text === "toScoped" && target.arguments.length === 1) target = target.arguments[0]!;
+    return ts.isIdentifier(target) && checker.getSymbolAtLocation(target) === paramSymbol;
+  };
+  for (const file of files) {
+    const findOpeners = (node: ts.Node) => {
+      if (isFunctionLike(node) && node.body) {
+        const nameNode = ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) ? node.name : ts.isVariableDeclaration(node.parent) || ts.isPropertyAssignment(node.parent) ? node.parent.name : undefined;
+        const fn = nameNode && checker.getSymbolAtLocation(nameNode);
+        const params = node.parameters.flatMap((param, i) => {
+          if (!ts.isIdentifier(param.name) || !isUserScopedDb(param.name)) return [];
+          const paramSymbol = checker.getSymbolAtLocation(param.name);
+          let opens = false;
+          // Its own body only: a round inside a nested function (a repository factory's methods) is not this call's.
+          const walk = (n: ts.Node) => {
+            if (opens || isFunctionLike(n)) return;
+            const callee = ts.isCallExpression(n) ? n.expression : ts.isTaggedTemplateExpression(n) ? n.tag : undefined;
+            if (callee !== undefined && ts.isPropertyAccessExpression(callee) && SCOPED_ROUND.test(callee.name.text) && opensOn(callee.expression, paramSymbol)) opens = true;
+            ts.forEachChild(n, walk);
+          };
+          walk(node.body!); // the body itself, so an arrow whose body is the round is read (final review)
+          return opens ? [i] : [];
+        });
+        if (fn && nameNode && params.length > 0) openers.set(fn, { name: nameNode.getText(), params });
+      }
+      ts.forEachChild(node, findOpeners);
+    };
+    findOpeners(program.getSourceFile(file)!);
+  }
+
   for (const file of files) {
     const sf = program.getSourceFile(file)!;
     const visit = (node: ts.Node) => {
@@ -104,6 +168,11 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
         const helper = helpers.get(resolved(checker.getSymbolAtLocation(calleeName))!);
         if (helper?.params.some((i) => node.arguments[i] !== undefined && isScoped(node.arguments[i]!))) {
           findings.push({ key: `${rel(file)}#${helper.name}←${enclosingName(node)}`, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1 });
+        }
+        // Minor 775: an opener handed the handle opens a round per call, so a call in a loop is one round per iteration.
+        const opener = openers.get(resolved(checker.getSymbolAtLocation(calleeName))!);
+        if (opener?.params.some((i) => node.arguments[i] !== undefined && isUserScopedDb(node.arguments[i]!)) && inLoop(node)) {
+          findings.push({ key: `${rel(file)}#${enclosingName(node)}: ${calleeName.getText(sf)}`, line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1 });
         }
       }
       if (ts.isCallExpression(node) || ts.isTaggedTemplateExpression(node)) {
@@ -222,5 +291,64 @@ export type Tx = Prisma.TransactionClient;
 
   it("a helper that doesn't loop is not flagged for a scoped client", () => {
     expect(keysFor('export async function run() {\n  await once(db.as(u), "a");\n}\n')).toEqual([]);
+  });
+
+  it("minor 774: a helper that loops $transaction on a handed client is a looping helper", () => {
+    const body = `import type { ScopedClient } from "../db/scoped.js";
+async function eachT(c: Pick<ScopedClient, "$transaction" | "$queryRaw">, list: string[]) {
+  for (const id of list) await c.$transaction(async (tx) => tx.$executeRaw\`SELECT \${id}\`);
+}
+async function eachTx(c: Pick<ScopedClient, "$transaction">, list: string[]) {
+  for (const id of list) await c.$transaction(async (tx) => tx.$executeRaw\`SELECT \${id}\`);
+}
+export async function run() {
+  await eachT(db.as(u), ids);
+  await eachTx(db.as(u), ids);
+}
+`;
+    expect(keysFor(body)).toEqual([`${FIXTURE}#eachT←run`, `${FIXTURE}#eachTx←run`]);
+  });
+
+  const OPENERS = `import { toScoped } from "../db/scoped.js";
+async function openOne(d: UserScopedDb, id: string) {
+  await d.as(id).$transaction(async (tx) => tx.$executeRaw\`SELECT \${id}\`);
+}
+async function openVia(d: UserScopedDb, id: string) {
+  const c = toScoped(d).as(id);
+  await c.$queryRaw\`SELECT \${id}\`;
+}
+function make(d: UserScopedDb) {
+  return { read: (id: string) => d.as(id).$queryRaw\`SELECT \${id}\` };
+}
+const openArrow = (d: UserScopedDb, id: string) => d.as(id).$queryRaw\`SELECT \${id}\`;
+async function openIdiom(d: UserScopedDb, id: string) {
+  const scoped = toScoped(d);
+  await scoped.as(id).$transaction(async (tx) => tx.$executeRaw\`SELECT \${id}\`);
+}
+void openVia; void make; void openArrow; void openIdiom;
+`;
+
+  it("minor 775: an opener of a scoped round called in a loop is flagged", () => {
+    const body = `${OPENERS}export async function run() {
+  for (const id of ids) {
+    await openOne(db, id);
+    await openVia(db, id);
+  }
+}
+`;
+    expect(keysFor(body)).toEqual([`${FIXTURE}#run: openOne`, `${FIXTURE}#run: openVia`]);
+  });
+
+  it("minor 775 (final review): an arrow opener whose body is the round is flagged", () => {
+    expect(keysFor(`${OPENERS}export async function run() {\n  for (const id of ids) await openArrow(db, id);\n}\n`)).toEqual([`${FIXTURE}#run: openArrow`]);
+  });
+
+  it("minor 775 (final review): an opener through `const scoped = toScoped(d)` is flagged", () => {
+    expect(keysFor(`${OPENERS}export async function run() {\n  for (const id of ids) await openIdiom(db, id);\n}\n`)).toEqual([`${FIXTURE}#run: openIdiom`]);
+  });
+
+  it("minor 775: an opener called once, or a factory handed the handle in a loop, is not flagged", () => {
+    expect(keysFor(`${OPENERS}export async function run() {\n  await openOne(db, "a");\n}\n`)).toEqual([]);
+    expect(keysFor(`${OPENERS}export async function run() {\n  for (const id of ids) make(db).read(id);\n}\n`)).toEqual([]);
   });
 });

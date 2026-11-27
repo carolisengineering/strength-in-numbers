@@ -41,8 +41,11 @@ export interface Extracted {
   unsafe: string[];
   /** Fragments only: the name callers refer to it by (its variable, else its function). */
   label?: string;
-  /** Fragments only (minor 743): the other names it is called by, aliases of aliases and renamed imports included. */
-  aliases?: string[];
+  /**
+   * Named fragments only (minors 743, 773): every `file#name` it is known by, its own `file#label` first, then aliases,
+   * aliases of aliases and renamed imports. A name counts only in its own file.
+   */
+  knownAs?: string[];
 }
 
 export type Category =
@@ -232,14 +235,21 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
   });
 
   // Minor 399: a module-level `export const ownedSectionRound: Owned = ownedWorkoutSection` is a second name for the
-  // same fragment. `namesOf(file, target)` is the target's name and every alias of it (aliases of aliases included), so
+  // same fragment. `keysOf(file, target)` is the target's key and every alias of it (aliases of aliases included), so
   // a caller of the alias is listed under the target's row; the alias gets no row of its own. Minor 736: the map is
   // keyed `file#name` → `file#name`. `const X = Y` registers only when `Y` is a top-level declaration of the same file
   // or a named import from a relative path, so a same-named const in another file is not taken for the fragment. A
-  // named import is itself a second name (`import { ownedA as base }`). Callers are still matched by bare name.
+  // named import is itself a second name (`import { ownedA as base }`). Minor 773: a name is credited only in its own
+  // file (`keysOf` returns `file#name` keys and `namesIn` reads them per file), so `base` in one file never makes an
+  // unrelated `${base}` in another a caller.
   const aliasTarget = new Map<string, string>();
+  // Minor 778: what each file declares at top level, the keys its own `export … from` registered, and its `export *`s.
+  const topLevelOf = new Map<string, Set<string>>();
+  const reexported = new Set<string>();
+  const starExports: { file: string; from: string }[] = [];
   for (const { file, sf } of parsed) {
     const topLevel = new Set<string>();
+    topLevelOf.set(file, topLevel);
     const imported = new Map<string, string>();
     for (const statement of sf.statements) {
       if (ts.isVariableStatement(statement)) {
@@ -247,10 +257,20 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
       } else if (ts.isFunctionDeclaration(statement) && statement.name) {
         topLevel.add(statement.name.text);
       } else if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text.startsWith(".")) {
-        const from = posix.join(posix.dirname(file), statement.moduleSpecifier.text).replace(/\.js$/, ".ts");
+        const from = moduleFile(file, statement.moduleSpecifier.text);
         const named = statement.importClause?.namedBindings;
         if (named && ts.isNamedImports(named)) {
           for (const el of named.elements) imported.set(el.name.text, `${from}#${(el.propertyName ?? el.name).text}`);
+        }
+      } else if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text.startsWith(".")) {
+        // Minor 778: `export { a as b } from "./x.js"` names `b` here for `a` there; `export * from "./x.js"` every name x has.
+        const from = moduleFile(file, statement.moduleSpecifier.text);
+        if (!statement.exportClause) starExports.push({ file, from });
+        else if (ts.isNamedExports(statement.exportClause)) {
+          for (const el of statement.exportClause.elements) {
+            aliasTarget.set(`${file}#${el.name.text}`, `${from}#${(el.propertyName ?? el.name).text}`);
+            reexported.add(`${file}#${el.name.text}`);
+          }
         }
       }
     }
@@ -265,8 +285,23 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
       }
     }
   }
-  const bare = (key: string) => key.slice(key.lastIndexOf("#") + 1);
-  const namesOf = (file: string, target: string): string[] => {
+  // An `export *` gives the barrel each name its source declares or itself re-exports, unless the barrel already has that
+  // name; repeated until nothing changes, so a chain of barrels resolves and two that `export *` each other stop.
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const { file, from } of starExports) {
+      const names = new Set([...(topLevelOf.get(from) ?? [])]);
+      for (const key of reexported) if (key.slice(0, key.lastIndexOf("#")) === from) names.add(key.slice(key.lastIndexOf("#") + 1));
+      for (const name of names) {
+        const key = `${file}#${name}`;
+        if (aliasTarget.has(key) || topLevelOf.get(file)?.has(name)) continue;
+        aliasTarget.set(key, `${from}#${name}`);
+        reexported.add(key);
+        grew = true;
+      }
+    }
+  }
+  const keysOf = (file: string, target: string): string[] => {
     const keys = [`${file}#${target}`];
     for (let grew = true; grew; ) {
       grew = false;
@@ -277,17 +312,17 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
         }
       }
     }
-    return [...new Set(keys.map(bare))];
+    return keys;
   };
 
   // Second pass: a call of a fragment-building function (`plannedSetsJson(…)`) outside every statement composes SQL
   // that would otherwise reach a query only as a name; it is a fragment row of its own, so its arguments are
   // fingerprinted (final review #2: decorrelating `WE_PLANNED_SETS` must fail the check).
-  const builders = new Set(pending.filter((p) => p.name && !p.name.local).flatMap((p) => namesOf(p.file, p.name!.name)));
+  const builders = new Set(pending.filter((p) => p.name && !p.name.local).flatMap((p) => keysOf(p.file, p.name!.name)));
   const inside = (file: string, pos: number) => covered.some((c) => c.file === file && pos >= c.pos && pos < c.end);
   parsed.forEach(({ file, sf }, fileIndex) => {
     const visit = (node: ts.Node): void => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && builders.has(node.expression.text) && !inside(file, node.getStart(sf))) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && builders.has(`${file}#${node.expression.text}`) && !inside(file, node.getStart(sf))) {
         pending.push({
           file,
           fn: enclosingName(node),
@@ -324,18 +359,38 @@ export function extractStatements(sources: readonly Source[]): Extracted[] {
       ...(p.name ? { label: p.name.name } : {}),
     };
   });
-  // Fragment callers: every other statement whose text names the fragment (a local one only within its function).
+  // Fragment callers: every other statement whose text names the fragment by a name its own file knows it by (a local
+  // one only within its function).
   pending.forEach((p, i) => {
     if (!p.name) return;
-    const names = p.name.local ? [p.name.name] : namesOf(p.file, p.name.name);
-    const aliases = names.filter((n) => n !== rows[i]!.label);
-    if (aliases.length > 0) rows[i]!.aliases = aliases;
-    const res = names.map((name) => new RegExp(`(?<![\\w$])${name.replace(/[$]/g, "\\$")}(?![\\w$])`));
+    const keys = p.name.local ? [`${p.file}#${p.name.name}`] : keysOf(p.file, p.name.name);
+    if (!p.name.local) rows[i]!.knownAs = keys;
     rows[i]!.callers = rows
-      .filter((r, j) => j !== i && res.some((re) => re.test(r.text)) && (!p.name!.local || (r.file === p.file && r.fn === p.fn)))
+      .filter((r, j) => j !== i && namesIn(r.file, keys).some((name) => nameRe(name).test(r.text)) && (!p.name!.local || (r.file === p.file && r.fn === p.fn)))
       .map((r) => r.key);
   });
   return rows;
+}
+
+/**
+ * Minor 778: the file a relative specifier names: `./x.js` is `x.ts`, and a specifier with no extension gets `.ts`.
+ * Limits: a directory import (`./dir` for `./dir/index.ts`) and a local `export { a as b }` (no `from`) aren't followed;
+ * `src` uses neither (NodeNext, explicit `.js`).
+ */
+function moduleFile(file: string, specifier: string): string {
+  const path = posix.join(posix.dirname(file), specifier);
+  if (path.endsWith(".js")) return path.replace(/\.js$/, ".ts");
+  return path.endsWith(".ts") ? path : `${path}.ts`;
+}
+
+/** Minor 773: the bare names of `keys` (`file#name`) that belong to `file`. */
+function namesIn(file: string, keys: readonly string[]): string[] {
+  return keys.filter((k) => k.slice(0, k.lastIndexOf("#")) === file).map((k) => k.slice(k.lastIndexOf("#") + 1));
+}
+
+/** A name as a whole identifier (`$` counts as a word character). */
+function nameRe(name: string): RegExp {
+  return new RegExp(`(?<![\\w$])${name.replace(/[$]/g, "\\$")}(?![\\w$])`);
 }
 
 /**
@@ -561,13 +616,20 @@ export function touchesOnlySharedData(text: string): boolean {
 const MODEL_CALL_RE = /\.(\w+)\.(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findMany|create|createMany|createManyAndReturn|update|updateMany|upsert|delete|deleteMany|count|aggregate|groupBy)\(/g;
 const SHARED_DELEGATES = new Set(["muscleGroup", "equipment"]);
 
-/** The statement's text with the text of every fragment it names appended (to a small depth), for table detection. */
-export function expandFragments(text: string, fragments: ReadonlyMap<string, string>, depth = 3): string {
+/**
+ * The statement's text with the text of every fragment it names appended (to a small depth), for table detection.
+ * `fragmentsIn(file)` maps the names `file` knows to each fragment's text and file (minor 773), and a fragment's own
+ * body is read with the names of the file it was written in, so a chain across files is followed (code review).
+ */
+export function expandFragments(
+  text: string,
+  file: string,
+  fragmentsIn: (file: string) => ReadonlyMap<string, { text: string; file: string }>,
+  depth = 3,
+): string {
   let out = text;
-  for (const [name, body] of fragments) {
-    if (new RegExp(`(?<![\\w$])${name.replace(/[$]/g, "\\$")}(?![\\w$])`).test(text)) {
-      out += " " + (depth > 0 ? expandFragments(body, fragments, depth - 1) : body);
-    }
+  for (const [name, body] of fragmentsIn(file)) {
+    if (nameRe(name).test(text)) out += " " + (depth > 0 ? expandFragments(body.text, body.file, fragmentsIn, depth - 1) : body.text);
   }
   return out;
 }
@@ -600,22 +662,37 @@ export function sanityIssues(
   const byKey = new Map(rows.map((r) => [r.key, r]));
   const textOf = new Map(extracted.map((s) => [s.key, s.text]));
   // Minor 743: a fragment is also known by its aliases, so a caller through an alias is read like a direct caller.
+  // Minor 773: only by the names the statement's own file knows it by.
+  const fileOf = new Map(extracted.map((s) => [s.key, s.file]));
   const fragmentRows = extracted.filter((s) => s.kind === "fragment");
-  const fragments = new Map(fragmentRows.flatMap((s) => [fragmentLabel(s), ...(s.aliases ?? [])].map((name) => [name, s.text] as const)));
-  const userFragments = fragmentRows.filter((s) => hasUserPredicate(s.text)).flatMap((s) => [fragmentLabel(s), ...(s.aliases ?? [])]);
-  const ownsData = (text: string) => {
-    const { tables, delegates } = tablesOf(expandFragments(text, fragments));
+  const keysOfFragment = (s: Extracted) => s.knownAs ?? [`${s.file}#${fragmentLabel(s)}`];
+  const perFile = new Map<string, { fragments: Map<string, { text: string; file: string }>; userFragments: string[] }>();
+  const namesFor = (file: string) => {
+    let known = perFile.get(file);
+    if (!known) {
+      known = {
+        fragments: new Map(fragmentRows.flatMap((s) => namesIn(file, keysOfFragment(s)).map((name) => [name, { text: s.text, file: s.file }] as const))),
+        userFragments: fragmentRows.filter((s) => hasUserPredicate(s.text)).flatMap((s) => namesIn(file, keysOfFragment(s))),
+      };
+      perFile.set(file, known);
+    }
+    return known;
+  };
+  const ownsData = (text: string, file: string) => {
+    const { tables, delegates } = tablesOf(expandFragments(text, file, (f) => namesFor(f).fragments));
     return tables.some((t) => !isSharedTable(t) && !(t === "exercise" && /owner_user_id IS NULL/i.test(text))) || delegates.some((d) => !SHARED_DELEGATES.has(d));
   };
   for (const r of rows) {
     const text = textOf.get(r.key) ?? "";
+    const file = fileOf.get(r.key) ?? r.key.slice(0, r.key.indexOf("#"));
+    const { userFragments } = namesFor(file);
     if ((r.category === "fragment") !== (r.kind === "fragment")) issues.push(`${r.key}: a ${r.kind} classified "${r.category}"`);
     switch (r.category) {
       case "user-filtered":
         if (!hasUserPredicate(text, userFragments)) issues.push(`${r.key}: user-filtered, but its text has no user predicate`);
         break;
       case "shared on purpose":
-        if (ownsData(text)) issues.push(`${r.key}: shared on purpose, but it (or a fragment it uses) touches user data`);
+        if (ownsData(text, file)) issues.push(`${r.key}: shared on purpose, but it (or a fragment it uses) touches user data`);
         break;
       case "cross-user maintenance":
         if (!/^src\/(account\/purge|records\/rebuild|seed\/catalog)\.ts#/.test(r.key)) issues.push(`${r.key}: cross-user maintenance outside the operator scripts`);
@@ -634,7 +711,7 @@ export function sanityIssues(
       case "fragment": {
         const callers = r.anchor.replace(/^callers: /, "").split(", ").filter((k) => k !== "none" && k !== "");
         if (callers.length === 0 && !r.key.startsWith("src/repositories/ownership.ts#")) issues.push(`${r.key}: a fragment with no callers`);
-        const owned = ownsData(text);
+        const owned = ownsData(text, file);
         for (const c of callers) {
           const row = byKey.get(c);
           if (!row || !CATEGORIES.has(row.category)) issues.push(`${r.key}: caller ${c} is not classified`);

@@ -1,12 +1,34 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runThenClean } from "../integration/cross-user/run-then-clean.js";
 
 describe("minor 735 — a cleanup error never hides the case's own failure", () => {
   const fails = (message: string) => () => Promise.reject(new Error(message));
   const passes = () => Promise.resolve();
 
+  afterEach(() => vi.restoreAllMocks());
+
   it("a failing run and a failing cleanup reject with the run's error", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     await expect(runThenClean(fails("the case"), fails("the cleanup"))).rejects.toThrow("the case");
+  });
+
+  it("minor 776: when both fail, the cleanup's error is the case error's cause and is printed", async () => {
+    const printed = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const error = await runThenClean(fails("the case"), fails("the cleanup")).catch((e: unknown) => e);
+    expect((error as Error).message).toBe("the case");
+    expect(((error as Error).cause as Error).message).toBe("the cleanup");
+    expect(printed).toHaveBeenCalledTimes(1);
+    expect(printed.mock.calls[0]).toContainEqual(expect.objectContaining({ message: "the cleanup" }));
+  });
+
+  it("minor 776: a case error that already has a cause keeps it; the cleanup's error is still printed", async () => {
+    const printed = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const own = new Error("the case's own cause");
+    const error = await runThenClean(() => Promise.reject(new Error("the case", { cause: own })), fails("the cleanup")).catch((e: unknown) => e);
+    expect((error as Error).message).toBe("the case");
+    expect((error as Error).cause).toBe(own);
+    expect(printed).toHaveBeenCalledTimes(1);
+    expect(printed.mock.calls[0]).toContainEqual(expect.objectContaining({ message: "the cleanup" }));
   });
 
   it("a passing run and a failing cleanup reject with the cleanup's error", async () => {

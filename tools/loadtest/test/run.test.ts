@@ -699,6 +699,21 @@ describe("minor 607 — a stop while the annotation opens never leaves it open",
     expect(h.d.spawnK6).not.toHaveBeenCalled();
   });
 
+  it("minor 700: Ctrl-C during an early stop's cleanup promises no result", async () => {
+    let finishCleanup!: () => void;
+    const { h, open } = opening({ cleanupAll: vi.fn(() => new Promise<{ removed: number }>((r) => (finishCleanup = () => r({ removed: 0 })))) });
+    const done = runLoad(gym, h.d);
+    await vi.waitFor(() => expect(h.d.openAnnotation).toHaveBeenCalled());
+    h.fire("SIGTERM");
+    open();
+    await vi.waitFor(() => expect(h.d.cleanupAll).toHaveBeenCalled());
+    h.fire("SIGINT");
+    finishCleanup();
+    expect(await done).toBe(143);
+    expect(h.lines).toContain("cleanup is running and finishes on its own");
+    expect(h.lines.filter((l) => l.includes("wait for the result"))).toEqual([]);
+  });
+
   it("the handler is registered before the annotation opens", async () => {
     const order: string[] = [];
     const h = deps({

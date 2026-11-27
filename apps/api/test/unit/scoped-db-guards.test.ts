@@ -33,6 +33,8 @@ export const BARE_CLIENT_ALLOWED: Readonly<Record<string, string>> = {
   "src/db/scoped.ts": "The per-user handle itself: it opens the transaction that carries the acting user's setting.",
   "src/db/rls.ts": "The db:rls kill switch, an operator command on the owner login.",
   "src/db/app-role.ts": "db:app-role, an operator command on the owner login that gives sin_app its login.",
+  "src/db/login-check.ts":
+    "The boot check that the API's login can't bypass row-level security (Spec 21.1 Phase C): it reads pg_roles and the row_security setting before listen, no user's data (minor 777 sees its `Pick<PrismaClient, \"$queryRaw\">` alias).",
   "src/seed/catalog.ts": "The catalog seed, a release step on the owner login; it writes only the shared catalog.",
 };
 
@@ -58,8 +60,9 @@ const ITX_DENY_LIST = ["$connect", "$disconnect", "$on", "$transaction", "$exten
  * - (minor 741) it has a member typed as a Prisma model `*Delegate`, no `$transaction`, and isn't a transaction client
  *   (`Prisma.TransactionClient`, or the `Omit<PrismaClient, ITXClientDenyList>` Prisma hands a `$transaction` callback),
  *   so `Pick<PrismaClient, "workout">` and an alias of it are bare.
- * An inline `Pick<X, …>` / `Omit<X, …>` is judged by `X`: `Pick<Prisma.TransactionClient, "workout">` is the same type
- * as `Pick<PrismaClient, "workout">` structurally, and only the type it narrows tells them apart.
+ * A `Pick<X, …>` / `Omit<X, …>`, inline or behind a local alias (minor 777), is judged by `X`:
+ * `Pick<Prisma.TransactionClient, "workout">` is the same type as `Pick<PrismaClient, "workout">` structurally, and only
+ * the type it narrows tells them apart.
  */
 export function bareClientUses(p: ts.Program, files: readonly string[]): string[] {
   const checker = p.getTypeChecker();
@@ -76,14 +79,30 @@ export function bareClientUses(p: ts.Program, files: readonly string[]): string[
     const omitted = new Set((keys.isUnion() ? keys.types : [keys]).flatMap((k) => (k.isStringLiteral() ? [k.value] : [])));
     return ITX_DENY_LIST.every((k) => omitted.has(k));
   };
-  const isTransactionClient = (x: ts.Type) =>
-    (x.aliasSymbol?.getName() === "TransactionClient" && declaredIn(x.aliasSymbol, PRISMA_CLIENT_FILE)) ||
-    (x.aliasSymbol?.getName() === "Omit" && omitsDenyList(x.aliasTypeArguments?.[1]));
+  /**
+   * A `Pick` / `Omit` and its type arguments: written inline (`aliasSymbol` is the utility itself), or (minor 777) behind
+   * a local alias whose declaration is one (`type TxWorkout = Pick<Prisma.TransactionClient, "workout">`).
+   */
+  const utilityOf = (x: ts.Type): { name: string; args: readonly ts.Type[] } | undefined => {
+    const alias = x.aliasSymbol;
+    if (alias === undefined) return undefined;
+    if (UTILITY_NARROWS.has(alias.getName())) return { name: alias.getName(), args: x.aliasTypeArguments ?? [] };
+    const decl = alias.getDeclarations()?.find(ts.isTypeAliasDeclaration);
+    // A generic alias (`type Only<T, K> = Pick<T, K>`) names its own parameters, not the arguments used here, so it is
+    // left to the structural check, as before minor 777 (final review).
+    if (decl === undefined || (decl.typeParameters?.length ?? 0) > 0 || !ts.isTypeReferenceNode(decl.type) || !ts.isIdentifier(decl.type.typeName) || !UTILITY_NARROWS.has(decl.type.typeName.text)) return undefined;
+    return { name: decl.type.typeName.text, args: (decl.type.typeArguments ?? []).map((a) => checker.getTypeFromTypeNode(a)) };
+  };
+  const isTransactionClient = (x: ts.Type) => {
+    if (x.aliasSymbol?.getName() === "TransactionClient" && declaredIn(x.aliasSymbol, PRISMA_CLIENT_FILE)) return true;
+    const utility = utilityOf(x);
+    return utility?.name === "Omit" && omitsDenyList(utility.args[1]);
+  };
   const bareType = (x: ts.Type, depth = 0): boolean => {
     const name = (x.aliasSymbol ?? x.getSymbol())?.getName();
     if (name !== undefined && SCOPED_TYPES.has(name) && declaredIn(x.aliasSymbol ?? x.getSymbol(), SCOPED_FILE)) return false;
     if (isTransactionClient(x)) return false;
-    const narrowed = x.aliasSymbol !== undefined && UTILITY_NARROWS.has(x.aliasSymbol.getName()) ? x.aliasTypeArguments?.[0] : undefined;
+    const narrowed = utilityOf(x)?.args[0];
     if (narrowed !== undefined && depth < 4) return bareType(narrowed, depth + 1);
     const apparent = checker.getApparentType(x);
     const props = apparent.getProperties();
@@ -209,6 +228,19 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
     expect(
       usesIn(`${head}export const g = (t: Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">) => t.workout.findMany();\n`),
     ).toEqual([]);
+  });
+
+  it("minor 777: a named alias of a narrowed transaction client is not bare", () => {
+    expect(
+      usesIn(
+        `${head}import type { Prisma } from "@prisma/client";\ntype TxWorkout = Pick<Prisma.TransactionClient, "workout">;\ntype TxAll = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;\nexport const f = (n: TxWorkout, t: TxAll) => Promise.all([n.workout.findMany(), t.workout.findMany()]);\n`,
+      ),
+    ).toEqual([]);
+  });
+
+  it("minor 777 (final review): a generic utility alias of a bare client is still bare", () => {
+    expect(usesIn(`${head}type Only<T, K extends keyof T> = Pick<T, K>;\nexport const f = (p: Only<PrismaClient, "workout">) => p.workout.findMany();\n`)).toHaveLength(1);
+    expect(usesIn(`${head}type Without<T, K extends keyof T> = Omit<T, K>;\nexport const f = (p: Without<PrismaClient, "$transaction">) => p.workout.findMany();\n`)).toHaveLength(1);
   });
 
   it("21.1 AC14 — minor 741: an object with a member named like a model is not a client", () => {
