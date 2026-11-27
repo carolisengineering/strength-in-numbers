@@ -161,6 +161,8 @@ export interface Outbox {
 export type TestableOutbox = Outbox & {
   /** Test-only: replace the op list as if a drain had moved it. Never called by app code. */
   __setForTests(ops: readonly OutboxOp[]): void;
+  /** Test-only (minor 619): how many finish ops have a waiter set. */
+  __finishWaitersForTests(): number;
 };
 
 const EMPTY: { ops: readonly OutboxOp[]; idMap: IdMap } = { ops: [], idMap: {} };
@@ -643,6 +645,9 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
       }
     } finally {
       draining = false;
+      // Minor 707: a send that throws (a listener) skips the clears above; the flags still belong only to it.
+      retryRequested = false;
+      retryForced = false;
     }
   }
 
@@ -695,6 +700,8 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
         const done = (result: "landed" | "pending") => {
           clearTimeout(timeout);
           waiting.delete(done);
+          // Minor 619: the last waiter to go takes the op's entry with it (a timeout, not only a settle).
+          if (waiting.size === 0 && finishWaiters.get(opId) === waiting) finishWaiters.delete(opId);
           resolve(result);
         };
         const timeout = setTimeout(() => done("pending"), ms);
@@ -789,5 +796,6 @@ export function createOutbox(deps: OutboxDeps): TestableOutbox {
     },
     drain,
     __setForTests: (ops) => set({ ops }),
+    __finishWaitersForTests: () => finishWaiters.size,
   };
 }
