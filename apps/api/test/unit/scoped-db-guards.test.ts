@@ -88,7 +88,9 @@ export function bareClientUses(p: ts.Program, files: readonly string[]): string[
     if (alias === undefined) return undefined;
     if (UTILITY_NARROWS.has(alias.getName())) return { name: alias.getName(), args: x.aliasTypeArguments ?? [] };
     const decl = alias.getDeclarations()?.find(ts.isTypeAliasDeclaration);
-    if (decl === undefined || !ts.isTypeReferenceNode(decl.type) || !ts.isIdentifier(decl.type.typeName) || !UTILITY_NARROWS.has(decl.type.typeName.text)) return undefined;
+    // A generic alias (`type Only<T, K> = Pick<T, K>`) names its own parameters, not the arguments used here, so it is
+    // left to the structural check, as before minor 777 (final review).
+    if (decl === undefined || (decl.typeParameters?.length ?? 0) > 0 || !ts.isTypeReferenceNode(decl.type) || !ts.isIdentifier(decl.type.typeName) || !UTILITY_NARROWS.has(decl.type.typeName.text)) return undefined;
     return { name: decl.type.typeName.text, args: (decl.type.typeArguments ?? []).map((a) => checker.getTypeFromTypeNode(a)) };
   };
   const isTransactionClient = (x: ts.Type) => {
@@ -234,6 +236,11 @@ describe("Spec 21.1 AC14 / minor 406 — no statement on a bare PrismaClient any
         `${head}import type { Prisma } from "@prisma/client";\ntype TxWorkout = Pick<Prisma.TransactionClient, "workout">;\ntype TxAll = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends">;\nexport const f = (n: TxWorkout, t: TxAll) => Promise.all([n.workout.findMany(), t.workout.findMany()]);\n`,
       ),
     ).toEqual([]);
+  });
+
+  it("minor 777 (final review): a generic utility alias of a bare client is still bare", () => {
+    expect(usesIn(`${head}type Only<T, K extends keyof T> = Pick<T, K>;\nexport const f = (p: Only<PrismaClient, "workout">) => p.workout.findMany();\n`)).toHaveLength(1);
+    expect(usesIn(`${head}type Without<T, K extends keyof T> = Omit<T, K>;\nexport const f = (p: Without<PrismaClient, "$transaction">) => p.workout.findMany();\n`)).toHaveLength(1);
   });
 
   it("21.1 AC14 — minor 741: an object with a member named like a model is not a client", () => {

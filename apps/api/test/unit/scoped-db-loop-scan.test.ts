@@ -115,17 +115,21 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
 
   // Minor 775: the openers, each with the positions of the `UserScopedDb` parameters it opens a round on in its own body.
   const openers = new Map<ts.Symbol, { name: string; params: number[] }>();
-  /** `p.as(…)` / `p.forAuthSub(…)` or the same on `toScoped(p)`, directly or through one `const` binding. */
+  /** A `const` binding's initializer, else the expression itself. */
+  const throughConst = (e: ts.Expression): ts.Expression => {
+    if (!ts.isIdentifier(e)) return e;
+    const decl = checker.getSymbolAtLocation(e)?.valueDeclaration;
+    const isConst = decl !== undefined && ts.isVariableDeclaration(decl) && ts.isVariableDeclarationList(decl.parent) && (decl.parent.flags & ts.NodeFlags.Const) !== 0;
+    return isConst && decl.initializer ? decl.initializer : e;
+  };
+  /**
+   * `p.as(…)` / `p.forAuthSub(…)` or the same on `toScoped(p)`, the round's receiver and the handle each directly or
+   * through one `const` binding (`const scoped = toScoped(d); scoped.as(id)…`, the repo's idiom; final review).
+   */
   const opensOn = (receiver: ts.Expression, paramSymbol: ts.Symbol | undefined): boolean => {
-    let r = receiver;
-    if (ts.isIdentifier(r)) {
-      const decl = checker.getSymbolAtLocation(r)?.valueDeclaration;
-      const isConst = decl !== undefined && ts.isVariableDeclaration(decl) && ts.isVariableDeclarationList(decl.parent) && (decl.parent.flags & ts.NodeFlags.Const) !== 0;
-      if (!isConst || !decl.initializer) return false;
-      r = decl.initializer;
-    }
+    const r = throughConst(receiver);
     if (!ts.isCallExpression(r) || !ts.isPropertyAccessExpression(r.expression) || !["as", "forAuthSub"].includes(r.expression.name.text)) return false;
-    let target: ts.Expression = r.expression.expression;
+    let target = throughConst(r.expression.expression);
     if (ts.isCallExpression(target) && ts.isIdentifier(target.expression) && target.expression.text === "toScoped" && target.arguments.length === 1) target = target.arguments[0]!;
     return ts.isIdentifier(target) && checker.getSymbolAtLocation(target) === paramSymbol;
   };
@@ -145,7 +149,7 @@ function scan(program: ts.Program, files: readonly string[]): Finding[] {
             if (callee !== undefined && ts.isPropertyAccessExpression(callee) && SCOPED_ROUND.test(callee.name.text) && opensOn(callee.expression, paramSymbol)) opens = true;
             ts.forEachChild(n, walk);
           };
-          ts.forEachChild(node.body!, walk);
+          walk(node.body!); // the body itself, so an arrow whose body is the round is read (final review)
           return opens ? [i] : [];
         });
         if (fn && nameNode && params.length > 0) openers.set(fn, { name: nameNode.getText(), params });
@@ -316,7 +320,12 @@ async function openVia(d: UserScopedDb, id: string) {
 function make(d: UserScopedDb) {
   return { read: (id: string) => d.as(id).$queryRaw\`SELECT \${id}\` };
 }
-void openVia; void make;
+const openArrow = (d: UserScopedDb, id: string) => d.as(id).$queryRaw\`SELECT \${id}\`;
+async function openIdiom(d: UserScopedDb, id: string) {
+  const scoped = toScoped(d);
+  await scoped.as(id).$transaction(async (tx) => tx.$executeRaw\`SELECT \${id}\`);
+}
+void openVia; void make; void openArrow; void openIdiom;
 `;
 
   it("minor 775: an opener of a scoped round called in a loop is flagged", () => {
@@ -328,6 +337,14 @@ void openVia; void make;
 }
 `;
     expect(keysFor(body)).toEqual([`${FIXTURE}#run: openOne`, `${FIXTURE}#run: openVia`]);
+  });
+
+  it("minor 775 (final review): an arrow opener whose body is the round is flagged", () => {
+    expect(keysFor(`${OPENERS}export async function run() {\n  for (const id of ids) await openArrow(db, id);\n}\n`)).toEqual([`${FIXTURE}#run: openArrow`]);
+  });
+
+  it("minor 775 (final review): an opener through `const scoped = toScoped(d)` is flagged", () => {
+    expect(keysFor(`${OPENERS}export async function run() {\n  for (const id of ids) await openIdiom(db, id);\n}\n`)).toEqual([`${FIXTURE}#run: openIdiom`]);
   });
 
   it("minor 775: an opener called once, or a factory handed the handle in a loop, is not flagged", () => {
