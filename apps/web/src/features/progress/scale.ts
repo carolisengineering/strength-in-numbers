@@ -176,13 +176,16 @@ function labelBox({ x, text, anchor }: { x: number; text: string; anchor: LabelA
  * "janv. 2026") can make them meet. Walking from the right, the newest label stays and an earlier one is dropped only
  * when the label kept after it is end-anchored and their estimated boxes meet. Centered labels keep today's thinning:
  * the estimate is generous (`LABEL_CHAR_WIDTH`), so checking them too would drop en-US labels that fit (final review).
+ * Minor 698, the start-edge mirror: a start-anchored label moves toward the one after it, so it is dropped when their
+ * boxes meet. The earlier label goes, so the newest stays.
  */
 function dropMeeting<T extends { x: number; text: string; anchor: LabelAnchor }>(labels: T[]): T[] {
   const kept: T[] = [];
   for (let i = labels.length - 1; i >= 0; i -= 1) {
     const label = labels[i]!;
     const next = kept[0];
-    if (next === undefined || next.anchor !== "end" || labelBox(label).right <= labelBox(next).left) kept.unshift(label);
+    const checked = next !== undefined && (next.anchor === "end" || label.anchor === "start");
+    if (!checked || labelBox(label).right <= labelBox(next).left) kept.unshift(label);
   }
   return kept;
 }

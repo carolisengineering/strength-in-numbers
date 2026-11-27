@@ -270,6 +270,46 @@ describe("minor 618 — Retry now during a hung send", () => {
     expect(h.createSet).toHaveBeenCalledTimes(2);
   });
 
+  /** Op 1 sends by a forced drain while offline and is refused (422); `onFailed` throws once. Then op 2, online. */
+  async function throwingListener({ tapRetry }: { tapRetry: boolean }) {
+    let online = false;
+    const h = hangingRest();
+    const outbox = make({
+      rest: h.rest,
+      isOnline: () => online,
+      onFailed: vi.fn().mockImplementationOnce(() => {
+        throw new Error("listener");
+      }),
+    });
+    outbox.start();
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: body() });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.createSet).not.toHaveBeenCalled();
+    const first = outbox.drain({ force: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.createSet).toHaveBeenCalledTimes(1);
+    if (tapRetry) outbox.retryNow();
+    h.pending[0]!.reject(new ApiError({ status: 422, type: "https://api.strengthinnumbers.app/problems/validation-error", title: "t", requestId: "r" }));
+    await expect(first).rejects.toThrow("listener");
+    online = true;
+    outbox.enqueueCreate({ workoutId: "w", workoutExerciseId: "we", body: { ...body(), clientGeneratedId: "30000000-0000-4000-8000-000000000002" } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+    // Op 2 hangs and gives up at SEND_TIMEOUT_MS: backoffMs(1, 0.5) = 1000 ms before the third.
+    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS + 1);
+    expect(h.createSet).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.createSet).toHaveBeenCalledTimes(3);
+  }
+
+  it("minor 707: a listener that throws during a Retry now send leaves no flag for the next op", async () => {
+    await throwingListener({ tapRetry: true });
+  });
+
+  it("Review Focus 4: a throw on a send with no Retry now changes nothing for the next op", async () => {
+    await throwingListener({ tapRetry: false });
+  });
+
   it("Review Focus 4: Retry now with nothing sending sends a queued op at once (unchanged)", async () => {
     const h = hangingRest();
     const outbox = make({ rest: h.rest, isOnline: () => false });

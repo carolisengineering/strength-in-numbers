@@ -3,6 +3,7 @@ import { MAX_CUSTOM_EXERCISES_PER_USER, type Exercise, type HevyMapping, type He
 import type { PairingNeed } from "../pairing";
 import { MARKER_TITLES } from "./constants";
 import type { HevyRead } from "./readHevy";
+import { formatCount } from "../formatCount";
 
 /** Spec 20.1 AC8, AC9, AC32, §6.5: which Hevy templates the import still needs a decision for. Pure. */
 
@@ -130,8 +131,8 @@ export function pairingNeeds(
 /** "41 workouts, 1 routine". */
 export function usageText(counts: { workouts: number; routines: number }): string {
   const parts: string[] = [];
-  if (counts.workouts > 0) parts.push(`${counts.workouts.toLocaleString("en-US")} ${counts.workouts === 1 ? "workout" : "workouts"}`);
-  if (counts.routines > 0) parts.push(`${counts.routines.toLocaleString("en-US")} ${counts.routines === 1 ? "routine" : "routines"}`);
+  if (counts.workouts > 0) parts.push(`${formatCount(counts.workouts)} ${counts.workouts === 1 ? "workout" : "workouts"}`);
+  if (counts.routines > 0) parts.push(`${formatCount(counts.routines)} ${counts.routines === 1 ? "routine" : "routines"}`);
   return parts.join(", ");
 }
 

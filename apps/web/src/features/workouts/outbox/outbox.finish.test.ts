@@ -476,6 +476,16 @@ describe("06.7 AC2, AC3 — whenFinishSettles", () => {
     expect(t.onFinishSynced).toHaveBeenCalledTimes(1);
   });
 
+  it("minor 619: a waiter that times out leaves no entry behind", async () => {
+    const t = setup();
+    t.outbox.start();
+    const id = t.outbox.enqueueFinish(finishInput());
+    const settled = t.outbox.whenFinishSettles(id, 8000);
+    await vi.advanceTimersByTimeAsync(8000);
+    await expect(settled).resolves.toBe("pending");
+    expect(t.outbox.__finishWaitersForTests()).toBe(0);
+  });
+
   it("resolves pending on a failure", async () => {
     const t = setup();
     t.outbox.start();

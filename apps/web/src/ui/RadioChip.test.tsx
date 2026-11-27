@@ -87,3 +87,14 @@ describe("17.13 review focus 3 — a match tag never breaks inside a word", () =
     expect(tag).toMatch(/white-space:\s*nowrap/);
   });
 });
+
+describe("minor 545 — RadioChip stays a radio", () => {
+  it("minor 545: a spread that carries type can't make it another input", () => {
+    render(
+      <RadioChip {...({ type: "checkbox" } as object)} name="g" value="a">
+        A
+      </RadioChip>,
+    );
+    expect(screen.getByLabelText("A")).toHaveAttribute("type", "radio");
+  });
+});

@@ -197,6 +197,17 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
           </ul>
         ) : null}
       </div>
+      {/* Minor 561: the row's polite region, so the count dropping and the line going are both heard. Minor 717: it
+          mounts with the sheet, not the preview, so the first count is a change the screen reader announces. */}
+      <SheetActions
+        status={
+          <span role="status">
+            {step.kind === "preview" && step.resolved.needsRule.length > 0 ? (
+              <span id={needsChoiceId}>{loadOffNeedsChoice(step.resolved.needsRule.length)}</span>
+            ) : null}
+          </span>
+        }
+      />
       {step.kind === "choose" ? (
         <div className={styles.body}>
           <p className={styles.muted}>{FILE_FORMAT_LINE}</p>
@@ -229,12 +240,6 @@ export function LoadMappingSheet({ open, current, onClose, onLoaded }: LoadMappi
           {/* Spec 17.10: a failed replace shows in the row, where the Load tap was, however far the preview is scrolled. */}
           <SheetActions
             error={step.error}
-            status={
-              // Minor 561: a polite region, mounted empty, so the count dropping and the line going are both heard.
-              <span role="status">
-                {step.resolved.needsRule.length > 0 ? <span id={needsChoiceId}>{loadOffNeedsChoice(step.resolved.needsRule.length)}</span> : null}
-              </span>
-            }
             primary={
               <Button
                 busy={put.isPending}

@@ -137,32 +137,81 @@ describe("17.2 AC32 / 07.6 AC17 — the web never re-derives recordCount", () =>
   it("the copy helpers print the count without arithmetic (minor 676)", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     for (const [file, name] of [["historyCopy.ts", "historyBadgeText"], ["../records/recordLedger.ts", "liftCountText"]] as const) {
-      const parts = functionParts(readFileSync(join(here, file), "utf8"), name);
-      expect(parts, `${file} ${name}`).not.toBeNull();
-      expect(parts!.body, `${file} ${name}`).toContain(parts!.param);
-      expect(parts!.body, `${file} ${name}`).not.toMatch(arithmeticOn(parts!.param));
+      const use = countUse(readFileSync(join(here, file), "utf8"), name);
+      expect(use, `${file} ${name}`).not.toBeNull();
+      expect(use!.used, `${file} ${name}`).toBe(true);
+      expect(use!.arithmetic, `${file} ${name}`).toEqual([]);
     }
   });
 
   it("minor 753: a renamed parameter and a multi-line return type are still read", () => {
     const sample = "export function f(count: number): {\n  visible: string;\n} {\n  return { visible: `${count + 1}` };\n}";
-    const parts = functionParts(sample, "f");
-    expect(parts?.param).toBe("count");
-    expect(parts?.body).toMatch(arithmeticOn("count"));
+    const use = countUse(sample, "f");
+    expect(use?.names).toEqual(["count"]);
+    expect(use?.arithmetic).toEqual(["count + 1"]);
+  });
+
+  it("minor 782: the samples", () => {
+    expect(countUse('function f(n: number) { return "lifts"; }', "f")?.used).toBe(false);
+    expect(countUse("function f({ n }: { n: number }) { return `${n}`; }", "f")).toEqual({ names: ["n"], used: true, arithmetic: [] });
+    expect(countUse("function f(n: number) { /* n - 1 is … */ return `${n}`; }", "f")?.arithmetic).toEqual([]);
+    expect(countUse("function f(count: number) { return `${(count) + 1}`; }", "f")?.arithmetic).not.toEqual([]);
+    expect(countUse("function f(n: number) { return `${-n}`; }", "f")?.arithmetic).toEqual(["-n"]);
+    expect(countUse("function f(n: number) { return `${Math.max(n, 0)}`; }", "f")?.arithmetic).toEqual(["Math.max(n, 0)"]);
+    expect(countUse("function f(n: number) { return `${x.n}`; }", "f")?.used).toBe(false);
   });
 });
 
+const ARITHMETIC = new Set([
+  ts.SyntaxKind.PlusToken,
+  ts.SyntaxKind.MinusToken,
+  ts.SyntaxKind.AsteriskToken,
+  ts.SyntaxKind.SlashToken,
+  ts.SyntaxKind.PercentToken,
+  ts.SyntaxKind.AsteriskAsteriskToken,
+  ts.SyntaxKind.PlusEqualsToken,
+  ts.SyntaxKind.MinusEqualsToken,
+  ts.SyntaxKind.AsteriskEqualsToken,
+  ts.SyntaxKind.SlashEqualsToken,
+  ts.SyntaxKind.PercentEqualsToken,
+  ts.SyntaxKind.AsteriskAsteriskEqualsToken,
+]);
+const UNARY = new Set([ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.PlusToken]);
+
 /**
- * Minor 753: a top-level function's first parameter's name and its body's text, read with the TypeScript compiler (so a
- * multi-line return type and any parameter name are read right); null when there's no such function.
+ * Minors 753, 782: how a top-level function uses its first parameter, read with the TypeScript compiler, so a multi-line
+ * return type, any name and a destructured parameter are read right, and comments (not nodes) are never read. `names`:
+ * the parameter's identifier, or each name it destructures; `used`: the body names one as a value (not `x.n`'s `n`);
+ * `arithmetic`: each arithmetic expression on one (parentheses removed), and each `Math.` call. Null when there's no such
+ * function.
  */
-function functionParts(code: string, name: string): { param: string; body: string } | null {
+function countUse(code: string, name: string): { names: string[]; used: boolean; arithmetic: string[] } | null {
   const file = ts.createSourceFile(name, code, ts.ScriptTarget.Latest, true);
   const fn = file.statements.find((s): s is ts.FunctionDeclaration => ts.isFunctionDeclaration(s) && s.name?.text === name);
   const param = fn?.parameters[0]?.name;
   if (fn?.body === undefined || param === undefined) return null;
-  return { param: param.getText(file), body: fn.body.getText(file) };
+  const names: string[] = [];
+  const collect = (binding: ts.BindingName): void => {
+    if (ts.isIdentifier(binding)) names.push(binding.text);
+    else for (const element of binding.elements) if (!ts.isOmittedExpression(element)) collect(element.name);
+  };
+  collect(param);
+  const isName = (node: ts.Expression): boolean => {
+    let inner = node;
+    while (ts.isParenthesizedExpression(inner)) inner = inner.expression;
+    return ts.isIdentifier(inner) && names.includes(inner.text);
+  };
+  let used = false;
+  const arithmetic: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && names.includes(node.text) && !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node)) used = true;
+    if (ts.isBinaryExpression(node) && ARITHMETIC.has(node.operatorToken.kind) && (isName(node.left) || isName(node.right))) arithmetic.push(node.getText(file));
+    if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && UNARY.has(node.operator) && isName(node.operand)) arithmetic.push(node.getText(file));
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Math") {
+      arithmetic.push(node.getText(file));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(fn.body);
+  return { names, used, arithmetic };
 }
-
-/** Arithmetic on `param`, or any `Math.` call: the count must be printed as given. */
-const arithmeticOn = (param: string) => new RegExp(`\\b${param}\\s*[-+*/%]|[-+*/%]\\s*${param}\\b|Math\\.`);

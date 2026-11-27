@@ -1,6 +1,7 @@
 import type { HevyImportDropCode, HevyImportNoticeCode, HevyImportOutcome, HevyRoutineNoticeCode } from "@sin/core";
 
 import type { ReadStage } from "./constants";
+import { formatCount } from "../formatCount";
 
 /**
  * Spec 20.1 §6.11: every user-visible string of the import. Copied verbatim from the spec where it fixes the text;
@@ -8,8 +9,7 @@ import type { ReadStage } from "./constants";
  * a sentence here; titles appear only in the lists, as text.
  */
 
-const fmt = (n: number) => n.toLocaleString("en-US");
-const plural = (n: number, one: string, many: string) => `${fmt(n)} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
 /** §5: the step names, in order. */
 export const STEP_LABELS = Object.freeze({
@@ -68,7 +68,7 @@ const STAGE_NAMES: Readonly<Record<ReadStage, string>> = Object.freeze({
 export const readingLine = (stage: ReadStage, page: number, pageCount: number) =>
   stage === "count" || pageCount === 0
     ? `Reading Hevy… ${STAGE_NAMES[stage]}`
-    : `Reading Hevy… ${STAGE_NAMES[stage]}, page ${fmt(page)} of ${fmt(pageCount)}`;
+    : `Reading Hevy… ${STAGE_NAMES[stage]}, page ${formatCount(page)} of ${formatCount(pageCount)}`;
 export const CANCEL = "Cancel";
 export const TRY_AGAIN = "Try again";
 export const BACK = "Back";
@@ -76,7 +76,7 @@ export const CONTINUE = "Continue";
 
 /** AC4: reconciliation. */
 export const reconcileLine = (reported: number, read: number) =>
-  `Hevy reported ${fmt(reported)} workouts but sent ${fmt(read)}. Workouts added or removed while reading can cause this; run the import again later to catch up.`;
+  `Hevy reported ${formatCount(reported)} workouts but sent ${formatCount(read)}. Workouts added or removed while reading can cause this; run the import again later to catch up.`;
 
 /** AC5: read failures (the kind sentences come from 20.0's `HEVY_COPY`). */
 export const READ_FAILED = "Couldn't finish reading Hevy";
@@ -86,7 +86,7 @@ export const readFailedStage = (stage: ReadStage) => `It stopped while reading $
 /** AC7 / §5.3: routines. */
 export const ROUTINES_TITLE = "Routines to copy";
 export const routinesRoom = (used: number, max: number, room: number) =>
-  `You have ${fmt(used)} of ${fmt(max)} routines; room for ${fmt(room)} more.`;
+  `You have ${formatCount(used)} of ${formatCount(max)} routines; room for ${formatCount(room)} more.`;
 export const routinesChosen = (n: number) => `${plural(n, "routine", "routines")} chosen`;
 export const NO_FOLDER = "No folder";
 export const TICK_ALL = "Tick all in this folder";
@@ -108,13 +108,13 @@ export const SKIP = "Skip";
 // Plan copy.
 export const NAMES_TITLE = "Pair exercises";
 export const createsLine = (creates: number, room: number) =>
-  `This would create ${plural(creates, "exercise", "exercises")}; you can add ${fmt(room)} more`;
-export const creatingLine = (created: number, total: number) => `Creating exercises… ${fmt(created)} of ${fmt(total)}`;
+  `This would create ${plural(creates, "exercise", "exercises")}; you can add ${formatCount(room)} more`;
+export const creatingLine = (created: number, total: number) => `Creating exercises… ${formatCount(created)} of ${formatCount(total)}`;
 
 /** AC11: checking (the dry run). */
 // Plan copy.
 export const CHECKING_TITLE = "Checking";
-export const checkingLine = (done: number, total: number) => `Checking your workouts… ${fmt(done)} of ${fmt(total)}`;
+export const checkingLine = (done: number, total: number) => `Checking your workouts… ${formatCount(done)} of ${formatCount(total)}`;
 export const REPLY_NOT_UNDERSTOOD = "The server's reply wasn't understood.";
 // Plan copy.
 export const CHECK_FAILED = "Couldn't check your workouts. Try again.";
@@ -137,8 +137,8 @@ const SUMMARY_LABELS_ONE: Partial<Record<keyof typeof SUMMARY_LABELS, string>> =
   duplicate: "already matches a workout in SIN (it'll be linked, not copied)",
 };
 export const summaryCountLine = (key: keyof typeof SUMMARY_LABELS, n: number) =>
-  `${fmt(n)} ${(n === 1 ? SUMMARY_LABELS_ONE[key] : undefined) ?? SUMMARY_LABELS[key]}`;
-export const setsLine = (kept: number, dropped: number) => `Sets: ${fmt(kept)} kept, ${fmt(dropped)} dropped`;
+  `${formatCount(n)} ${(n === 1 ? SUMMARY_LABELS_ONE[key] : undefined) ?? SUMMARY_LABELS[key]}`;
+export const setsLine = (kept: number, dropped: number) => `Sets: ${formatCount(kept)} kept, ${formatCount(dropped)} dropped`;
 export const routinesChosenLine = (n: number) => `${plural(n, "routine", "routines")} will be created.`;
 export const exercisesCreatedLine = (n: number) => `${plural(n, "exercise was", "exercises were")} created while pairing.`;
 export const NOTHING_WRITTEN = "Nothing has been written yet.";
@@ -177,19 +177,19 @@ export const IMPORT_UNAVAILABLE = "The Hevy import isn't available on this accou
 // Plan copy.
 export const RUN_TITLE = "Importing";
 export const runningLine = (sent: number, total: number, skipped: number) =>
-  `Importing… ${fmt(sent)} of ${fmt(total)}${skipped > 0 ? ` · ${fmt(skipped)} skipped` : ""}`;
+  `Importing… ${formatCount(sent)} of ${formatCount(total)}${skipped > 0 ? ` · ${formatCount(skipped)} skipped` : ""}`;
 export const KEEP_TAB_OPEN = "Keep this tab open.";
 export const STOP = "Stop";
 export const STOPPING = "Stopping after this batch…";
 export const RESUME = "Resume";
 export const FINISH_UP = "Finish up";
-export const pausedLine = (sent: number, total: number) => `Paused at ${fmt(sent)} of ${fmt(total)}`;
+export const pausedLine = (sent: number, total: number) => `Paused at ${formatCount(sent)} of ${formatCount(total)}`;
 export const PAUSED = "Paused: couldn't reach the server. Everything imported so far is saved.";
 // Plan copy.
 export const BACK_ONLINE = "You're back online.";
 export const STOPPED_TITLE = "Stopped";
 // Plan copy.
-export const stoppedLine = (sent: number, total: number) => `${fmt(sent)} of ${plural(total, "workout", "workouts")} sent. What's imported so far stays.`;
+export const stoppedLine = (sent: number, total: number) => `${formatCount(sent)} of ${plural(total, "workout", "workouts")} sent. What's imported so far stays.`;
 export const STOP_INVALID = "The server didn't accept a workout in this batch.";
 export const stopInvalidPath = (path: string) => `Field: ${path}`;
 export const STOP_GATE = IMPORT_UNAVAILABLE;
@@ -205,27 +205,27 @@ export const LEAVE_CONFIRM = "Stop and leave";
 /** AC23: the routines step. */
 // Plan copy.
 export const ROUTINES_RUN_TITLE = "Creating routines";
-export const creatingRoutinesLine = (done: number, total: number) => `Creating routines… ${fmt(done)} of ${fmt(total)}`;
+export const creatingRoutinesLine = (done: number, total: number) => `Creating routines… ${formatCount(done)} of ${formatCount(total)}`;
 
 /** AC25 / §5.7: the done screen. */
 export const DONE_TITLE = "Done";
 export const VIEW_HISTORY = "View History";
 export const DOWNLOAD_REPORT = "Download report";
 export const doneWorkoutsLine = (imported: number, linked: number, skipped: number) =>
-  `${plural(imported, "workout", "workouts")} imported · ${fmt(linked)} linked to workouts you'd logged · ${fmt(skipped)} skipped`;
+  `${plural(imported, "workout", "workouts")} imported · ${formatCount(linked)} linked to workouts you'd logged · ${formatCount(skipped)} skipped`;
 // Plan copy.
-export const alreadyInSinLine = (n: number) => `${fmt(n)} already in SIN`;
+export const alreadyInSinLine = (n: number) => `${formatCount(n)} already in SIN`;
 /** O2 / D18 (Carol, 2026-10-29). */
-export const notSentLine = (n: number) => `${fmt(n)} not imported (stopped)`;
+export const notSentLine = (n: number) => `${formatCount(n)} not imported (stopped)`;
 export const setsDroppedLine = (n: number) => `${plural(n, "set", "sets")} dropped`;
 // Plan copy.
 export const routinesDoneLine = (created: number, exists: number, nothingToImport: number, notCreated: number) =>
   [
     created > 0 ? `${plural(created, "routine", "routines")} created` : null,
-    exists > 0 ? `${fmt(exists)} already there` : null,
+    exists > 0 ? `${formatCount(exists)} already there` : null,
     // AC23: a routine of only placeholders and skips is skipped, not a failure.
-    nothingToImport > 0 ? `${fmt(nothingToImport)} with nothing to import` : null,
-    notCreated > 0 ? `${fmt(notCreated)} not created` : null,
+    nothingToImport > 0 ? `${formatCount(nothingToImport)} with nothing to import` : null,
+    notCreated > 0 ? `${formatCount(notCreated)} not created` : null,
   ]
     .filter((part) => part !== null)
     .join(" · ");

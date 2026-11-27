@@ -73,6 +73,7 @@ import { revealStep, type RevealGate } from "./revealGate";
 import { useToday } from "./useToday";
 import { WorkoutMenu } from "./WorkoutMenu";
 import { barMode, unloggedPlanned } from "./unloggedPlanned";
+import { firstScrollOf } from "./refusalScroll";
 import {
   useAddExercise,
   useDeleteWorkout,
@@ -107,8 +108,6 @@ interface Banner {
 const OFFLINE_MESSAGE = "You're offline — try again when you have signal";
 const SECTION_LIMIT_ID = "session-section-limit";
 const EMPTY_IDS: ReadonlySet<string> = new Set();
-/** Minor 637: the refused finish ops whose banner has been scrolled into view, for the page load. */
-const scrolledRefusals = new Set<string>();
 /** Spec 10.7 AC39: a timed section's heading tag. */
 const SYNC_TAG = { pending: RESULT_COPY.notSaved, failed: RESULT_COPY.notSavedFailed } as const;
 
@@ -818,8 +817,7 @@ export function ActiveSession({ workout, notice, onDismissNotice, onGone }: Acti
   const refusedRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     // Minor 637: once per op for the page, so a return to the workout keeps the reveal of the current panel.
-    if (refusedOpId === null || scrolledRefusals.has(refusedOpId)) return;
-    scrolledRefusals.add(refusedOpId);
+    if (refusedOpId === null || !firstScrollOf(refusedOpId)) return;
     refusedRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [refusedOpId]);
   // Rows, not ops: a create and its edit are one row (minor 642), and the banner says what the line says (minor 697).

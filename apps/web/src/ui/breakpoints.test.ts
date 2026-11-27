@@ -19,17 +19,19 @@ const sources = filesUnder(SRC, /\.(css|ts|tsx)$/)
 const ALLOWED = ["48rem", "64rem"];
 
 /**
- * Each width condition in a file: `(min-width: …)` / `(max-width: …)` anywhere, and in a stylesheet also the range
- * forms, one entry per width they name: `(width >= …)` (minor 648), `(… <= width)` and `(… <= width < …)` (minor 755).
- * TypeScript reads only the first form, so a parameter such as `viewFor(width: number)` is never taken for a
- * condition; a range inside a `matchMedia` string isn't read either.
+ * Each width condition in a file: `(min-width: …)` / `(max-width: …)` anywhere in TypeScript; in a stylesheet, only
+ * inside an `@media` or `@container` prelude (minor 785: `@supports (width: stretch)` and declarations aren't
+ * conditions), where the range forms are read too, one entry per width they name: `(width >= …)` (minor 648),
+ * `(… <= width)` and `(… <= width < …)` (minor 755). TypeScript reads only the first form, so a parameter such as
+ * `viewFor(width: number)` is never taken for a condition; a range inside a `matchMedia` string isn't read either.
  */
 function conditionsIn(path: string, text: string): { condition: string; width: string }[] {
   if (!path.endsWith(".css")) {
     return [...text.matchAll(/\((?:min|max)-width\s*:\s*([^)]+)\)/g)].map((m) => ({ condition: m[0], width: m[1]?.trim() ?? "" }));
   }
+  const preludes = [...text.matchAll(/@(?:media|container)\b([^{;]*)/g)].map((m) => m[1]!);
   // `width` on its own, never inside a custom property's name (`var(--focus-ring-width)`), or the min/max form.
-  return [...text.matchAll(/\(([^()]*(?:(?<![-\w])width(?![-\w])|\b(?:min|max)-width\s*:)[^()]*)\)/g)].flatMap((m) => {
+  return preludes.flatMap((prelude) => [...prelude.matchAll(/\(([^()]*(?:(?<![-\w])width(?![-\w])|\b(?:min|max)-width\s*:)[^()]*)\)/g)]).flatMap((m) => {
     const inner = m[1]!;
     const minMax = /^\s*(?:min|max)-width\s*:\s*(.+)$/.exec(inner);
     if (minMax) return [{ condition: m[0], width: minMax[1]!.trim() }];
@@ -82,5 +84,11 @@ describe("17.12 AC1 — breakpoints are tokens, and every media condition uses o
       { condition: "(48rem <= width < 64rem)", width: "64rem" },
     ]);
     expect(conditionsIn("x.module.css", "outline: var(--focus-ring-width) solid; max-width: var(--pane-list-width);")).toEqual([]);
+  });
+
+  it("minor 785: only @media and @container preludes are read", () => {
+    expect(conditionsIn("x.module.css", "@supports (width: stretch) { .a { width: stretch; } }")).toEqual([]);
+    expect(conditionsIn("x.module.css", "@container pane (min-width: 30rem) {")).toEqual([{ condition: "(min-width: 30rem)", width: "30rem" }]);
+    expect(conditionsIn("x.module.css", ".a { max-width: calc(100% - (2 * var(--space-4))); }")).toEqual([]);
   });
 });

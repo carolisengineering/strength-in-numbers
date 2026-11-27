@@ -13,7 +13,7 @@ const auth = vi.hoisted(() => ({
 }));
 vi.mock("@auth0/auth0-react", () => ({ useAuth0: () => auth.state }));
 
-import { card, deleteSetIn, openEditFromSummary } from "../test/sessionHelpers";
+import { card, deleteSetIn, finishButton, openEditFromSummary } from "../test/sessionHelpers";
 import { resetDesktop, setDesktop } from "../test/desktop";
 import { makeSet, makeWorkoutDetail } from "../test/workoutFixtures";
 import { createWorkoutFake } from "../test/workoutFake";
@@ -130,6 +130,67 @@ describe("minor 764 — Edit from History's index at desktop widths isn't marked
     await app.user.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(app.router.state.location.pathname).toBe(`/app/history/${NEWER.id}`));
     expect(app.router.state.historyAction).toBe("REPLACE");
+  });
+});
+
+describe("minor 779 — Delete workout from an edit opened off History's index goes Back to it", () => {
+  async function openFromIndex() {
+    setDesktop(true);
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [OLDER, NEWER], active: null }) });
+    const app = renderApp("/app/workouts");
+    await app.router.navigate("/app/history");
+    await summaryShown();
+    return app;
+  }
+
+  it("minor 779: lands on History, and one Back leaves it", async () => {
+    const app = await openFromIndex();
+    await deleteWholeFromEdit(app);
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
+    await act(() => app.router.navigate(-1));
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/workouts"));
+  });
+
+  it("minor 779: Forward after that Back lands on History, not Not found", async () => {
+    const app = await openFromIndex();
+    await deleteWholeFromEdit(app);
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
+    await act(() => app.router.navigate(1)); // the edit entry the Back left ahead
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
+    expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
+  });
+
+  it("Review Focus 1: an edit opened by a direct link, then Delete workout, still replaces", async () => {
+    prepareApp({ auth, fake: createWorkoutFake({ finished: [OLDER, NEWER], active: null }) });
+    const app = renderApp(`/app/history/${NEWER.id}/edit`);
+    await screen.findByRole("heading", { level: 1, name: "Edit workout" });
+    await app.user.click(within(card("Bench press")).getByRole("button", { name: /60 kg × 5/ }));
+    await deleteSetIn(app.user, screen.getByRole("dialog", { name: /^Set 1/ }));
+    const dialog = await screen.findByRole("dialog", { name: EDIT_COPY.lastSet.title });
+    await app.user.click(within(dialog).getByRole("button", { name: EDIT_COPY.lastSet.confirm }));
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
+    expect(app.router.state.historyAction).toBe("REPLACE");
+  });
+});
+
+describe("minor 783 — the Workouts half of 763", () => {
+  it("minor 783: Workouts → Finish → Edit → Delete workout lands on Workouts, and one Back leaves it", async () => {
+    const fake = createWorkoutFake({
+      active: makeWorkoutDetail({ exercises: [{ modality: "weight_reps", name: "Bench press", sets: [makeSet({ setNumber: 1, weight: 60, reps: 5 })] }] }),
+    });
+    prepareApp({ auth, fake });
+    const app = renderApp("/app/history");
+    await app.router.navigate("/app/workouts");
+    await screen.findByRole("heading", { name: "Workout" });
+    const id = fake.state.active!.id;
+    await app.user.click(finishButton());
+    await app.user.click(within(screen.getByRole("dialog", { name: "Finish workout?" })).getByRole("button", { name: "Finish" }));
+    await waitFor(() => expect(app.router.state.location.pathname).toBe(`/app/workouts/${id}`));
+    await summaryShown();
+    await deleteWholeFromEdit(app);
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/workouts"));
+    await act(() => app.router.navigate(-1));
+    await waitFor(() => expect(app.router.state.location.pathname).toBe("/app/history"));
   });
 });
 
