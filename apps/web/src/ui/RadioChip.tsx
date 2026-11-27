@@ -17,7 +17,8 @@ export type RadioChipProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type" 
 export function RadioChip({ block = false, children, ref, ...input }: RadioChipProps) {
   return (
     <label className={block ? `${styles.chip} ${styles.block}` : styles.chip}>
-      <input ref={ref} type="radio" {...input} />
+      {/* Minor 545: `type` goes after the spread, so no prop object can make the chip another input. */}
+      <input ref={ref} {...input} type="radio" />
       {children}
     </label>
   );

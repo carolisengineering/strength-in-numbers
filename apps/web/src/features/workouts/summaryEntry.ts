@@ -14,7 +14,8 @@ export function isFromHome(state: unknown): boolean {
  * `fromHome`) instead of replacing the edit entry with a second, unmarked copy of it. Minor 763: when the summary
  * itself came from its list, the edit entry carries `fromHome` too, so Delete workout can go Back past the summary to
  * that list. Minor 764: only a summary whose own route names its workout marks Edit; History's index at desktop widths
- * (`/app/history`, no id) doesn't, so Done there replaces with the workout's own path.
+ * (`/app/history`, no id) doesn't, so Done there replaces with the workout's own path. Minor 779: that index marks
+ * Edit `FROM_INDEX` instead, so Delete workout goes Back one entry to the index rather than leaving it twice.
  */
 export const FROM_SUMMARY = { fromSummary: true } as const;
 
@@ -22,9 +23,24 @@ export function isFromSummary(state: unknown): boolean {
   return typeof state === "object" && state !== null && (state as { fromSummary?: unknown }).fromSummary === true;
 }
 
-/** The state for the summary's Edit: see `FROM_SUMMARY`. `summaryState` is the summary entry's own location state. */
-export function editEntryState(routeNamesWorkout: boolean, summaryState: unknown): { fromSummary: true; fromHome?: true } | undefined {
-  if (!routeNamesWorkout) return undefined;
+/** Minor 779: an Edit opened from History's index at desktop widths (the summary's route names no workout). */
+export const FROM_INDEX = { fromIndex: true } as const;
+
+export function isFromIndex(state: unknown): boolean {
+  return typeof state === "object" && state !== null && (state as { fromIndex?: unknown }).fromIndex === true;
+}
+
+/**
+ * The state for the summary's Edit: see `FROM_SUMMARY` and `FROM_INDEX`. `routeId` is the summary route's own id
+ * (undefined on History's index); `summaryState` is the summary entry's own location state.
+ */
+export function editEntryState(
+  routeId: string | undefined,
+  workoutId: string,
+  summaryState: unknown,
+): { fromSummary: true; fromHome?: true } | typeof FROM_INDEX | undefined {
+  if (routeId === undefined) return FROM_INDEX;
+  if (routeId !== workoutId) return undefined;
   return isFromHome(summaryState) ? { fromSummary: true, fromHome: true } : FROM_SUMMARY;
 }
 

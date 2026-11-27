@@ -160,7 +160,7 @@ function Summary({ workout, endedAt, section }: { workout: WorkoutDetail; endedA
               {open ? (
                 <Button variant="secondary" onClick={() =>
                     void navigate(`/app/${section}/${workout.id}/edit`, {
-                      state: editEntryState(routeId === workout.id, location.state),
+                      state: editEntryState(routeId, workout.id, location.state),
                     })
                   }
                 >

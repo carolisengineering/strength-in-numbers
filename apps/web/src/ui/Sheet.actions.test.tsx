@@ -269,7 +269,8 @@ describe("17.10 AC4 — status line and notice", () => {
   });
 
   it("the status box takes no room while empty; the error region stays rendered (a hidden live region isn't watched)", () => {
-    expect(css).not.toMatch(/\.notice:empty/);
+    // No rule hides the empty error region (minor 717's margin reset may name `.notice:empty` inside a `:has()`).
+    expect(css).not.toMatch(/\.notice:empty[^{]*\{[^}]*(?:display:\s*none|visibility:\s*hidden)/);
     expect(css).toMatch(/\.status:empty[^{]*\{[^}]*display:\s*none/);
     expect(ruleOf(".status")).toMatch(/color:\s*var\(--color-muted\)/);
     expect(ruleOf(".status")).toMatch(/font-size:\s*var\(--font-size-sm\)/);
@@ -592,5 +593,12 @@ describe("minors 496, 502, 503 — one save-failure notice", () => {
   it("an empty string is no error", () => {
     render(<ErrorSheet error="" />);
     expect(region()).toBeEmptyDOMElement();
+  });
+});
+
+describe("minor 717 — an empty live region in the status slot adds no gap", () => {
+  it("minor 717: a status slot holding only an empty live region adds no gap", () => {
+    expect(css).toMatch(/\.messages:has\(> \.notice:empty\):has\(> \.status > \[role="status"\]:empty:only-child\)\s*\{[^}]*margin-bottom:\s*0/);
+    expect(css).toMatch(/\.notice:not\(:empty\) ~ \.status:not\(:empty\):not\(:has\(> \[role="status"\]:empty:only-child\)\)\s*\{[^}]*margin-top/);
   });
 });

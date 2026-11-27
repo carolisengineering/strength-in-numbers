@@ -5,7 +5,7 @@ import { ROUTINE_SECTIONS_MAX, canLinkRule, type Exercise, type SessionOp, type 
 
 import { track } from "../../../observability/track";
 import { useWaitingFinish } from "../useWaitingFinish";
-import { deletedHere, isFromHome, isFromSummary } from "../summaryEntry";
+import { deletedHere, isFromHome, isFromIndex, isFromSummary } from "../summaryEntry";
 import { NotFound } from "../../../screens/NotFound";
 import { ActionBar, ActionBarHint } from "../../../ui/ActionBar";
 import { BackLink } from "../../../ui/BackLink";
@@ -128,8 +128,11 @@ function EditWorkoutBody({ section }: { section: SummarySection }) {
 
   if (detail.data === undefined) {
     // Minor 763's Back leaves this edit entry ahead; Forward to it after this tab deleted the workout goes on to the
-    // list, as the summary's entry does (minors 716, 770). Any other way in still says Not found.
-    if (gone) return isFromHome(location.state) && deletedHere(id) ? <Navigate to={home.to} replace /> : <NotFound />;
+    // list, as the summary's entry does (minors 716, 770); so does minor 779's from History's index. Any other way in
+    // still says Not found.
+    if (gone) {
+      return (isFromHome(location.state) || isFromIndex(location.state)) && deletedHere(id) ? <Navigate to={home.to} replace /> : <NotFound />;
+    }
     return (
       <Screen title="Edit workout" lead={<BackLink to={home.to} label={home.label} />}>
         <InlineNotice tone="error" requestId={failure?.requestId ?? null} actionLabel="Try again" onAction={() => void detail.refetch()}>
@@ -224,8 +227,10 @@ function EditBody({
       await deleteWorkout.mutateAsync({ id: workoutId, phase: "finished", setCount });
       setLastSetOpen(false);
       // Minor 763: an edit opened from a summary that came from its list goes Back past that summary (now gone) to the
-      // list, as a delete on the summary does (minor 696). Any other way in, it replaces with the list as before.
+      // list, as a delete on the summary does (minor 696). Minor 779: one opened from History's index goes Back one
+      // entry to it. Any other way in, it replaces with the list as before.
       if (isFromSummary(location.state) && isFromHome(location.state)) void navigate(-2);
+      else if (isFromIndex(location.state)) void navigate(-1);
       else void navigate(home, { replace: true });
     } catch (error) {
       onLeaving(false);

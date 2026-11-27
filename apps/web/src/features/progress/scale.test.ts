@@ -234,6 +234,13 @@ describe("minor 533 — month labels never meet", () => {
     expect(labels.map((l) => l.text)).toEqual(["Nov 2025", "Dec 2025", "Jan 2026", "Feb 2026"]);
   });
 
+  it("minor 698: a start-anchored first label that meets the next is dropped; the newest stays", () => {
+    const labels = withLocale("ru-RU", () => xLabels(layoutChart([pt("a", "2025-11-01", 1), pt("b", "2026-01-15", 1)])));
+    expect(meets(labels)).toBe(false);
+    expect(labels.map((l) => l.anchor)).not.toContain("start");
+    expect(labels.at(-1)!.text).toMatch(/^янв/);
+  });
+
   it("Review Focus 5: en-US labels that don't touch are all kept", () => {
     expect(xLabels(layoutChart([pt("a", "2026-07-08", 1), pt("b", "2026-10-06", 1)])).map((l) => l.text)).toEqual(["Aug", "Sep", "Oct"]);
     const year = xLabels(layoutChart([pt("a", "2026-01-15", 1), pt("b", "2026-12-20", 1)]));

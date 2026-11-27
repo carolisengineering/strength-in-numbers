@@ -604,3 +604,11 @@ describe("17.10 AC7 — the load sheet's body has no Cancel or Load button", () 
     expect(within(sheetBody()).queryByRole("button", { name: loadButton(2) })).toBeNull();
   });
 });
+
+describe("minor 717 — the load sheet's live region mounts with the sheet", () => {
+  it("minor 717: the row's live region is there before a file is chosen", async () => {
+    await openSheet();
+    const region = sheetRow().getByRole("status");
+    expect(region).toBeEmptyDOMElement();
+  });
+});

@@ -109,7 +109,14 @@
   margin-bottom: var(--space-2);
 }
 
-.notice:not(:empty) ~ .status:not(:empty) {
+/* Minor 717: a live region mounted early, so its first words are heard (the load sheet's), makes the status slot
+   non-empty while it says nothing. A slot holding only an empty region adds no gap. `:has()` can't nest, so this is a
+   later reset rather than an edited selector above. */
+.messages:has(> .notice:empty):has(> .status > [role="status"]:empty:only-child) {
+  margin-bottom: 0;
+}
+
+.notice:not(:empty) ~ .status:not(:empty):not(:has(> [role="status"]:empty:only-child)) {
   margin-top: var(--space-2);
 }
 
